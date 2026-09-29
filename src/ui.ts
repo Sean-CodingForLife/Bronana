@@ -1256,6 +1256,13 @@ var ACT_SETTINGS: ActMap = {
   },
   'fullscreen': function () { U.toggleFullscreen(); renderSettings(); },
   'set-speed': function () { Settings.set('speed', Settings.get('speed') >= 2 ? 1 : 2); renderSettings(); },
+  /* 命中定帧：在设置表的 `values` 里循环（不在这里写档位 —— 加一档只改设置表） */
+  'set-hitstop': function () {
+    var vals = Settings.def('hitStop').values || [0];
+    var i = vals.indexOf(Settings.get('hitStop'));
+    Settings.set('hitStop', vals[(i + 1) % vals.length]);
+    renderSettings();
+  },
   'set-shake-up': function () { Settings.set('shake', Settings.get('shake') + Settings.def('shake').step); renderSettings(); },
   'set-shake-down': function () { Settings.set('shake', Settings.get('shake') - Settings.def('shake').step); renderSettings(); },
   'keys-default': function () {
@@ -2756,6 +2763,13 @@ function renderSettings() {
   }
   var dm = qq('set-damage'); if (dm) dm.textContent = Settings.get('damageNumbers') ? '开' : '关';
   var rm = qq('set-motion'); if (rm) rm.textContent = Settings.get('reduceMotion') ? '开' : '关';
+  /* 命中定帧：标签写"关 / 轻 / 中 / 重"而不是帧数 ——
+     玩家选的是手感，不是数字；数字住在 `Game.cfg.hitStop`（模拟层）。 */
+  var hs = qq('set-hitstop');
+  if (hs) {
+    var lv = Math.max(0, (Settings.def('hitStop').values || [0]).indexOf(Settings.get('hitStop')));
+    hs.textContent = I18n.t(['关', '轻', '中', '重'][lv] || '关');
+  }
   /* ---- 这一轮补的三项 + 槽位 ----
      文案一律过 `I18n.t`：切语言之后这些**动态标签**（开/关/档位名）也要跟着变，
      而它们不是 HTML 里的静态文本（`bindDom` 抓不到），所以必须在这里显式翻。 */

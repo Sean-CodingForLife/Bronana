@@ -42,6 +42,15 @@ var FIELDS: Record<string, SettingDef> = {
   autopause: { type: 'bool', def: true, label: '失焦自动暂停', note: '切到后台 / 窗口失去焦点时自动暂停' },
   damageNumbers: { type: 'bool', def: true, label: '伤害飘字', note: '关掉可以少一大片视觉噪声' },
   reduceMotion: { type: 'bool', def: false, label: '减少动效', note: '抖动归零 + 粒子抽稀（对玩法没有影响）' },
+  /* ---- 命中定帧（hit-stop）----
+     **默认 0 = 关**，理由不是"还没做"，而是它会**改模拟时序**（精英与 Boss
+     被打中时怪物少走几步），于是默认打开就会改行为指纹 ——
+     而"纯重构必须逐位不变"是这个项目的纪律。
+     做成显式选项之后两边都成立：玩家想要更重的打击感就打开（那是有意改行为），
+     而默认档下所有既有测试与指纹逐位不变。
+     档位名写在这里、帧数住在 `Game.cfg.hitStop`（模拟层）—— 界面只认档位，
+     模拟层只认帧数，两边不互相抄数字。 */
+  hitStop: { type: 'enum', def: 0, values: [0, 2, 4, 7], label: '命中定帧', note: '0=关 2=轻 4=中 7=重（打在精英与 Boss 身上时的顿帧）' },
   /* ---- 这一轮补的三项（可访问性 + 本地化，见 README 的"游戏该有的东西"） ----
      为什么它们是**设置项**而不是各自散落的变量：
      设置表是"有哪些可调项"的**唯一**出处，界面控件由 `test/registry.mjs` 的

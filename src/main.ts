@@ -87,6 +87,9 @@ function applySetting(key, value) {
   else if (key === 'autopause') autoPauseEnabled = !!value;
   else if (key === 'damageNumbers') Emit.showDamage = !!value;
   else if (key === 'reduceMotion') { Emit.visScale = value ? 0.5 : 1; applyShake(); }
+  /* 命中定帧：设置里存的是**帧数**本身（0 = 关），不在这里做档位→帧数的换算 ——
+     那张对照表住在 `Game.cfg.hitStop`（模拟层），这里只把玩家的选择转过去。 */
+  else if (key === 'hitStop') Game.cfg.hitStop = Math.max(0, Math.floor(Number(value) || 0));
   /* ---- 这一轮补的三项 ----
      三项都走**同一个"设置项 → 一个副作用"**的形状，所以它们的位置就在这里，
      不另开分支树。`locale` 还要重新绑一次 DOM（HTML 里的静态文案要按新语言写回去）。 */

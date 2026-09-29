@@ -161,6 +161,7 @@ console.log('\n[4] 静态契约');
     speed: ['set-speed'],
     fps: ['set-fps'],
     shake: ['set-shake-up', 'set-shake-down'],
+    hitStop: ['set-hitstop'],
     autopause: ['set-autopause'],
     damageNumbers: ['set-damage'],
     reduceMotion: ['set-motion'],

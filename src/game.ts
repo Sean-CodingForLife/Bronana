@@ -84,6 +84,30 @@ var Game = ({
     stainPerSec: 8,        // 命中溅血每秒预算
     stainBurst: 8,         // 预算上限（攒着不用也不会爆）
 
+    /* ---- 命中定帧（hit-stop）----
+       打在**精英与 Boss**身上时，让怪与玩家一起冻住 `elite` 个逻辑帧。
+       这是"打击感"配方里最有效的一条（比加粒子便宜得多，也比加音效有效）。
+
+       ⚠ 为什么默认 **0（关）**：它会改变**模拟时序**（怪物少走几步），
+       所以默认打开就会改行为指纹 —— 而"纯重构必须逐位不变"是本项目的纪律。
+       做成可调项之后两边都成立：
+         · 玩家可以在设置里打开（默认档 `medium`），那是**有意改行为**
+         · 默认档下所有既有测试与指纹逐位不变
+       这不是"没做完"，这是"会改手感的东西必须显式选择"。
+
+       ⚠ 实现方式是**缩短这一步的 dt**，不是"暂停引擎"：
+       跳过整个 `step()` 会让子弹/计时器/波次一起停，而这时玩家已经看到
+       命中了（枪口火光都画出来了）——那种"整体卡住"不是打击感，是掉帧。
+       只让**位移**变慢才是。 */
+    hitStop: { off: 0, light: 2, medium: 4, heavy: 7 },
+    /* 定帧期间位移保留几成。**0.02 是"近乎冻住"而不是"慢下来"** ——
+       定帧要的是"世界被砸得顿了一下"，所以位移必须几乎停住；
+       留一点（而不是 0）是为了不让物理积分彻底停摆（速度不清零，
+       顿帧结束后立刻恢复原速，不会有一段"重新加速"的滞涩感）。
+       第一版用的是 0.15，实测 30 帧里只少走了 11% —— 那根本看不出来，
+       而"参数写进去了但看不出效果"正是这一轮要消灭的那类问题。 */
+    hitStopScale: 0.02,
+
     /* ---- 帧模型：逻辑帧 / 物理帧的固定步长 ----
        模拟层只认这一份 dt。main.ts 用它做累积器，测试也用它的整数倍步进，
        所以"逻辑帧多长"不会在两个地方各写一遍（改造前 main.ts 写 1/60、
@@ -410,6 +434,7 @@ function newSession(charDef, seed, danger, opening, smods) {
     decalSeq: 0,
     decalCursor: 0,
     stainBudget: 8,
+    hitStop: 0,
     packsOpened: 0,
     packSpent: 0,
     turrets: [],
@@ -1930,6 +1955,28 @@ function addStain(x, y, r, color) { return Imp.addStain(x, y, r, color); }
 function tryHitStain(e) { return Imp.tryHitStain(e); }
 function requestShake(amount) { Imp.requestShake(amount); }
 
+/* =========================================================
+   命中定帧（hit-stop）
+   ---------------------------------------------------------
+   打在**精英与 Boss**身上时，让整个世界"顿"几个逻辑帧。
+
+   为什么是"缩短这一步的位移"而不是"跳过整个 step()"：
+   跳过 step 会让子弹、计时器、波次、AI 一起停 —— 而这时玩家已经看到命中了
+   （枪口火光与伤害飘字都出来了）。那种"整体卡住"不是打击感，是掉帧。
+   只让**位移**变慢才是：画面还在动，世界慢了半拍。
+
+   为什么取**本次调用的最大值**而不是累加：
+   同一个逻辑帧里可能同时打中三只精英（霰弹、爆炸）。取最大值 = 定帧最多到
+   玩家选的那一档，不会因为"打中三只"就顿三倍 —— 那会变成卡顿。
+
+   ⚠ 默认档是 **0（关）**，所以这条路径在默认设置下**一次都不执行**，
+   行为指纹逐位不变。这不是"没接上"：会改模拟时序的东西必须显式选择。
+   ========================================================= */
+function requestHitStop() {
+  var n = Math.floor(Number(Game.cfg.hitStop) || 0);
+  if (n > S.hitStop) S.hitStop = n;
+}
+
 function damageEnemy(e, amount, opt) {
   if (e.dead) return 0;
   /* 钻地中：**完全免伤**（连暴击判定都不掷）。
@@ -1964,6 +2011,11 @@ function damageEnemy(e, amount, opt) {
   if (opt.showText !== false) {
     Emit.damage(e.x + (S.rnd() - 0.5) * 10, e.y - e.r - 6, dmg, crit);
   }
+
+  /* 命中定帧：打在**精英的甲**上（或 Boss）才触发 —— 打杂兵也定帧会让
+     射速快的配置变成"一直在定格"（那是掉帧，不是打击感）。
+     ⚠ 这一步**不消费随机数**：定帧是纯时序，掷骰子在这里会改行为指纹。 */
+  if (e.elite || e.boss) requestHitStop();
 
   // 生命窃取
   if (s.lifesteal > 0) {
@@ -2308,6 +2360,19 @@ function step(dt, input) {
   if (!S) return;              // 防御：没有会话时绝不推进（避免访问 null 崩溃）
   S.time = (S.time || 0) + dt;
 
+  /* ---- 命中定帧：**只缩短位移用的时间**，不动别的东西 ----
+     `moveDt` 给实体位移用（玩家与怪物）；`dt` 仍然是逻辑帧长 ——
+     计时器、波次剩余、溅血预算、刷怪都按真实 `dt` 走。
+     这样"世界慢了半拍"而"游戏没有卡住"两件事同时成立。
+     ⚠ 默认档 0 时 `moveDt === dt`（`Math.min` 之外没有任何分支），
+     所以这条路径在默认设置下对行为是**恒等**的 —— 指纹不变。 */
+  var stopFrames = Math.floor(Number(S.hitStop) || 0);
+  var moveDt = dt;
+  if (stopFrames > 0) {
+    moveDt = dt * Game.cfg.hitStopScale;
+    S.hitStop = stopFrames - 1;
+  }
+
   S.waveT += dt;
   S.waveLeft = Math.max(0, S.waveLeft - dt);
   // 命中溅血预算按时间回充（避免每秒上百次命中把地面铺满）
@@ -2318,10 +2383,10 @@ function step(dt, input) {
   updateSpawns(dt);
   rebuildGrid();
 
-  updatePlayer(dt, input || { x: 0, y: 0 });
+  updatePlayer(moveDt, input || { x: 0, y: 0 });
   updateWeapons(dt);
   updateTurrets(dt);
-  updateEnemies(dt);
+  updateEnemies(moveDt);
   updateBullets(dt);
   updateEnemyBullets(dt);
   updatePickups(dt);

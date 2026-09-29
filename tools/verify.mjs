@@ -11,7 +11,7 @@
 
    ## 两档
 
-     pnpm verify            全量（约 90 秒）：含 49 套测试
+     pnpm verify            全量（约 90 秒）：含全部无头测试套件（数量见 `test/suites.mjs`）
      pnpm verify --quick    快档（约 20 秒）：跳过测试套件，其余照跑
 
    `--quick` 是**给迭代用的**，它会明确告诉你"跳了什么、提交前还得跑什么" ——
@@ -25,9 +25,16 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const QUICK = process.argv.includes('--quick');
+
+/* 测试套件数**不写死**：写死过一次，然后就漂了（门的名字写着 49 套、
+   实际已经是 50 套）。单一出处是 `test/suites.mjs` 的 `SUITES`。
+   ⚠ Windows 上 `import('C:/…')` 会报 ERR_UNSUPPORTED_ESM_URL_SCHEME ——
+   绝对路径必须转成 `file://` URL（这一条在 Linux 上不会暴露）。 */
+const SUITE_COUNT = (await import(pathToFileURL(path.join(ROOT, 'test', 'suites.mjs')).href)).SUITES.length;
 const JSON_OUT = process.argv.includes('--json');
 const LIST = process.argv.includes('--list');
 
@@ -46,7 +53,7 @@ const GATES = [
   },
   {
     id: 'test',
-    name: '49 套测试',
+    name: SUITE_COUNT + ' 套测试',
     cmd: ['node', ['test/run-all.mjs']],
     slow: true,
     why: '行为与数值的唯一真相。含性能帧预算、渲染绘制预算、存档往返、回放保真'
@@ -129,6 +136,13 @@ const GATES = [
     cmd: ['node', ['tools/hardcode-audit.cjs', '--strict']],
     why: '不数"有几个数字"（渲染几何量毫无意义），只抓**同一个概念被写了第二遍**：' +
       '同一文件里重复的算式 / 跨文件的同一语义算式 / 重复的格式化配方。基线只能变小'
+  },
+  {
+    id: 'solid',
+    name: 'SOLID 体检（五条各自量成一个数）',
+    cmd: ['node', ['tools/solid-audit.cjs', '--strict']],
+    why: 'SOLID 是最容易被当口号念的五条 —— 念完不会有东西变红。这条把它们各自' +
+      '翻译成能当场量出来的形状（接口大小 × 依赖数 / 扩展成本 / 假接口成员 / 存储适配器）'
   }
 ];
 

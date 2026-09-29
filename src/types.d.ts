@@ -411,8 +411,6 @@ interface MusicApi {
   pulse(): boolean;
   /** 配比 / 闪避变了：让**正在放的那首**立刻跟上（订阅自 `Sfx.onMusicVolume`） */
   refresh(): boolean;
-  /** 交叉淡入：把 `Music.bus` 从 `from` 线性推到 `to`，`sec` 秒后归位 */
-  fade(from: number, to: number, sec: number): void;
   stepDur(track: MusicTrackDef): number;
   schedule(ctx: any): void;
   tone(at: number, freq: number, dur: number, wave: string, peak: number, dest: any): void;
@@ -1416,6 +1414,10 @@ interface SessionEnts {
   decalSeq: number;
   decalCursor: number;
   stainBudget: number;
+  /** 还剩几个逻辑帧的**命中定帧**（0 = 不定帧；默认档就是 0，所以指纹不变）。
+   *  它不是"存档要保留的手感设置"—— 它是**本帧的临时状态**，
+   *  进存档只会让读档时莫名顿一下，所以它属于"会话里但不必持久化"的那类。 */
+  hitStop: number;
   turrets: Turret[];
   /** 空间网格（每帧重建；只用于查询，不进存档） */
   grid: { cell: number; map: Record<string, Enemy[]> };
@@ -1880,7 +1882,6 @@ interface EnvelopeApi {
   lastError(): string | null;
   /** 调用方也能记原因（写盘失败、内容不可用之类不归信封管） */
   note(msg: string): void;
-  clearError(): void;
 }
 interface EnvelopeFactoryApi {
   create(opts: { name: string; version: number }): EnvelopeApi;
@@ -3284,7 +3285,6 @@ interface RenderApi {
   props: { canvas: HTMLCanvasElement | null; wave: number; theme: string; scale: number };
   invalidateBakes(): void;
   bakeStats(): BakeStats;
-  perfs?: any;
   init(canvas: HTMLCanvasElement): void;
   resize(): void;
   draw(dt: number): void;
@@ -3375,7 +3375,6 @@ interface GameApi {
   _returnFrom: Record<string, GameStateName>;
   /** 覆盖层的返回目标（来处不可达时退回 title） */
   returnFrom(state: string): GameStateName;
-  _input?: { x: number; y: number };
   STATES: GameStateName[];
   TRANSITIONS: Record<GameStateName, GameStateName[]>;
   time: number;
@@ -3384,6 +3383,12 @@ interface GameApi {
   events: Bus;
   cfg: {
     maxWeapons: number;
+      /** 命中定帧的**帧数**（0 = 关，默认档就是 0）。
+       *  档位 → 帧数的对照表住在 `game.ts` 的 `Game.cfg.hitStop`；
+       *  界面只认档位、模拟层只认帧数，两边不互相抄数字 */
+      hitStop: number;
+      /** 定帧期间**位移**保留几成（0.02 = 近乎冻住；速度不清零，顿完立刻恢复） */
+      hitStopScale: number;
     /** 这一间的时限（秒）：**多久内打完**，不是"要撑多久" */
     waveTime(w: number): number;
     /** 时限内清完的奖励倍率 / 超时的惩罚倍率 */

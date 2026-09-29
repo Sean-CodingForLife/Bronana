@@ -68,7 +68,7 @@ const toolRows = toolFiles.map(f => {
 const toolsMissingEntry = toolRows.filter(r => !r.ok);
 
 /* ---------------- B/C. 测试登记 ---------------- */
-const runAllSrc = fs.readFileSync(path.join(ROOT, 'test', 'run-all.mjs'), 'utf8');
+const runAllSrc = fs.readFileSync(path.join(ROOT, 'test', 'suites.mjs'), 'utf8');
 const listed = [...runAllSrc.matchAll(/\[\s*'[^']*'\s*,\s*'([^']+\.mjs)'\s*\]/g)].map(m => m[1]);
 const testScripts = Object.entries(scripts)
   .filter(([k, v]) => k.indexOf('test:') === 0 && v.indexOf('test/') >= 0)
@@ -76,8 +76,10 @@ const testScripts = Object.entries(scripts)
 
 const listedSet = new Set(listed);
 const scriptedSet = new Set(testScripts.map(s => s.file));
-/* `run-all.mjs` 是运行器本身，不是一套测试 */
-const runnerOnly = ['run-all.mjs'];
+/* `run-all.mjs` 是运行器本身，`suites.mjs` 是**清单数据** —— 两者都不是测试套件。
+   （清单从运行器里拆出来的理由是：`verify.mjs` 的门名字要按清单算套件数，
+   而那个数字写死了就漂。见 `test/suites.mjs` 的头注释。） */
+const runnerOnly = ['run-all.mjs', 'suites.mjs'];
 const testFiles = readDir('test').filter(f => f.endsWith('.mjs') && f.charAt(0) !== '_' && runnerOnly.indexOf(f) < 0);
 
 const inSuiteNoScript = listed.filter(f => !scriptedSet.has(f));
@@ -90,7 +92,7 @@ for (const r of toolsMissingEntry) {
   problems.push('tools/' + r.file + ' 既没有 npm 脚本、也没有被 import —— 写好了没人能调');
 }
 for (const f of inSuiteNoScript) problems.push('test/' + f + ' 在套件里跑，但没有 `test:*` 脚本（想单独跑时命令不存在）');
-for (const f of scriptedNoSuite) problems.push('test/' + f + ' 有 `test:*` 脚本，但不在 run-all 的套件清单里');
+for (const f of scriptedNoSuite) problems.push('test/' + f + ' 有 `test:*` 脚本，但不在 suites.mjs 的套件清单里');
 for (const f of testOrphans) problems.push('test/' + f + ' 既不在套件里、也没有脚本 —— 它从来没被任何东西跑过');
 
 if (JSON_OUT) {

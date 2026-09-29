@@ -84,9 +84,7 @@ Envelope.create = function (opts) {
 
     lastError: function () { return lastNote; },
     /** 调用方（各域自己）也能记原因：写盘失败、内容不可用之类不归信封管 */
-    note: note,
-    /** 仅供测试：清掉最近一次失败原因 */
-    clearError: function () { lastNote = null; }
+    note: note
   };
   return api;
 };
