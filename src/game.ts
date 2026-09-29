@@ -29,6 +29,7 @@ import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
 import { Market } from './market.ts';
 import { Profile } from './profile.ts';
+import { Skills } from './skills.ts';
 import { Stats } from './stats.ts';
 import { Synergy } from './synergy.ts';
 import { Stronghold } from './stronghold.ts';
@@ -107,6 +108,15 @@ var Game = ({
        第一版用的是 0.15，实测 30 帧里只少走了 11% —— 那根本看不出来，
        而"参数写进去了但看不出效果"正是这一轮要消灭的那类问题。 */
     hitStopScale: 0.02,
+
+    /* ---- 战斗模式 ----
+       `auto`   = 现在的玩法：武器自动找最近的敌人开火，技能冷却好了自动放。
+       `manual` = 普通攻击与技能都由玩家操作（鼠标/右摇杆瞄准，左键/扳机开火，
+                  数字键/肩键放技能）。
+       为什么默认 `auto`：行为指纹跑的就是它，而且它是这个项目原来的手感 ——
+       换默认值等于把所有既有测试的基线全部作废。模式是**设置项**，
+       玩家随时可以切（见 settings.ts 的 combatMode）。 */
+    combatMode: 'auto',
 
     /* ---- 帧模型：逻辑帧 / 物理帧的固定步长 ----
        模拟层只认这一份 dt。main.ts 用它做累积器，测试也用它的整数倍步进，
@@ -286,7 +296,35 @@ function requireStateIn(list, what) {
 /* =========================================================
    会话创建
    ========================================================= */
-function newSession(charDef, seed, danger, opening, smods) {
+/* =========================================================
+   技能构筑 → 技能槽（**唯一把 fold 变成运行时状态的地方**）
+   ---------------------------------------------------------
+   为什么技能是"开局折一次"而不是每帧问表：
+     · 折一次之后模拟层只读一份纯数据（与据点/图纸/难度同一套路），
+       于是战斗中没有任何一处需要认识 `skills.ts`
+     · 每帧问表的代价不是性能，而是**读点散开**：那时"这个技能现在是什么参数"
+       会有好几个答案（表里的、符文改过的、某个道具再改过的）
+
+   读档时用的是**存档里那一刻的构筑**（`importRun` 传进来），不是档案里现在的 ——
+   中途改了构筑不该回溯地改变一局已经开始的对局（与 forge/keep 同一条纪律）。
+   ========================================================= */
+function applySkillBuild(sess, charId, build) {
+  if (!sess) return;
+  var fold = Skills.fold(charId, build || []);
+  sess.skills = {
+    fold: fold,
+    slots: fold.slots.map(function (sk) {
+      return { skill: sk, cd: 0, castT: 0, flash: 0 };
+    }),
+    mods: fold.mods || {},
+    casting: null
+  };
+  /* 能量从满开始：开局就能放一个技能，而不是先站着等 12 秒 */
+  sess.energy = 100;
+  sess.energyMax = 100;
+}
+
+function newSession(charDef, seed, danger, opening, smods, skillBuild) {
   // 玩家也走原型：字段由组件声明，不再手写字面量
   // （骨架由 player 原型的生成钩子随对象一起造出来，见 bronana.ts 的 Comp.onSpawn）
   var p: Player = Comp.spawn('player', {
@@ -435,6 +473,10 @@ function newSession(charDef, seed, danger, opening, smods) {
     decalCursor: 0,
     stainBudget: 8,
     hitStop: 0,
+    /* 技能：**默认是空载荷** —— "没点过技能树"与改造前逐位相同（指纹靠这个）。
+       真正的载荷在 `newRun` 里按技能构筑折出来（那时才知道角色是谁）。 */
+    skills: { fold: Skills.fold('', []), slots: [], mods: {}, casting: null },
+    energy: 100, energyMax: 100,
     packsOpened: 0,
     packSpent: 0,
     turrets: [],
@@ -493,6 +535,11 @@ function newSession(charDef, seed, danger, opening, smods) {
      （实测：难度 9 的 startHpFrac=0.85，开局血量 20/20，"不满血"这条修正是假的）。
      所以顺序改成"先给房间内容、后夹难度"，两条规则都成立。 */
   p.hp = Math.max(1, Math.min(p.hp, Math.round(S.stats.maxHp * S.dmods.startHpFrac)));
+  /* 技能构筑：**默认是空构筑**（`skillBuild` 没传）—— 空构筑折出 0 个槽位，
+     于是"没点过技能树"与改造前逐位相同（行为指纹靠这个）。
+     有技能时，这里也是**唯一**把 fold 变成槽位的地方。 */
+  applySkillBuild(S, charDef.id, skillBuild || []);
+  S.skillBuildSource = (skillBuild || []).slice();
   return S;
 }
 
@@ -2391,7 +2438,12 @@ function step(dt, input) {
   rebuildGrid();
 
   updatePlayer(moveDt, input || { x: 0, y: 0 });
-  updateWeapons(dt);
+  /* 战斗模式在这里分岔：**只换"目标从哪来"，不换开火本身** ——
+     两种模式打出去的是同一条 `fire(w, target)`，伤害与弹道完全共用。
+     技能同理（`updateSkills` 里分"玩家按了才放"与"冷却好了就放"）。 */
+  if (String(Game.cfg.combatMode) === 'manual') updateWeaponsManual(dt, input);
+  else updateWeapons(dt);
+  updateSkills(dt, input);
   updateTurrets(dt);
   updateEnemies(moveDt);
   updateBullets(dt);
@@ -2528,6 +2580,409 @@ function updateWeapons(dt) {
     w.cd = weaponCd(w);
   }
 }
+
+/**
+ * 手动模式下的普通攻击：**玩家按了才打**，方向由输入给。
+ *
+ * 与自动模式的唯一区别是"目标从哪来"：
+ *   · 自动：`nearestEnemy`（以撒/Brotato 那一类）
+ *   · 手动：输入的 `aimX/aimY` 指向的那个方向
+ * 打出去的**是同一条 `fire(w, target)`** —— 伤害公式、弹道、特效全部共用。
+ * 这一点是刻意的：如果手动模式另写一条开火路径，"同一把枪两种手感"
+ * 会成为一个只在某一种模式下出现的静默差异。
+ */
+function updateWeaponsManual(dt, input) {
+  var p = S.player;
+  var firing = !!(input && input.fire);
+  for (var i = 0; i < p.weapons.length; i++) {
+    var w = p.weapons[i];
+    w.cd -= dt;
+    if (w.swing > 0) w.swing = Math.max(0, w.swing - dt * 5.5);
+  }
+  if (!firing) return;
+
+  /* 有目标就朝目标（冷却各自算），没目标时**近战不空挥**、远程朝输入方向打。
+     为什么近战不空挥：空挥会让"按着不放"变成无意义的动画噪声，
+     而远程空放是有意义的（可以预判、可以打墙）。 */
+  for (i = 0; i < p.weapons.length; i++) {
+    var w2 = p.weapons[i];
+    if (w2.cd > 0) continue;
+    var ph = aimPoint(input, p);
+    var tgt = nearestEnemy(p.x, p.y, weaponReach(w2) + 60);
+    if (w2.def.type === 'melee' && !tgt) continue;
+    fire(w2, tgt || { x: ph.x, y: ph.y, r: 0 });
+    w2.cd = weaponCd(w2);
+  }
+}
+
+/** 输入的瞄准方向 → 世界里的一个点（手动模式用；没有方向时返回自己前方 400px） */
+function aimPoint(input, p) {
+  var ax = input && isFinite(input.aimX) ? Number(input.aimX) : 0;
+  var ay = input && isFinite(input.aimY) ? Number(input.aimY) : 0;
+  var len = Math.sqrt(ax * ax + ay * ay);
+  if (len < 1e-6) {
+    var a = p.aim || 0;
+    return { x: p.x + Math.cos(a) * 400, y: p.y + Math.sin(a) * 400 };
+  }
+  return { x: p.x + (ax / len) * 400, y: p.y + (ay / len) * 400 };
+}
+
+/* =========================================================
+   技能：释放、能量、以及"打在谁身上"
+   ---------------------------------------------------------
+   技能的三张数据表在 `skills.ts`（形 × 效 × 符文），**模拟层只认识
+   `Skills.fold` 折出来的那一份** —— 它不认识"技能树"这个词，也不认识符文 id。
+   这里负责三件模拟层该负责的事：
+
+     1. **能量**：每帧回充、施法扣除的一个 0..100 的条。
+        为什么冷却之外还要它：只有冷却时"两个技能谁先放"没有取舍。
+     2. **形**：把"效"送到目标身上的六种几何（弹丸 / 扇形 / 环 / 直线 / 装置 / 自身）。
+     3. **效**：命中之后做什么（伤害 / 灼烧 / 电弧 / 减速 / 定身 / 击退 / 回血 / 吸血）。
+
+   命的判定**全部复用已有的东西**：`queryCircle`（空间网格）、`damageEnemy`（伤害与元素）、
+   `hitWalls`（暗门墙）、`Emit`（特效）、`sfx`（声音）。技能不新开一条伤害路径 ——
+   那条路径上每一处都已经被测试与指纹钉住了。
+
+   ⚠ **默认档恒等**：`S.skills.slots` 为空时这一整段都不执行
+   （`updateSkills` 第一行就返回），所以"没点技能树的玩家"与改造前逐位相同。
+   ========================================================= */
+function updateSkills(dt, input) {
+  if (!S || !S.skills || !S.skills.slots.length) return;
+  castEnergy(dt);
+
+  var wantCast = false, wantSlot = 0;
+  var mode = String((Game.cfg && Game.cfg.combatMode) || 'auto');
+  if (mode === 'manual') {
+    /* 手动模式：**玩家按了才放**，方向由输入给（`aimX/aimY`）。
+       没按就什么都不做 —— 这是"手动"的定义，不是"没实现自动"。 */
+    if (input && input.cast) { wantCast = true; wantSlot = Math.max(0, Math.floor(Number(input.slot) || 0)); }
+  } else {
+    /* 自动模式：冷却好了就放，方向朝最近的目标。
+       `autoCast` 与武器那条自动攻击是同一套思路（以撒/Brotato 那一类）。 */
+    for (var i = 0; i < S.skills.slots.length; i++) {
+      var st0 = S.skills.slots[i];
+      if (st0.cd > 0) continue;
+      if (S.energy < st0.skill.cost) continue;
+      wantCast = true; wantSlot = i;
+      break;
+    }
+  }
+
+  for (var j = 0; j < S.skills.slots.length; j++) {
+    var st = S.skills.slots[j];
+    if (st.cd > 0) st.cd = Math.max(0, st.cd - dt);
+  }
+  if (!wantCast) return;
+
+  var slot = S.skills.slots[wantSlot];
+  if (!slot || slot.cd > 0) return;
+  if (S.energy < slot.skill.cost) {
+    /* 手动的"按了但没能量"要给反馈 —— 否则玩家以为按键坏了。
+       自动模式不会走到这里（上面已经筛过）。 */
+    if (mode === 'manual') { sfx('deny'); slot.flash = 0.35; }
+    return;
+  }
+  castSkill(slot, slotIdxOf(wantSlot), aimFor(slot, input));
+}
+
+/** 这个槽位在载荷里的下标（界面与输入用它对齐） */
+function slotIdxOf(i) { return i; }
+
+/**
+ * 这一发朝哪。
+ * @returns { x, y, ang }：`ang` 是弧度，`x/y` 是"朝着看的那个点"（画指示线用）
+ *
+ * 手动模式用玩家给的方向；没给方向（手柄没推、鼠标没动过）时**退回最近目标** ——
+ * 否则"站着不动按技能"会朝右打，那比不打更让人困惑。
+ */
+function aimFor(slot, input) {
+  var p = S.player;
+  var ax = input && isFinite(input.aimX) ? Number(input.aimX) : 0;
+  var ay = input && isFinite(input.aimY) ? Number(input.aimY) : 0;
+  var len = Math.sqrt(ax * ax + ay * ay);
+  if (slot.skill.target === 'self' || len < 1e-6) {
+    var t = nearestEnemy(p.x, p.y, 900);
+    if (t) { var a = U.angle(p.x, p.y, t.x, t.y); return { x: t.x, y: t.y, ang: a, auto: true }; }
+    return { x: p.x + Math.cos(p.aim || 0), y: p.y + Math.sin(p.aim || 0), ang: p.aim || 0, auto: true };
+  }
+  ax /= len; ay /= len;
+  return { x: p.x + ax * 400, y: p.y + ay * 400, ang: Math.atan2(ay, ax), auto: false };
+}
+
+function castEnergy(dt) {
+  var max = 100;
+  if (S.energyMax && S.energyMax !== max) max = S.energyMax;
+  /* 回充速度：满条 12 秒左右回满（一个技能 20 能量 ≈ 2.4 秒攒一发）。
+     它比冷却慢，所以"连放两个技能"不会成为常态 —— 这正是能量存在的意义。 */
+  var regen = max / 12;
+  S.energy = Math.min(max, (S.energy || 0) + regen * dt);
+}
+
+/**
+ * 放一个技能。
+ * @param aim `aimFor` 的结果
+ * 这里只做"形"的分派与资源扣除；**"效"落在 `applyPayload`**。
+ */
+function castSkill(slot, index, aim) {
+  var p = S.player;
+  if (!p) return false;
+  var sk = slot.skill;
+  S.energy = Math.max(0, S.energy - sk.cost);
+  slot.cd = sk.cd;
+  slot.castT = 0.18;
+  S.shots = (S.shots || 0) + 1;          // 与武器共用一个"打了多少次"计数（结算/挑战读它）
+
+  var pr = sk.params || {};
+  var ang = aim.ang;
+  var dmg = skillDamage(sk, pr);
+  /* 把"这一发是什么"挂在会话上：`hurtWithSkill` 是命中回调，
+     它拿不到栈上的 `sk`（形 → damageEnemy → 效，中间隔了好几层）。
+     用会话字段而不是闭包，是因为形与效分散在六个小函数里。 */
+  S.skills.casting = sk;
+  var element = sk.element || '';
+  var hitCount = 0;
+
+  if (sk.form === 'bolt') {
+    hitCount = formBolt(p, pr, aim, dmg, element);
+  } else if (sk.form === 'cone') {
+    hitCount = formCone(p, pr, ang, dmg, element);
+  } else if (sk.form === 'nova') {
+    hitCount = formNova(p, pr, dmg, element);
+  } else if (sk.form === 'beam') {
+    hitCount = formBeam(p, pr, ang, dmg, element);
+  } else if (sk.form === 'summon') {
+    hitCount = formSummon(p, pr, dmg);
+  } else if (sk.form === 'buff') {
+    hitCount = formBuff(p, pr, ang, dmg, element);
+  }
+
+  /* ---- 效：命中之后的附加（回血 / 吸血 / 减速 / 定身 / 灼烧 / 电弧） ---- */
+  applyPayload(sk, pr, null, dmg, element);
+
+  /* ---- 符文的两个"读原始修正"的效果 ---- */
+  var mods = S.skills.mods || {};
+  if (mods.scrapOnHit && hitCount > 0) {
+    /* 「贪婪」：技能命中额外产出废料（按伤害折算）——
+       它把"技能打得多"变成一条经济来源，是收藏家的身份。 */
+    var gain = Math.max(1, Math.round(dmg * hitCount * 0.12));
+    p.scrap = (p.scrap || 0) + gain;
+    S.stats_total.scrap += gain;
+    S.waveScrap += gain;
+  }
+
+  S.skills.casting = null;
+  Game.events.emit('skillCast', { id: sk.id, name: sk.name, slot: index, hits: hitCount });
+  return true;
+}
+
+/** 技能伤害：**相对武器面板**的倍率 —— 技能该随装备成长，否则中后期变成摆设 */
+function skillDamage(sk, pr) {
+  var p = S.player;
+  var base = 0;
+  for (var i = 0; i < p.weapons.length; i++) {
+    if (weaponDamage(p.weapons[i]) > base) base = weaponDamage(p.weapons[i]);
+  }
+  /* 一把武器都没有时给一个下限（`pistol` 的基准），否则技能会打出 0 伤害 */
+  if (!(base > 0)) base = 7;
+  var d = base * (pr.mul || 1);
+  /* 「狂怒」：按已失生命加成（受虐狂的符文） */
+  var rage = (S.skills.mods && S.skills.mods.rageScale) || 0;
+  if (rage > 0 && S.stats.maxHp > 0) {
+    var missing = 1 - U.clamp(p.hp / S.stats.maxHp, 0, 1);
+    d *= (1 + missing * rage);
+  }
+  return d;
+}
+
+/* ---------------- 六种形 ---------------- */
+
+function formBolt(p, pr, aim, dmg, element) {
+  var count = Math.max(1, Math.floor(pr.count || 1));
+  var spread = pr.spread || 0;
+  var speed = pr.speed || 560;
+  var hits = 0;
+  for (var k = 0; k < count; k++) {
+    var a = aim.ang;
+    if (count > 1) a += (k - (count - 1) / 2) * spread;
+    var spd = speed * (0.94 + S.rnd() * 0.12);
+    S.bullets.push(Comp.spawn('bullet', {
+      x: p.x, y: p.y,
+      vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      r: pr.radius || 6,
+      dmg: dmg, pierce: Math.max(0, Math.floor(pr.pierce || 0)), hitSet: null,
+      life: pr.life || 1.5, lifeMax: pr.life || 1.5,
+      color: PAL.STEEL, dark: PAL.DARK,
+      kind: 'orb',
+      element: element,
+      knock: 26,
+      blast: 0,
+      crit: false, bigCrit: false,
+      fromX: p.x, fromY: p.y,
+    }));
+    hits++;
+  }
+  Emit.muzzle(p.x, p.y, aim.ang, true);
+  sfx('shoot', 'laser');
+  return hits;
+}
+
+function formCone(p, pr, ang, dmg, element) {
+  var range = pr.range || 130;
+  /* 默认弧度走 Bronana.DEFAULT_ARC：与武器那边**同一个常量** ——
+     技能与武器的「默认扇形」必须是同一个角度，否则同一个玩家会看到两种手感。 */
+  var arc = (pr.arc || Bronana.DEFAULT_ARC) * Math.PI / 180;
+  var half = arc / 2;
+  var hit = queryCircle(p.x, p.y, range);
+  var n = 0;
+  for (var i = 0; i < hit.length; i++) {
+    var e = hit[i];
+    var ea = U.angle(p.x, p.y, e.x, e.y);
+    if (Math.abs(((ea - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > half) continue;
+    hurtWithSkill(e, dmg, element, p.x, p.y, 120);
+    n++;
+  }
+  Emit.slash(p.x, p.y, range * 0.9, ang, arc);
+  if (S.wallsNow.length && (S.skills.mods && S.skills.mods.hitsWalls)) {
+    hitWalls(p.x, p.y, p.x + Math.cos(ang) * range, p.y + Math.sin(ang) * range, range * 0.4, dmg);
+  }
+  sfx('melee');
+  return n;
+}
+
+function formNova(p, pr, dmg, element) {
+  var radius = pr.radius || 150;
+  var hit = queryCircle(p.x, p.y, radius);
+  var n = 0;
+  for (var i = 0; i < hit.length; i++) {
+    hurtWithSkill(hit[i], dmg, element, p.x, p.y, 160);
+    n++;
+  }
+  Emit.shockRing(p.x, p.y);
+  if (S.wallsNow.length && (S.skills.mods && S.skills.mods.hitsWalls)) {
+    hitWalls(p.x - radius, p.y, p.x + radius, p.y, radius * 0.5, dmg);
+  }
+  sfx('explode');
+  return n;
+}
+
+function formBeam(p, pr, ang, dmg, element) {
+  var len = pr.length || 420;
+  var w = (pr.width || 14) / 2;
+  var x1 = p.x + Math.cos(ang) * len, y1 = p.y + Math.sin(ang) * len;
+  /* 用两条偏移的平行线段做"带宽"：`Col.segCircle` 是唯一实现，
+     两次调用分别覆盖带的两侧 —— 比新写一个"点到线段距离"更安全
+     （新写一份就会与碰撞那份分叉，而分叉的表现是"看起来打到了却没伤害"）。 */
+  var nx = -Math.sin(ang) * w, ny = Math.cos(ang) * w;
+  var hit = queryCircle((p.x + x1) / 2, (p.y + y1) / 2, len / 2 + w + 24);
+  var n = 0;
+  for (var i = 0; i < hit.length; i++) {
+    var e = hit[i];
+    var t1 = Col.segCircle(p.x + nx, p.y + ny, x1 + nx, y1 + ny, e.x, e.y, e.r);
+    var t2 = Col.segCircle(p.x - nx, p.y - ny, x1 - nx, y1 - ny, e.x, e.y, e.r);
+    if (t1 < 0 && t2 < 0) continue;
+    hurtWithSkill(e, dmg, element, p.x, p.y, 80);
+    n++;
+  }
+  if (S.wallsNow.length) hitWalls(p.x, p.y, x1, y1, w, dmg);
+  Emit.muzzle(p.x, p.y, ang, true);
+  sfx('shoot', 'sniper');
+  return n;
+}
+
+function formSummon(p, pr, dmg) {
+  var count = Math.max(1, Math.floor(pr.count || 1));
+  var life = pr.life || 14;
+  var range = pr.range || 260;
+  for (var k = 0; k < count; k++) {
+    var a = (k / count) * U.TAU;
+    S.turrets.push(Comp.spawn('turret', {
+      x: p.x + Math.cos(a) * 70, y: p.y + Math.sin(a) * 70,
+      hp: 30 + (S.stats.engineering || 0) * 2, maxHp: 30 + (S.stats.engineering || 0) * 2,
+      r: 18,
+      /* 技能的装置比道具给的炮塔**有寿命**：它是"临时帮手"而不是"永久多一座"。 */
+      life: life, lifeMax: life, range: range,
+      dmgMul: (pr.mul || 1) * 0.6
+    }));
+  }
+  Emit.shockRing(p.x, p.y);
+  sfx('buy');
+  return count;
+}
+
+function formBuff(p, pr, ang, dmg, element) {
+  var hits = 0;
+  /* 位移：沿朝向冲一段，途中撞到的都吃伤害（角斗士的突刺 / 疾行者的闪步） */
+  var dash = pr.dash || 0;
+  if (dash > 0) {
+    var nx = p.x + Math.cos(ang) * dash, ny = p.y + Math.sin(ang) * dash;
+    var cl = Arena.clampPos(nx, ny, p.r);
+    /* 途中扫一遍（线段判定，不是落点判定）—— 不然"冲过去"会穿怪 */
+    var near = queryCircle((p.x + cl.x) / 2, (p.y + cl.y) / 2, dash / 2 + 60);
+    for (var i = 0; i < near.length; i++) {
+      if (Col.segCircle(p.x, p.y, cl.x, cl.y, near[i].x, near[i].y, near[i].r + 10) < 0) continue;
+      hurtWithSkill(near[i], dmg, element, p.x, p.y, 200);
+      hits++;
+    }
+    p.x = cl.x; p.y = cl.y;
+    p.px = cl.x; p.py = cl.y;
+    Emit.blood(cl.x, cl.y, 4);
+    sfx('melee');
+  }
+  return hits;
+}
+
+/**
+ * "效"的落点。
+ *
+ * @param e 目标（`null` = 形的分派已经自己处理完了命中，这里只做**不依赖目标**的那部分）
+ * 为什么 `e` 可以是 null：有些效（回血、给自己上 buff）根本不需要目标，
+ * 而把它们分成两条路径会让"形 × 效"的组合表出现空洞。
+ */
+function applyPayload(sk, pr, e, dmg, element) {
+  var p = S.player;
+  switch (sk.payload) {
+    case 'heal':
+      healPlayer(pr.heal || 0, true);
+      return;
+    case 'leech':
+      /* 吸血：按"这一发打出的伤害"回一小口（不是按命中数 —— 那会让 AoE 变成大回血） */
+      if (e) healPlayer(dmg * (pr.leech || 0) * 0.25, true);
+      return;
+    default: return;
+  }
+}
+
+/** 技能打中一只怪：**走同一个 damageEnemy**，再按效补一层状态 */
+function hurtWithSkill(e, dmg, element, fromX, fromY, knock) {
+  var pr = null, sk = null;
+  /* 找到当前这一发的载荷（`castSkill` 把它挂在 `S.skills.casting` 上） */
+  sk = S.skills && S.skills.casting;
+  if (sk) pr = sk.params || {};
+  damageEnemy(e, dmg, {
+    fromX: fromX, fromY: fromY,
+    knock: knock,
+    element: element,
+    noCrit: true
+  });
+  if (!sk || e.dead) return;
+  var mods = S.skills.mods || {};
+  /* 「附魔」：技能附带一层电击 */
+  if (mods.addElement && sk.element !== 'shock') {
+    applyElement(e, 'shock', dmg * 0.35, 0);
+  }
+  switch (sk.payload) {
+    case 'burn': applyBurn(e, pr && pr.burn ? pr.burn : 7); break;
+    case 'slow':
+      e.slow = Math.max(e.slow || 0, (pr && pr.life) || 3);
+      e.slowMul = Math.min(e.slowMul === undefined ? 1 : e.slowMul, 1 - ((pr && pr.slow) || 0.45));
+      break;
+    case 'stun':
+      e.stun = Math.max(e.stun || 0, (pr && pr.stun) || 0.55);
+      break;
+    default: break;
+  }
+}
+
 
 function fire(w, target) {
   var p = S.player;
@@ -2990,9 +3445,9 @@ function buildSummary(win) {
 /* =========================================================
    对外 API
    ========================================================= */
-Game.newRun = function (charId, seed, danger, opening, smods) {
+Game.newRun = function (charId, seed, danger, opening, smods, skillBuild) {
   var def = Chars.BY_ID[charId] || Chars.LIST[0];
-  var s = newSession(def, seed, danger, opening, smods);
+  var s = newSession(def, seed, danger, opening, smods, skillBuild);
   Game.setState('playing', true);   // 从选人界面进入新一局
   Game.events.emit('runStart', def);
   return s;
@@ -3042,6 +3497,10 @@ Game.exportRun = function () {
     materialEarned: Math.round(S.materialEarned || 0),
     // 据点等级同理：它是开局修正的来源，不带着读档会静默降级成"没有据点"
     keep: S.keep,
+    /* **技能构筑**：与 keep/forge 同一理由 —— 存的是"这一局开局时的那一份"。
+       不带它，读档会把"我这一局带了什么技能"静默丢掉（技能栏空着，
+       而玩家记得自己点过）。 */
+    skillBuild: (S.skillBuildSource || []).slice(),
     /** 图纸：同样是一局开局修正的来源（存的是**开局时**那一份，见 importRun） */
     forge: Object.keys(S.forge || {}),    /* ---- 地牢进度 ----
        地图**不进存档**（它由种子长出来，同一个种子必然同一张图），
@@ -3185,7 +3644,11 @@ Game.importRun = function (data) {
     isFinite(Number(data.seed)) ? Number(data.seed) : undefined,
     isFinite(Number(data.danger)) ? Number(data.danger) : 0,
     data.opening,
-    smods);
+    smods,
+    /* 技能构筑同理：存的是**开局时那一份**，读档要用它而不是档案里现在的
+       （中途改了构筑不该回溯地改变一局已经开始的对局）。
+       老存档没有这个字段 → 空数组 → 技能栏空着，与"这个存档本来就没有技能"一致。 */
+    Array.isArray(data.skillBuild) ? data.skillBuild : []);
   var p = sess.player;
 
   // 升级加点（逐项按 StatMap 的键拷，未知键丢弃）

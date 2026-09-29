@@ -51,6 +51,12 @@ var FIELDS: Record<string, SettingDef> = {
      档位名写在这里、帧数住在 `Game.cfg.hitStop`（模拟层）—— 界面只认档位，
      模拟层只认帧数，两边不互相抄数字。 */
   hitStop: { type: 'enum', def: 0, values: [0, 2, 4, 7], label: '命中定帧', note: '0=关 2=轻 4=中 7=重（打在精英与 Boss 身上时的顿帧）' },
+  /* ---- 战斗模式（用户要求的那个开关）----
+     `auto`   = 武器自动找最近的敌人开火，技能冷却好了自动放（改造前的玩法）
+     `manual` = 普通攻击与技能都由玩家操作：鼠标/右摇杆瞄准，左键/扳机开火，
+                 技能键放技能
+     ⚠ 默认必须是 `auto` —— 行为指纹跑的就是它，改默认值等于作废所有既有基线。 */
+  combatMode: { type: 'string', def: 'auto', options: ['auto', 'manual'], label: '战斗模式', note: '自动 = 武器与技能全自动；手动 = 自己瞄准与释放' },
   /* ---- 这一轮补的三项（可访问性 + 本地化，见 README 的"游戏该有的东西"） ----
      为什么它们是**设置项**而不是各自散落的变量：
      设置表是"有哪些可调项"的**唯一**出处，界面控件由 `test/registry.mjs` 的
@@ -64,7 +70,14 @@ var FIELDS: Record<string, SettingDef> = {
   keyDown: { type: 'key', def: 's', label: '下' },
   keyLeft: { type: 'key', def: 'a', label: '左' },
   keyRight: { type: 'key', def: 'd', label: '右' },
-  keyPause: { type: 'key', def: 'p', label: '暂停' }
+  keyPause: { type: 'key', def: 'p', label: '暂停' },
+  /* 技能键（**手动模式**才用得上；自动模式下它们什么都不做） */
+  keySkill1: { type: 'key', def: '1', label: '技能 1' },
+  keySkill2: { type: 'key', def: '2', label: '技能 2' },
+  /* 手动模式的"开火"键：默认空格（按住即持续开火）。
+     为什么不用鼠标左键当默认：左键已经有很多界面用途，而**空格在手边**，
+     而且它与"方向键在右手"不冲突。鼠标左键在手动模式下**同时**有效（见 input.ts）。 */
+  keyFire: { type: 'key', def: 'space', label: '开火' }
 };
 
 /**

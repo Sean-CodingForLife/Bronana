@@ -13,6 +13,10 @@ U.dist2 = function (ax, ay, bx, by) { var dx = bx - ax, dy = by - ay; return dx 
 U.dist = function (ax, ay, bx, by) { return Math.sqrt(U.dist2(ax, ay, bx, by)); };
 U.angle = function (ax, ay, bx, by) { return Math.atan2(by - ay, bx - ax); };
 U.round2 = function (v) { return Math.round(v * 100) / 100; };
+/** 取**三位**小数（技能参数用：符文连乘之后要抹掉浮点尾巴，
+ *  而两位不够 —— 弹速 460 × 1.2 = 552，可半径 9 × 1.3 = 11.7 会变成 11.7 没问题，
+ *  但连乘三项之后两位会把误差放大到看得见）。与 `round2` 一样是唯一实现。 */
+U.round3 = function (v) { return Math.round((Number(v) || 0) * 1000) / 1000; };
 /* ---- 百分号：**唯一实现** ----
    改造前 `Math.round(v * 100) + '%'` 在四个模块里各写了一遍
    （`camp.ts` 5 处、`forge.ts` 3 处、`stats.ts`、`ui.ts`）—— 而且它们

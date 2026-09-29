@@ -135,7 +135,7 @@ console.log('\n[4] 静态契约');
 
   // 设置项 ↔ 应用分支（main.ts 的 applySetting）↔ 键位
   const mainSrc = fs.readFileSync(path.join(ROOT, 'src', 'main.ts'), 'utf8');
-  const applied = new Set([...mainSrc.matchAll(/key === '([a-zA-Z-]+)'/g)].map(m => m[1]));
+  const applied = new Set([...mainSrc.matchAll(/key === '([a-zA-Z0-9-]+)'/g)].map(m => m[1]));
   const settingKeys = Registry.ids('setting');
   const notApplied = settingKeys.filter(k => !applied.has(k));
   ok(notApplied.length === 0, '每个设置项都有"应用"分支（否则改了不生效）', notApplied.join(', '));
@@ -162,6 +162,7 @@ console.log('\n[4] 静态契约');
     fps: ['set-fps'],
     shake: ['set-shake-up', 'set-shake-down'],
     hitStop: ['set-hitstop'],
+      combatMode: ['set-combat'],
     autopause: ['set-autopause'],
     damageNumbers: ['set-damage'],
     reduceMotion: ['set-motion'],
@@ -169,7 +170,10 @@ console.log('\n[4] 静态契约');
     fontScale: ['set-fontscale'],
     colourblind: ['set-colourblind'],
     keyUp: ['rebind'], keyDown: ['rebind'], keyLeft: ['rebind'],
-    keyRight: ['rebind'], keyPause: ['rebind']
+      keyRight: ['rebind'], keyPause: ['rebind'],
+      /* 手动模式的三个键：与方向键同一套改键机制（`rebind`）——
+         它们的按钮在设置页的「按键」那一段里，由 `data-bind` 指认。 */
+      keySkill1: ['rebind'], keySkill2: ['rebind'], keyFire: ['rebind']
   };
   const noWidget = [];
   for (const k of settingKeys) {

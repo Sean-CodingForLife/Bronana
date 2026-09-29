@@ -64,7 +64,7 @@ const SYSTEMS = [
     note: '每帧都在跑的那一层：纯逻辑、无 DOM、无 canvas。它**只读折好的派生值**，' +
       '不重算元进度；`game.ts` 自己不再写全部 78 个会话字段 —— ' +
       '位置（floor/map/roomId）归 chamber.ts，世界状态的其余部分仍在 game.ts 与 market.ts',
-    modules: ['game.ts', 'market.ts', 'emit.ts', 'scene.ts', 'record.ts', 'grid.ts', 'chamber.ts', 'impact.ts']
+    modules: ['game.ts', 'market.ts', 'emit.ts', 'scene.ts', 'record.ts', 'grid.ts', 'chamber.ts', 'impact.ts', 'skills.ts']
   },
   {
     id: 'run', name: '一局的进出', level: 5,

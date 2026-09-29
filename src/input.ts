@@ -24,8 +24,20 @@ var Input = ({
   _pad: { x: 0, y: 0, active: false, connected: false, id: '' },
   _touch: { x: 0, y: 0, active: false, ox: 0, oy: 0, id: -1 },
   // 可改的键位（默认值与 settings.ts 的默认值必须一致，测试会核对）
-  bind: { up: 'w', down: 's', left: 'a', right: 'd', pause: 'p' }
+  bind: {
+    up: 'w', down: 's', left: 'a', right: 'd', pause: 'p',
+    /* 手动模式用；自动模式下它们什么都不做（设置项里能改） */
+    skill1: '1', skill2: '2', fire: 'space'
+  }
 } as InputApi);
+
+/* ---- 手动模式的瞄准状态（见 §0b）----
+   声明在这里而不是 §0b 里：`Input.poll`（手柄右摇杆）与鼠标监听都要写它，
+   而两者都在 §0b 之前求值 —— 用 `var` 的话提升只解决"不报错"，
+   但读到的是 undefined，于是"瞄准"永远不出方向（实测过）。 */
+var _padAim = { x: 0, y: 0, has: false };
+var _mouseSeen = false;
+var _aimOrigin = { x: 0, y: 0 };
 
 /* =========================================================
    0. 改键
@@ -39,7 +51,8 @@ Input.cancelCapture = function () { _capture = null; };
 
 /** 设置项名 → Input.bind 的字段名。用表而不是 if 链：加一条可改键位只改这里一行 */
 var BIND_FIELD: Record<string, string> = {
-  keyUp: 'up', keyDown: 'down', keyLeft: 'left', keyRight: 'right', keyPause: 'pause'
+  keyUp: 'up', keyDown: 'down', keyLeft: 'left', keyRight: 'right', keyPause: 'pause',
+  keySkill1: 'skill1', keySkill2: 'skill2', keyFire: 'fire'
 };
 
 /** 把绑定应用到 Input（settings → 行为 的唯一去处是调用方，这里只接收值） */
@@ -52,6 +65,54 @@ Input.setBind = function (key, value) {
 Input.bindFields = function () { return BIND_FIELD; };
 
 /* =========================================================
+   0b. 手动模式的输入（瞄准 / 开火 / 技能）
+   ---------------------------------------------------------
+   这一层**只打包，不做判断**：
+     · "有没有瞄准"、"该不该开火"、"能量够不够"都是模拟层的事
+     · 这里只回答"玩家现在把这些输入拧成了什么"
+
+   为什么要成一个对象（而不是让模拟层来读 `Input`）：
+   模拟层**不许认识 DOM / 输入设备**（那是分层表的硬约束，也是回放能工作的前提）——
+   所以输入必须被**打包成纯数据**再过界。这也让录制回放天然支持手动模式：
+   `Rec` 记的是打包后的那个对象，重放时不需要真的有一只鼠标。
+   ========================================================= */
+/** 手动模式的瞄准方向（单位向量）。`has` = 这一帧玩家真的指了方向 */
+Input.aim = function () {
+  if (_padAim.has) return { x: _padAim.x, y: _padAim.y, has: true };
+  /* 鼠标：只在"动过"之后才算瞄准（`_mouseSeen`）——
+     否则鼠标停在 (0,0) 就会被当成"一直指着左上角"。
+     方向从**玩家在屏幕上的位置**算起（`Input.setAimOrigin`，由渲染层每帧写）。 */
+  if (_mouseSeen) {
+    var dx = Input.mouse.x - _aimOrigin.x;
+    var dy = Input.mouse.y - _aimOrigin.y;
+    var m = Math.sqrt(dx * dx + dy * dy);
+    if (m > 1) return { x: dx / m, y: dy / m, has: true };
+  }
+  return { x: 0, y: 0, has: false };
+};
+
+/** 玩家在**屏幕上的位置**：鼠标 → 世界方向要它。
+ *  ⚠ 渲染层写、输入层读，而它只是一个点（不是相机矩阵）——
+ *  "相机只有渲染层认识"这条分层约束没有破。 */
+Input.setAimOrigin = function (x, y) {
+  if (isFinite(x) && isFinite(y)) { _aimOrigin.x = x; _aimOrigin.y = y; }
+};
+
+/** 手动模式的输入打包（`main.ts` 每帧取一次交给 `Game.step`） */
+Input.manualInput = function () {
+  var a = Input.aim();
+  var b = Input.bind;
+  var cast = false, slot = 0;
+  /* 技能：**边沿**（按一下放一次），不是按住连放 ——
+     按住连放会让冷却与能量失去意义（那等于自动模式）。 */
+  if (Input.once(b.skill1)) { cast = true; slot = 0; }
+  else if (Input.once(b.skill2)) { cast = true; slot = 1; }
+  /* 开火：**按住**（连射武器按住即连发是玩家的期待；单发武器由冷却自己管住） */
+  var fire = Input.down(b.fire) || Input.mouse.down;
+  return { aimX: a.x, aimY: a.y, fire: fire, cast: cast, slot: slot };
+};
+
+/* =========================================================
    1. 手柄
    ========================================================= */
 /** 标准布局的按钮 → 虚拟键名。没列出的按钮不映射（上层也就看不见它） */
@@ -60,6 +121,14 @@ var PAD_BUTTONS: Record<number, string> = {
   1: 'esc',          // B / ○
   2: 'x',            // X / □（未占用）
   3: 'y',            // Y / △（未占用）
+  /* ---- 手动模式的四个（扳机 + 肩键）----
+     为什么用肩键放技能而不是组合键：手动模式里两只手都在忙
+     （左摇杆走位、右摇杆瞄准），组合键会变成"停下来才能放技能"。
+     肩键在食指上，不占手。 */
+  4: 'skill1',       // L1
+  5: 'skill2',       // R1
+  6: 'fire',         // L2（扳机；poll 里按模拟量 >0.5 才算按下）
+  7: 'fire',         // R2
   9: 'esc',          // Start
   12: 'arrowup', 13: 'arrowdown', 14: 'arrowleft', 15: 'arrowright'
 };
@@ -158,6 +227,13 @@ Input.poll = function () {
   } else {
     Input._pad.active = false;
   }
+  /* 右摇杆 = **瞄准**（左摇杆是走位）。同样归一化成单位向量 ——
+     让"瞄准"与"移动"在模拟层里是同一种输入形状，两种模式的区别只剩来源。 */
+  var rx = (pad.axes && pad.axes.length > 2) ? pad.axes[2] : 0;
+  var ry = (pad.axes && pad.axes.length > 3) ? pad.axes[3] : 0;
+  var rm = Math.sqrt(rx * rx + ry * ry);
+  if (rm > PAD_DEAD) { _padAim.x = rx / rm; _padAim.y = ry / rm; _padAim.has = true; }
+  else { _padAim.has = false; }
   return true;
 };
 
@@ -293,6 +369,7 @@ Input.init = function (canvas) {
   });
 
   window.addEventListener('mousemove', function (e) {
+  _mouseSeen = true;
     Input.mouse.x = e.clientX; Input.mouse.y = e.clientY;
   });
   window.addEventListener('mousedown', function (e) {

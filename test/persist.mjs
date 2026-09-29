@@ -130,6 +130,13 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
        `duckTimer` = 闪避的放回定时器 —— 它也是纯表现，而且**必须**登记：
        一个没被放回的定时器会让音乐永远小声，而这件事没有任何别的尺子看得见。 */
     'audio.ts': ['lastSfx', 'duckTimer'],
+    /* 手动模式的输入层状态（**纯表现性质**：它们只影响"这一帧的输入长什么样"，
+       不进存档、不进模拟 —— `_padAim` 是手柄右摇杆方向、`_mouseSeen` 是
+       "鼠标有没有动过"、`_aimOrigin` 是玩家在屏幕上的位置）。
+       ⚠ `_mouseSeen` 必须登记：它是"没动过鼠标就别乱瞄"这条行为的**唯一开关**，
+       而这类"一个布尔量决定一段行为"的东西最容易在重构里被顺手删掉。 */
+    'input.ts': ['_padAim', '_mouseSeen', '_aimOrigin', '_capture', '_padKeys', '_padOnce',
+      '_padHeld', '_stickEl', '_knobEl', '_stickReady'],
     'draw2d.ts': [],
     'utils.ts': ['Perf', 'PAL_MODE'],
     /* 首局引导：`seen`（说过哪几条）与 `enabled`（开关）都是**纯偏好** ——
@@ -157,7 +164,9 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     // 信封是工厂：状态全在闭包里，模块级没有可变状态
     'envelope.ts': [],
     // 账号档案（跨局成长）：内存里的那一份 + 来源标记 + 写盘结果
-    'profile.ts': ['data', 'loadedFrom', 'writeOk'],
+    /* `SkillsRef` = 注入进来的技能表引用（让档案层不必 import skills.ts ——
+       那是向上的依赖边）。它是一个**会被写**的模块级引用，所以要登记。 */
+    'profile.ts': ['data', 'loadedFrom', 'writeOk', 'SkillsRef'],
     // 挑战表：LIST 是常量（从不重新赋值），BY_ID 与 METRICS 同理
     'challenges.ts': [],
     // 难度阶梯：一张声明表 + 折叠规则，全是常量；BY_LEVEL 只做属性写入
@@ -186,7 +195,13 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     // 跨局据点：同上
     'stronghold.ts': [],
     // 这些文件里没有模块级可变状态
-    'collide.ts': [], 'rig.ts': []
+    'collide.ts': [], 'rig.ts': [],
+    /* 技能表：`TREES` 是**建树结果**（`Skills.make` 按注入的角色清单重建），
+       `_charList` 是那一份注入的清单本身。两者都是"从数据算出来的"，
+       但它们**会被重建**，所以按这份盘点自己的规则必须登记。 */
+    'skills.ts': ['TREES', '_charList'],
+    /* 注入进来的技能表引用：它让档案层不必 import skills.ts（那是向上的依赖边），
+       代价是"有一个可变的模块级引用"—— 正是这份盘点要看见的那类东西。 */
   };
   // API 容器（只挂函数/数据的命名空间对象）不算可变状态
   const API_CONTAINERS = ['Arena', 'Sfx', 'Bronana', 'Col', 'Comp', 'C', 'I', 'W', 'Demo', 'D', 'O',
@@ -421,7 +436,11 @@ console.log('\n[2d] 启动期自检：写了 audit 就得登记');
   const NOT_TABLE_CHECK = {
     'comp.ts': 'Comp.audit(e) 对单个对象',
     'emit.ts': 'Emit.audit() 查运行期池',
-    'registry.ts': 'Registry.audit() 是内置的跨表引用'
+    'registry.ts': 'Registry.audit() 是内置的跨表引用',
+      'skills.ts': 'Skills.audit() 要「角色清单已注入」才查得准 —— 模块加载期清单还是空的，' +
+        '注册进启动期自检会**误报**（玩家看到报错页而表其实是对的）。' +
+        '所以它由 main.ts 在 Skills.make 之后显式跑一次，失败就抛。' +
+        '代价是「没人替我们记得跑它」—— test/skill.mjs 有一条判据盯着 boot 里那两行的顺序。'
   };
   const srcDir = path.join(ROOT, 'src');
   const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && f !== 'types.d.ts');

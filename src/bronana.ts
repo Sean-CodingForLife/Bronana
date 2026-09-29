@@ -294,8 +294,13 @@ Bronana.seatAngle = function (index, aim) {
  * 以前这个换算在 game.ts 里写了两遍（命中锥 + 挥击特效）、render.ts 又写了一遍，
  * 三处都靠"记得同步改"，现在只剩这一份。
  */
+/** 没写 arc 的武器按多少度算（**唯一一处字面量** —— 技能那边也读它）。
+ *  提到具名常量是因为新代码（技能的扇形）也要这个默认值，
+ *  而再写一遍 90 就是「同一件事两份副本」：test/rig.mjs 有判据专门盯着它。 */
+var DEFAULT_ARC = 90;
+Bronana.DEFAULT_ARC = DEFAULT_ARC;
 Bronana.meleeArc = function (def) {
-  return (def.arc || 90) * Math.PI / 180;
+  return (def.arc || DEFAULT_ARC) * Math.PI / 180;
 };
 
 /** 武器座的世界坐标（写入 out，不分配） */

@@ -30,6 +30,7 @@ import { Save } from './save.ts';
 import { S } from './sprites.ts';
 import { Scene } from './scene.ts';
 import { Settings } from './settings.ts';
+import { Skills } from './skills.ts';
 import { Storage } from './storage.ts';
 import { Slots } from './slots.ts';
 import { UI } from './ui.ts';
@@ -60,7 +61,15 @@ var SFX_BY_INTENT: Record<string, (arg?: string) => void> = {
   kill: function () { Sfx.kill(); },
   hurt: function () { Sfx.hurt(); },
   explode: function () { Sfx.explode(); },
-  pickup: function () { Sfx.pickup(); }
+  pickup: function () { Sfx.pickup(); },
+  /* ---- 这两条是**补接线**，不是新音效 ----
+     test/arch.mjs 的 [4] 节拿「模拟层广播的意图」与「入口接的线」对账，
+     而它一直是红的（多出来的正是这两个）：模拟层早就在发 buy / deny，
+     入口却没接 —— 表现是「买了东西与点不动都没有声音」，
+     而**无声是最难注意到的一类退化**（玩家会以为自己没开音量）。
+     接上之后两边对上，那条判据从红变绿，而它守的正是这件事。 */
+  buy: function () { Sfx.buy(); },
+  deny: function () { Sfx.deny(); }
 };
 
 /* =========================================================
@@ -90,13 +99,22 @@ function applySetting(key, value) {
   /* 命中定帧：设置里存的是**帧数**本身（0 = 关），不在这里做档位→帧数的换算 ——
      那张对照表住在 `Game.cfg.hitStop`（模拟层），这里只把玩家的选择转过去。 */
   else if (key === 'hitStop') Game.cfg.hitStop = Math.max(0, Math.floor(Number(value) || 0));
+  /* 战斗模式：**只写一个字段**，模拟层自己按它分岔（两条路径都在 game.ts 里）。
+     为什么不做成两套开关（自动攻击 / 自动技能各一个）：那会出现
+     「自动攻击 + 手动技能」这种没人设计过的混合态，而它每一帧都要被测试。
+     一个开关两种模式 = 两个可验证的状态，比四个半成品状态好。 */
+  else if (key === 'combatMode') Game.cfg.combatMode = (value === 'manual') ? 'manual' : 'auto';
   /* ---- 这一轮补的三项 ----
      三项都走**同一个"设置项 → 一个副作用"**的形状，所以它们的位置就在这里，
      不另开分支树。`locale` 还要重新绑一次 DOM（HTML 里的静态文案要按新语言写回去）。 */
   else if (key === 'locale') { I18n.set(String(value)); }
   else if (key === 'fontScale') { applyFontScale(value); }
   else if (key === 'colourblind') { applyColourblind(value); }
-  else if (key === 'keyUp' || key === 'keyDown' || key === 'keyLeft' || key === 'keyRight' || key === 'keyPause') {
+  else if (key === 'keyUp' || key === 'keyDown' || key === 'keyLeft' || key === 'keyRight' || key === 'keyPause'
+    || key === 'keySkill1' || key === 'keySkill2' || key === 'keyFire') {
+    /* 一条分支覆盖全部可改键位：**靠 `Input.setBind` 里的映射表分派**，
+       而不是在这里再列一遍键名 —— 列一遍就会漏。这一轮加了三个键，
+       漏了的话表现是「按键能在设置里改，但改了没用」。 */
     Input.setBind(key, value);
   }
 }
@@ -440,6 +458,39 @@ function replayStep(x, y) {
 }
 
 /* =========================================================
+   逻辑帧的输入（**分岔只在这一处**）
+   ---------------------------------------------------------
+   自动模式：跟以前一样，只有移动向量 ——
+   模拟层自己找目标、自己放技能。
+   手动模式：把瞄准/开火/技能**打包进同一个对象** ——
+     · 模拟层不认识 `Input`，也不认识鼠标（分层约束，也是回放能工作的前提）
+     · `Rec` 记的就是这个对象，所以手动模式的回放**不需要真的有一只鼠标**
+
+   为什么要成一个函数而不是在两处各写一遍：主循环里有**两个** `Game.step`
+   （暂停单步与累积器）。各写一遍的话，手动模式在"暂停单步"时没有瞄准 ——
+   而那正是调试手感时最需要它的场合（两处会慢慢分叉，这类分叉只在某一条路径上出现）。
+   ========================================================= */
+function frameInput(mv: { x: number; y: number }) {
+  /* 类型写全（不写 `any`）：这个对象**跨层**交给模拟层，
+     而"手动模式多带哪几个字段"正是这一轮新增的契约 —— 用 `any` 就等于不声明它。
+     `slot` 与 `cast` 在自动模式下不出现（多带没人读，但声明里是可选的）。 */
+  var out: { x: number; y: number; aimX?: number; aimY?: number; fire?: boolean; cast?: boolean; slot?: number } = { x: mv.x, y: mv.y };
+  /* 每帧告诉输入层「玩家在屏幕上的哪一点」：鼠标 → 世界方向要用它。
+     ⚠ 只给一个点，不给相机 —— 相机只属于渲染层。 */
+  var sess = Game.getSession && Game.getSession();
+  if (sess && sess.player && R.worldToScreen) {
+    var sp = R.worldToScreen(sess.player.x, sess.player.y);
+    Input.setAimOrigin(sp.x, sp.y);
+  }
+  if (String(Game.cfg.combatMode) === 'manual') {
+    var mi = Input.manualInput();
+    out.aimX = mi.aimX; out.aimY = mi.aimY;
+    out.fire = mi.fire; out.cast = mi.cast; out.slot = mi.slot;
+  }
+  return out;
+}
+
+/* =========================================================
    启动期自检的失败页
    ---------------------------------------------------------
    表写错了要**能看见**：白屏对谁都没用，一条 console 错误在桌面外壳里也看不见。
@@ -461,6 +512,19 @@ function boot() {
   var canvas = document.getElementById('game') as HTMLCanvasElement;
   /* 兜底先接上：`boot` 之后任何一处抛都不该让玩家看到一块卡住的画面 */
   Crash.hook();
+  /* **技能树按真实角色表建一次**（`skills.ts` 自己不认识角色表 ——
+     那一行 import 会让 `profile.ts`（meta 层）依赖它变成一条向上的边）。
+     必须在 `SelfCheck.run()` **之前**：`Skills.audit()` 有一条判据是
+     「每个角色都要有技能树」，而它读的正是这里注入的清单。 */
+  var skillsRef = Skills.make({ chars: function () { return Chars.LIST; } });
+  /* 档案层也要用它（技能构筑存在档案里），但它**不许 import** 本模块 ——
+     那是向上的依赖边。所以走注入（与 `Input.onPadGesture` 同一种做法）。 */
+  Profile.useSkills(skillsRef);
+  /* 注入之后**立刻**自检：`skills.ts` 刻意不在模块级跑它（那时角色清单还是空的，
+     跑出来全是误报），所以"记得跑一次"的责任在这里。失败就抛 ——
+     与注册过的自检同样严格（半坏的表比坏掉更难查）。 */
+  var skVerdict = skillsRef.audit();
+  if (!skVerdict.ok) throw new Error('skills.ts 技能表自检失败：\n' + skVerdict.problems.join('\n'));
 
   /* 定义期自检：表有问题就**不要**进游戏（半坏的表比坏掉更难查）。
      放在 UI.init 之前：界面都还没搭起来时抛，才不会被"看着能跑"骗过去。 */
@@ -861,7 +925,7 @@ function frame() {
     if (Scene.simulates(Game.state)) {
       var mv = Input.moveVec();
       Rec.input(mv);
-      Game.step(FIXED, mv);
+      Game.step(FIXED, frameInput(mv));
     }
     Input.endFrame();
   }
@@ -873,7 +937,7 @@ function frame() {
       for (var r = 0; r < reps; r++) {
         var inp = Input.moveVec();
         Rec.input(inp);                 // 录制：每逻辑帧记一次输入
-        Game.step(FIXED, inp);
+        Game.step(FIXED, frameInput(inp));
       }
     }
     Input.endFrame();

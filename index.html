@@ -176,6 +176,11 @@
           <span class="set-label">游戏速度</span>
           <button class="btn tiny" id="set-speed" data-act="set-speed">1x</button>
         </div>
+        <!-- 战斗模式：自动 = 武器与技能全自动；手动 = 自己瞄准与释放 -->
+        <div class="set-row">
+          <span class="set-label">战斗模式</span>
+          <button class="btn tiny" id="set-combat" data-act="set-combat">自动</button>
+        </div>
         <div class="set-row">
           <span class="set-label">屏幕抖动</span>
           <span class="set-value" id="set-shake-val">100%</span>
@@ -255,6 +260,19 @@
           <span class="set-label">暂停</span>
           <button class="btn tiny" id="bind-keyPause" data-act="rebind" data-bind="keyPause">P</button>
         </div>
+          <!-- 手动模式的三个键：自动模式下它们什么都不做 -->
+          <div class="set-row">
+            <span class="set-label">开火（手动）</span>
+            <button class="btn tiny" id="bind-keyFire" data-act="rebind" data-bind="keyFire">空格</button>
+          </div>
+          <div class="set-row">
+            <span class="set-label">技能 1（手动）</span>
+            <button class="btn tiny" id="bind-keySkill1" data-act="rebind" data-bind="keySkill1">1</button>
+          </div>
+          <div class="set-row">
+            <span class="set-label">技能 2（手动）</span>
+            <button class="btn tiny" id="bind-keySkill2" data-act="rebind" data-bind="keySkill2">2</button>
+          </div>
         <div class="set-row">
           <span class="set-label">存档</span>
           <button class="btn tiny" id="set-reset" data-act="set-reset">清空存档与记录</button>

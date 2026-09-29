@@ -1,3 +1,7 @@
+/* 技能表由**调用方注入**（`main.ts` 的 boot）——
+   直接 import 会让本文件（meta 层）依赖 `skills.ts`（sim 层），
+   那是一条**向上的依赖边**，架构门会红。
+
 /* =========================================================
    profile.ts — 账号级档案（局外成长的地基）
 
@@ -17,6 +21,7 @@
    ========================================================= */
 
 import { Challenges } from './challenges.ts';
+import { Chars } from './data_chars.ts';
 import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
 import { Daily } from './daily.ts';
@@ -36,6 +41,15 @@ import { Stronghold } from './stronghold.ts';
 import { Talent } from './talents.ts';
 
 var Profile = {} as ProfileApi;
+
+/* 技能表由**调用方注入**（`main.ts` 的 boot）——
+   直接 import 会让本文件（meta 层）依赖 `skills.ts`（sim 层），
+   那是一条**向上的依赖边**，架构门会红。
+   注入之前技能构筑一律返回空：那个时点只可能是模块加载期，
+   没有人会在那时候读技能（`data` 还没读盘）。 */
+var SkillsRef: SkillsApi | null = null;
+/** 接上技能表（返回值 = 有没有接上；启动期调用一次） */
+Profile.useSkills = function (api) { SkillsRef = api || null; return !!SkillsRef; };
 
 var env = Envelope.create({ name: 'profile', version: 1 });
 
@@ -185,6 +199,7 @@ Profile.load = function () {
     var n = Math.floor(num(v));
     return n >= CODEX_SEEN && n <= CODEX_MASTERED ? n : false;
   });
+  data.perChar = Object.create(null);
   var pc = (got.perChar && typeof got.perChar === 'object') ? got.perChar : {};
   for (var c in pc) {
     if (!Object.prototype.hasOwnProperty.call(pc, c)) continue;
@@ -200,6 +215,9 @@ Profile.load = function () {
       points: Math.max(0, Math.floor(num(pc[c] && pc[c].points))),
       // 已点天赋：只收"这个角色真的能点"的节点（换角色/改表之后残留的脏 id 一律丢掉）
       talents: cleanTalents(c, pc[c] && pc[c].talents),
+      /* 技能构筑（技能树打过的卡）：与天赋同一套路，另外还要求
+         "一张卡只留第一次"（见 `cleanSkillBuild`）。 */
+      skillBuild: cleanSkillBuild(c, pc[c] && pc[c].skillBuild),
       respecs: Math.max(0, Math.floor(num(pc[c] && pc[c].respecs)))
     };
   }
@@ -310,6 +328,35 @@ function onlyKnown(bag, ids) {
 }
 
 /**
+ * 过滤技能构筑：只留下**这个角色真的能打**的卡与选项。
+ * 与 `cleanTalents` 同一套路、同一理由 —— 坏档 / 改过技能表 / 换角色之后，
+ * 残留的脏 id 会静默影响战斗（"这一局多了一个不存在的技能"）。
+ * 额外的两条（技能构筑特有的）：
+ *   · 一张卡只留**第一次**打过的那个。规则是"一张卡只打一次"，而坏档里可能有
+ *     同一张卡的两条记录 —— 留着的话折叠取第一条、界面显示两条，
+ *     玩家看到的与他实际拥有的不是一回事（这类"界面与实现不一致"最难查）
+ *   · 判据走 `Skills.canPick`，**不在这里重写一遍**：两处判据迟早分叉，
+ *     而分叉的表现是"界面允许打、折叠时忽略它"
+ */
+function cleanSkillBuild(charId, list) {
+  var out = [];
+  if (!list || !list.length) return out;
+  if (!SkillsRef || !SkillsRef.treeFor(charId)) return out;
+  var seenCard: Record<string, boolean> = Object.create(null);
+  for (var i = 0; i < list.length; i++) {
+    var row = list[i];
+    if (!row || typeof row !== 'object') continue;
+    var card = String(row.card || '');
+    var opt = String(row.option || '');
+    if (!card || !opt || seenCard[card]) continue;
+    if (!SkillsRef.canPick(charId, card, opt, out).ok) continue;
+    seenCard[card] = true;
+    out.push({ card: card, option: opt });
+  }
+  return out;
+}
+
+/**
  * 过滤已点天赋：只留下**这个角色可见**且真实存在的节点，并去重。
  * 坏档 / 改过天赋表 / 换了角色之后，残留的脏 id 不该继续生效
  * （它们会静默影响开局条件 —— 那是最难查的一类问题）。
@@ -374,6 +421,60 @@ Profile.loadedFrom = function () { return loadedFrom; };
 Profile.lastError = function () { return env.lastError(); };
 Profile.writeOk = function () { return writeOk; };
 /** 只读快照（界面用；改状态请走下面的语义操作） */
+/* =========================================================
+   技能构筑（**角色身份**，与天赋那份"局外成长"分开记账）
+   ---------------------------------------------------------
+   为什么不塞进 `talents` 那个数组：
+     · 天赋是"点多点少"（一个扁平集合），技能构筑是"每张卡选了一个"
+       （集合里还要记住选的是**哪一个**）—— 两种形状，硬塞会把两边都读得很难看
+     · 两者的**重置代价**不同：技能构筑免费重打，天赋要洗点
+   ========================================================= */
+/** 某个角色的技能构筑（打过的卡） */
+Profile.skillBuild = function (charId) {
+  return Profile.perChar(charId).skillBuild || [];
+};
+
+/**
+ * 打一张卡。
+ * @returns { ok, reason }
+ * 校验全在 `Skills.canPick` 里（模拟层与档案层共用同一份判据）——
+ * 档案层只负责"记账"，规则仍然只有一处实现。
+ */
+Profile.pickSkillCard = function (charId, cardId, optionId) {
+  if (!Chars.BY_ID[charId]) return { ok: false, reason: '没有这个角色' };
+  var cur = Profile.skillBuild(charId);
+  if (!SkillsRef) return { ok: false, reason: '技能表还没接上（启动顺序问题）' };
+  var can = SkillsRef.canPick(charId, cardId, optionId, cur);
+  if (!can.ok) return can;
+  var rec = recordFor(charId);
+  if (!rec.skillBuild) rec.skillBuild = [];
+  rec.skillBuild.push({ card: cardId, option: optionId });
+  data.updatedAt = Date.now();
+  Profile.save();
+  return { ok: true, reason: '' };
+};
+
+/**
+ * 重打技能构筑（**免费**）。
+ * 为什么免费而天赋要洗点：技能构筑管的是"这一局怎么打"，与数值成长无关；
+ * 收钱只会让玩家不敢试 —— 而"试不同构筑"正是这个系统存在的意义。
+ */
+Profile.resetSkillBuild = function (charId) {
+  if (!Chars.BY_ID[charId]) return false;
+  var rec = recordFor(charId);
+  rec.skillBuild = [];
+  data.updatedAt = Date.now();
+  Profile.save();
+  return true;
+};
+
+/** 打过的卡 → 模拟层认识的技能载荷（**唯一出口**：界面与战斗都走它） */
+Profile.skillsFor = function (charId) {
+  if (!SkillsRef) return { slots: [], runes: [], mods: {}, char: String(charId || '') };
+  return SkillsRef.fold(charId, Profile.skillBuild(charId));
+};
+
+
 Profile.snapshot = function () {
   return {
     spores: data.spores,
@@ -626,15 +727,15 @@ Profile.doneIds = function () { return Object.keys(data.done); };
 Profile.perChar = function (charId) {
   return data.perChar[charId] || {
     runs: 0, kills: 0, materials: 0, bestWave: 0, wins: 0, level: 0, danger: 0,
-    points: 0, talents: [], respecs: 0
+    points: 0, talents: [], skillBuild: [], respecs: 0
   };
 };
 
-/** 拿到（必要时创建）某角色的记录 —— 天赋那几个操作都要写它 */
+/** 拿到（必要时创建）某角色的记录 —— 天赋与技能构筑那几个操作都要写它 */
 function recordFor(charId) {
   return data.perChar[charId] || (data.perChar[charId] = {
     runs: 0, kills: 0, materials: 0, bestWave: 0, wins: 0, level: 0, danger: 0,
-    points: 0, talents: [], respecs: 0
+    points: 0, talents: [], skillBuild: [], respecs: 0
   });
 }
 

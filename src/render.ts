@@ -138,6 +138,22 @@ function updateShake(dt) {
   s.y = noise1(s.seed + 977, tt) * mag;
 }
 
+/**
+ * 世界坐标 → 画布像素（**鼠标 → 世界方向**要用它）。
+ * 它是 `applyCamera` 那条变换的逆：
+ *   canvasX = (worldX - cam.x) * zoom + cam.w / 2   （再乘 dpr）
+ * `worldToScreen(px, py).x / dpr` 就是 CSS 像素坐标（鼠标事件的单位）。
+ * ⚠ 相机与 dpr 都只有渲染层认识 —— 输入层拿到的是一个点，不是矩阵。
+ */
+R.worldToScreen = function (wx, wy) {
+  var cam = R.cam;
+  var s = R.dpr * cam.zoom;
+  return {
+    x: (wx - cam.x) * s + cam.w / 2 * R.dpr,
+    y: (wy - cam.y) * s + cam.h / 2 * R.dpr
+  };
+};
+
 function applyCamera(x) {
   var cam = R.cam;
   x.setTransform(R.dpr * cam.zoom, 0, 0, R.dpr * cam.zoom, 0, 0);

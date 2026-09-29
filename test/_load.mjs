@@ -30,6 +30,7 @@ export const MODULES = {
   stronghold: '../src/stronghold.ts',
   forge: '../src/forge.ts',
   craft: '../src/craft.ts',
+  skills:  '../src/skills.ts',
   talents: '../src/talents.ts',
   profile: '../src/profile.ts',
   challenges: '../src/challenges.ts',
@@ -85,7 +86,24 @@ export const SIM_MODULES = [
   'utils', 'registry', 'selfcheck', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves', 'economy', 'art_spec', 'affixes', 'synergy', 'weapons',
   'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
   'art_tiles', 'art_shaders', 'art_parallax', 'music',
-  'storage', 'slots', 'settings', 'i18n', 'tutorial', 'save', 'challenges', 'camp', 'stronghold', 'forge', 'craft', 'talents', 'profile', 'danger', 'daily', 'season', 'offline', 'record', 'score', 'diag', 'crash'
+  /* 技能表只依赖 `chars` / `elems` / 注册表与自检，所以它与模拟层同批加载；
+     它**不认识** `Game`（模拟层反过来读它的 `fold`），所以顺序无关紧要 ——
+     但放在前面让"技能是数据"这件事在加载顺序上也成立。 */
+  'skills',
+  /* ---- 局外与元层 ----
+     ⚠ 这一段曾经**整个消失过**（一次编辑把尾巴截掉了），而症状极隐蔽：
+     `registry.mjs` 的"必须存在的家族"里列着 `scoreField`，于是它报
+     "scoreField 不在总账里" —— 看起来像成绩码那边把登记删了，
+     实际是**测试根本没加载 score.ts**（家族从没被登记）。
+     所以这一行现在带注释：它不是可选的收尾，它是那 20 多套元层测试的入口。 */
+  'profile', 'talents', 'challenges', 'danger', 'camp', 'stronghold', 'forge', 'craft',
+  'settings', 'storage', 'slots', 'i18n', 'tutorial', 'daily', 'season', 'offline',
+  'record', 'score', 'diag', 'crash',
+  /* `save.ts` 必须排在 `slots` / `storage` / `score` / `profile` 之后
+     （它的读写与登记要那几个已经在总账里），所以它是这一段的**最后一项**。
+     ⚠ 少了它，5 套测试报的是 `Cannot read properties of undefined`，
+     而错误位置（测试文件里那一行）与真正的原因（清单少一项）隔着很远。 */
+  'save'
 ];
 
 /** 渲染层 = 模拟层 + render */
@@ -154,6 +172,9 @@ export function toShop(sess) {
 }
 
 export async function loadAll(names, before) {
+  /* 技能树按真实角色表建一次（与 `main.ts` 的 boot 同一件事）：
+     `skills.ts` 自己不认识角色表（那会构成向上的依赖边），
+     所以"有哪些角色"必须由调用方告诉它 —— 测试里也是。 */
   if (typeof before === 'function') before();
   const out = {};
   for (const n of names) {
@@ -164,6 +185,9 @@ export async function loadAll(names, before) {
     for (const k of Object.keys(mod)) globalThis[k] = mod[k];
   }
   globalThis.holdRoom = holdRoom;
+  if (globalThis.Skills && globalThis.Chars) {
+    globalThis.Skills.make({ chars: function () { return globalThis.Chars.LIST; } });
+  }
   globalThis.enterFightRoom = enterFightRoom;
   globalThis.toShop = toShop;
   return out;

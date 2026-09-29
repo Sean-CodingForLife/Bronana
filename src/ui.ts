@@ -1256,6 +1256,13 @@ var ACT_SETTINGS: ActMap = {
   },
   'fullscreen': function () { U.toggleFullscreen(); renderSettings(); },
   'set-speed': function () { Settings.set('speed', Settings.get('speed') >= 2 ? 1 : 2); renderSettings(); },
+  /* 战斗模式：在设置表的 `options` 里循环（不在这里写死两个值 —— 加一种模式只改设置表） */
+  'set-combat': function () {
+    var opts = Settings.def('combatMode').options || ['auto'];
+    var i = opts.indexOf(Settings.get('combatMode'));
+    Settings.set('combatMode', opts[(i + 1) % opts.length]);
+    renderSettings();
+  },
   /* 命中定帧：在设置表的 `values` 里循环（不在这里写档位 —— 加一档只改设置表） */
   'set-hitstop': function () {
     var vals = Settings.def('hitStop').values || [0];
@@ -2752,6 +2759,10 @@ function renderSettings() {
   var sv = qq('set-sfxvol-val'); if (sv) sv.textContent = U.pct(Settings.get('sfxVolume')) + '%';
   var mv = qq('set-musvol-val'); if (mv) mv.textContent = U.pct(Settings.get('musicVolume')) + '%';
   var sp = qq('set-speed'); if (sp) sp.textContent = Settings.get('speed') + 'x';
+  /* 战斗模式：标签写「自动 / 手动」而不是内部值 ——
+     玩家选的是玩法，不是 'auto' 这个字符串。 */
+  var cb = qq('set-combat');
+  if (cb) cb.textContent = Settings.get('combatMode') === 'manual' ? I18n.t('手动') : I18n.t('自动');
   var sh = qq('set-shake-val'); if (sh) sh.textContent = U.pct(Settings.get('shake')) + '%';
   var fp = qq('set-fps'); if (fp) fp.textContent = Settings.get('fps') ? '开' : '关';
   var ap = qq('set-autopause'); if (ap) ap.textContent = Settings.get('autopause') ? '开' : '关';

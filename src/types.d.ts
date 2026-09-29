@@ -1414,6 +1414,26 @@ interface SessionEnts {
   decalSeq: number;
   decalCursor: number;
   stainBudget: number;
+  /* ---- 技能（见 skills.ts）----
+     它**整份都是"折好的载荷 + 运行时状态"**：折的那一半来自 `Skills.fold`
+     （纯数据），运行时那一半是冷却与计时（不进存档 —— 读档时技能冷却清零是合理的）。 */
+  skills: {
+    /** 折出来的技能载荷（空 = 这个角色没点技能树；**默认就是这个**） */
+    fold: SkillsFold;
+    /** 每个技能槽的运行时状态（冷却 / 刚放的闪光） */
+    slots: Array<{ skill: SkillSlotFold; cd: number; castT: number; flash: number }>;
+    /** 符文修正的原始表（`rageScale` / `addElement` / `scrapOnHit` / `hitsWalls`） */
+    mods: Record<string, number>;
+    /** **正在放的那一个**（`hurtWithSkill` 靠它读"这一发是什么效"） */
+    casting: SkillSlotFold | null;
+  };
+  /** 能量：每帧回充、施法扣除的一个 0..100 的条。
+   *  为什么冷却之外还要它 —— 只有冷却时"两个技能谁先放"没有取舍。 */
+  energy: number;
+  energyMax: number;
+  /** 这一局**开局时**的技能构筑（存档带着它，见 `exportRun` 的注释）。
+   *  它是"这一局带了什么技能"的唯一记录 —— 中途改构筑不该回溯地改变已开始的对局。 */
+  skillBuildSource?: Array<{ card: string; option: string }>;
   /** 还剩几个逻辑帧的**命中定帧**（0 = 不定帧；默认档就是 0，所以指纹不变）。
    *  它不是"存档要保留的手感设置"—— 它是**本帧的临时状态**，
    *  进存档只会让读档时莫名顿一下，所以它属于"会话里但不必持久化"的那类。 */
@@ -1554,6 +1574,8 @@ interface UtilsApi {
   dist(ax: number, ay: number, bx: number, by: number): number;
   angle(ax: number, ay: number, bx: number, by: number): number;
   round2(v: number): number;
+  /** 取**三位**小数（技能参数用：符文连乘之后要抹掉浮点尾巴） */
+  round3(v: number): number;
   /** 数值 → **去掉百分号**的显示串（0.2534 → `"25"`）。与 `plusPct` 一样是唯一实现 */
   pct(v: number): string;
   /** 带符号的百分比（0.2534 → `"+25%"`，-0.1 → `"-10%"`） */
@@ -1900,6 +1922,10 @@ interface PerCharRecord {
   points: number;
   /** 已点天赋的节点 id */
   talents: string[];
+    /** **技能构筑**：技能树打过的卡（每张卡选了一个选项）。
+     *  与 `talents` 分开的理由：天赋是"点多点少"的扁平集合，
+     *  技能构筑是"每张卡选了一个" —— 集合里还要记住选的是哪一个。 */
+    skillBuild: Array<{ card: string; option: string }>;
   /** 已经用掉几次洗点（前几次免费） */
   respecs: number;
 }
@@ -2016,6 +2042,17 @@ interface ProfileApi {
   lastError(): string | null;
   writeOk(): boolean;
   snapshot(): ProfileSnapshot;
+    /** 接上技能表（**注入**而不是 import：那会构成一条向上的依赖边） */
+    useSkills(api: SkillsApi | null): boolean;
+    /* ---- 技能构筑（**角色身份**；与天赋那份"局外成长"分开记账）---- */
+    /** 某个角色打过的技能卡 */
+    skillBuild(charId: string): Array<{ card: string; option: string }>;
+    /** 打一张卡（校验走 `Skills.canPick`，档案层只记账） */
+    pickSkillCard(charId: string, cardId: string, optionId: string): { ok: boolean; reason: string };
+    /** 重打技能构筑（**免费** —— 与天赋洗点不同，试构筑是它的意义） */
+    resetSkillBuild(charId: string): boolean;
+    /** 打过的卡 → 模拟层认识的技能载荷（唯一出口） */
+    skillsFor(charId: string): SkillsFold;
   isUnlocked(family: string, id: string): boolean;
   unlock(family: string, id: string): boolean;
   unlockedIds(family: string): string[];
@@ -2954,7 +2991,23 @@ interface InputApi {
   /** 触摸浮动摇杆：圆心 (ox,oy) 与当前方向 */
   _touch: { x: number; y: number; active: boolean; ox: number; oy: number; id: number };
   /** 可改键位（默认值必须与 settings.ts 的默认值一致） */
-  bind: { up: string; down: string; left: string; right: string; pause: string };
+    bind: {
+      up: string; down: string; left: string; right: string; pause: string;
+      /** 手动模式的技能键（自动模式下不读） */
+      skill1: string; skill2: string;
+      /** 手动模式的开火键（按住即持续开火） */
+      fire: string;
+    };
+    /** **手动模式的瞄准方向**：手柄右摇杆或鼠标位置，单位向量。
+     *  `has` = 这一帧玩家真的指了方向（没指时模拟层会退回"朝最近的目标"——
+     *  否则站着不动按技能会朝右打，那比不打更让人困惑）。 */
+    aim(): { x: number; y: number; has: boolean };
+    /** 渲染层每帧写：玩家在**屏幕上的位置**（鼠标 → 世界方向要它）。
+     *  只是一个点，不是相机矩阵 —— "相机只有渲染层认识"这条约束没有破。 */
+    setAimOrigin(x: number, y: number): void;
+    /** 手动模式的输入打包（`main.ts` 每帧取一次交给 `Game.step`）。
+     *  它**只打包、不做判断** —— "该不该开火"由模拟层决定。 */
+    manualInput(): { aimX: number; aimY: number; fire: boolean; cast: boolean; slot: number };
   init(canvas?: any): void;
   /** 每显示帧一次：轮询手柄（Gamepad API 没有按键事件） */
   poll(): boolean;
@@ -3229,6 +3282,101 @@ interface GridApi {
   queryCircle(x: number, y: number, r: number, out?: Enemy[]): Enemy[];
 }
 
+/* =========================================================
+   技能（skills.ts）
+   ---------------------------------------------------------
+   三张正交的表：**形**（怎么送出去）× **效**（打中了做什么）× **符文**（怎么长）。
+   这个拆法的理由是"同一个形状换一种效果"必须表达得出来 —— 它是构筑的来源。
+   与 `talents.ts` 的分工：talents 是**局外成长**（只改开局条件、全角色共用一张大图），
+   skills 是**角色身份**（管"这个角色在战斗里能做什么"、每角色一张树）。
+   两个都不碰模拟层规则：模拟层只认识 `Skills.fold` 折出来的 `SkillsFold`。
+   ========================================================= */
+interface SkillFormDef {
+  note: string;
+  /** 这个形**认可**哪些参数（覆盖值写错键名时自检会红） */
+  params: string[];
+  def: Record<string, number>;
+}
+interface SkillPayloadDef {
+  note: string;
+  params: string[];
+  def: Record<string, number>;
+}
+interface SkillRowDef {
+  id: string; name: string; note: string;
+  /** 角色 id；`null` = 通用 */
+  owner: string | null;
+  /** **归属扇区 id**（与 owner 同值；`shared` = 通用）。
+   *  建技能树靠它分组 —— 没有它，`skills.ts` 就得 import 角色表，
+   *  而那会让 `profile.ts`（meta 层）依赖它变成一条向上的边。 */
+  ch: string;
+  form: string; payload: string;
+  /** 冷却秒数 / 消耗的能量（0..100 的能量条） */
+  cd: number; cost: number;
+  /** `aim` = 玩家（或最近目标）朝的方向；`self` = 以自己为中心 */
+  target: 'aim' | 'self';
+  form_?: Record<string, number>;
+  payload_?: Record<string, number>;
+  element?: string;
+}
+interface SkillRuneDef {
+  id: string; name: string; note: string;
+  /** 修正键 → 数值。键必须在折叠函数认识的那一组里（自检守这条） */
+  mods: Record<string, number>;
+  owner: string | null;
+}
+interface SkillTreeCardDef {
+  id: string; name: string; note: string;
+  kind: 'skill' | 'rune';
+  options: string[];
+}
+interface SkillTreeDef {
+  name: string; note: string;
+  cards: SkillTreeCardDef[];
+}
+/** 折好之后的一个技能槽（模拟层只认识这个） */
+interface SkillSlotFold {
+  id: string; name: string; note: string;
+  form: string; payload: string;
+  target: 'aim' | 'self';
+  element: string;
+  cd: number; cost: number;
+  /** 形与效合并后的参数（已被符文改过） */
+  params: Record<string, number>;
+}
+/** 构筑折出来的技能载荷（模拟层唯一入口） */
+interface SkillsFold {
+  slots: SkillSlotFold[];
+  runes: string[];
+  /** 符文修正的**原始**表：`rageScale` / `addElement` / `scrapOnHit` / `hitsWalls`
+   *  不是数值修正，模拟层直接读它们 */
+  mods?: Record<string, number>;
+  char: string;
+}
+
+interface SkillsApi {
+  LIST: SkillRowDef[];
+  BY_ID: Record<string, SkillRowDef>;
+  FORMS: Record<string, SkillFormDef>;
+  PAYLOADS: Record<string, SkillPayloadDef>;
+  RUNES: SkillRuneDef[];
+  RUNE_BY: Record<string, SkillRuneDef>;
+  TREES: Record<string, SkillTreeDef>;
+  treeFor(charId: string): SkillTreeDef | null;
+  /** 工厂：注入角色清单（本模块不认识 `data_chars.ts`，见 `SkillsCtx`） */
+  make(ctx: { chars(): Array<{ id: string; name?: string; tag?: string }> }): SkillsApi;
+  /** 能不能打这张卡（一张卡只打一次 —— 打完就定下来了，这才是"构筑"） */
+  canPick(charId: string, cardId: string, optionId: string,
+    taken: Array<{ card: string; option: string }>): { ok: boolean; reason: string };
+  /** 打过的卡里某一张选的是什么（没打过返回空串） */
+  pickedOn(taken: Array<{ card: string; option: string }> | null, cardId: string): string;
+  /** **唯一出口**：构筑 → 模拟层认识的载荷。空构筑必须是恒等（指纹靠这个） */
+  fold(charId: string, taken: Array<{ card: string; option: string }> | null): SkillsFold;
+  describe(id: string): string;
+  nameOf(id: string): string;
+  audit(): { ok: boolean; problems: string[]; counts: Record<string, number> };
+}
+
 interface EmitApi {
   VIS_CAP: number; TEXT_CAP: number;
   /** 视觉强度（"减少动效"调低）：只影响画面，且**不得**消耗模拟随机数 */
@@ -3262,6 +3410,9 @@ interface EmitApi {
 
 interface RenderApi {
   cam: { x: number; y: number; w: number; h: number; zoom: number; shakeX: number; shakeY: number };
+  /** 世界坐标 → 画布像素（鼠标 → 世界方向要用它）。它是 `applyCamera` 那条变换的逆。
+   *  ⚠ 相机与 dpr 只有渲染层认识 —— 输入层拿到的是一个点，不是一个矩阵。 */
+  worldToScreen(wx: number, wy: number): { x: number; y: number };
   dpr: number;
   canvas: HTMLCanvasElement | null;
   ctx: CanvasRenderingContext2D | null;
@@ -3397,6 +3548,10 @@ interface GameApi {
       hitStop: number;
       /** 定帧期间**位移**保留几成（0.02 = 近乎冻住；速度不清零，顿完立刻恢复） */
       hitStopScale: number;
+      /** **战斗模式**：`auto` = 全自动攻击 + 自动放技能（改造前的行为，默认档）；
+       *  `manual` = 普通攻击与技能都由玩家操作（瞄准 + 按键）。
+       *  ⚠ 默认必须是 `auto` —— 行为指纹跑的就是自动模式。 */
+      combatMode: 'auto' | 'manual';
     /** 这一间的时限（秒）：**多久内打完**，不是"要撑多久" */
     waveTime(w: number): number;
     /** 时限内清完的奖励倍率 / 超时的惩罚倍率 */
@@ -3419,7 +3574,7 @@ interface GameApi {
   };
   canSetState(to: GameStateName): boolean;
   setState(to: GameStateName, force?: boolean): boolean;
-  newRun(charId: string, seed?: number, danger?: number, opening?: OpeningLoadout | null, smods?: { owned?: Record<string, number>; forge?: string[] | Record<string, unknown> | null } | null): Session;
+  newRun(charId: string, seed?: number, danger?: number, opening?: OpeningLoadout | null, smods?: { owned?: Record<string, number>; forge?: string[] | Record<string, unknown> | null } | null, skillBuild?: Array<{ card: string; option: string }> | null): Session;
   step(dt: number, input: { x: number; y: number }): void;
   getSession(): Session | null;
   chooseLevelCard(i: number): boolean;
@@ -3710,6 +3865,8 @@ interface BronanaApi {
   seat(inst: RigInstance, index: number, aim: number, r: number, px: number, py: number): number;
   seatAngle(index: number, aim: number): number;
   meleeArc(def: WeaponDef): number;
+  /** 没写 arc 的武器按多少度算（唯一一处常量；技能扇形也读它） */
+  DEFAULT_ARC: number;
   seatPoint(inst: RigInstance, boneIdx: number, out?: any): any;
   aheadPoint(inst: RigInstance, boneIdx: number, dist: number, out?: any): any;
 }
