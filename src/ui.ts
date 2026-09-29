@@ -37,6 +37,7 @@ import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
 import { Story } from './story.ts';
 import { Synergy } from './synergy.ts';
+import { Skills } from './skills.ts';
 import { Talent } from './talents.ts';
 import { Perf, U } from './utils.ts';
 
@@ -44,6 +45,8 @@ var UI = ({
   selectedChar: 'ranger',
   selectedDanger: 0,
   talentChar: 'ranger',
+  /** 技能构筑屏正在看哪个角色（与天赋屏**各记一份**：两边可以同时看不同角色） */
+  skillChar: 'ranger',
   shopSelection: -1,
   // 参考段落默认折叠（见 renderShop：「我的武器」那一块才是操作面）
   showSyn: false,
@@ -143,6 +146,8 @@ UI.init = function () {
   el.talentPoints = q('talent-points');
   el.talentHead = q('talent-head');
   el.talentList = q('talent-list');
+  el.skillWho = q('skill-who');
+  el.skillCards = q('skill-cards');
   el.campHead = q('camp-head');
   el.campList = q('camp-list');
   el.campCraft = q('camp-craft');
@@ -239,6 +244,7 @@ var RENDERERS: Record<string, () => void> = {
   records: function () { renderRecords(); },
   codex: function () { renderCodex(); },
   talents: function () { renderTalents(); },
+  skills: function () { renderSkills(); },
   camp: function () { renderCamp(); },
   keep: function () { renderKeep(); },
   hub: function () { renderHub(); },
@@ -923,6 +929,76 @@ function drawCraftList(sess, freeLines, mats) {
    界面只负责"显示与发起"，规则全在 talents.ts（纯数据 + 纯函数），
    账目在 profile.ts（点数 / 已点 / 洗点次数）。
    ========================================================= */
+/* =========================================================
+   技能构筑（**角色身份**；与天赋那份局外成长分开）
+   ---------------------------------------------------------
+   界面上只有两件事：**这是哪个角色** 与 **两张卡各选了什么**。
+   所有规则（能不能打、候选有哪几个、折出来是什么）都在 `skills.ts` 里 ——
+   界面不重写一份，否则「界面允许打、折叠时忽略」会在某一天悄悄出现。
+   ========================================================= */
+function renderSkills() {
+  if (!el.skillCards) return;
+  var charId = UI.skillChar;
+  if (!Chars.BY_ID[charId]) { charId = UI.skillChar = Chars.LIST[0].id; }
+  var cd = Chars.BY_ID[charId];
+  var tree = Skills.treeFor(charId);
+  var taken = Profile.skillBuild(charId);
+
+  /* 角色切换条（与天赋屏同一套：隐藏角色要解锁了才出现） */
+  var bar = q('skill-char');
+  if (bar) {
+    U.clear(bar);
+    Chars.LIST.forEach(function (c) {
+      if (!isCharListed(c)) return;
+      var b = U.el('button', 'btn tiny' + (c.id === charId ? ' sel' : ''));
+      b.textContent = c.name;
+      b.dataset.charPick = c.id;
+      b.dataset.act = 'skill-char';
+      bar.appendChild(b);
+    });
+  }
+
+  if (el.skillWho) {
+    el.skillWho.textContent = cd.name + ' · ' + cd.tag +
+      '　——　每个角色的技能与构筑都不一样（先选战斗方式，再选改造器）';
+  }
+
+  var html = '';
+  if (!tree) {
+    html = setRow('技能树', '这个角色还没有技能树（表里漏了他）');
+  } else {
+    tree.cards.forEach(function (card) {
+      var picked = Skills.pickedOn(taken, card.id);
+      html += setRow(card.name + '（' + card.note + '）',
+        picked ? '已选：<b>' + Skills.nameOf(picked) + '</b>' : '（还没选）');
+      card.options.forEach(function (opt) {
+        var isPicked = picked === opt;
+        var chk = isPicked ? { ok: false, reason: '已经选了这个' } : Skills.canPick(charId, card.id, opt, taken);
+        var btn;
+        if (isPicked) btn = '<button class="btn tiny" disabled>已选 ✓</button>';
+        else if (chk.ok) btn = '<button class="btn tiny" data-act="skill-pick" data-card="' + card.id + '" data-opt="' + opt + '">选这个</button>';
+        else btn = '<button class="btn tiny" disabled title="' + chk.reason + '">不可选</button>';
+        html += '<div class="set-row"><span class="set-label">' +
+          (card.kind === 'skill' ? '技能' : '符文') + ' <b>' + Skills.nameOf(opt) + '</b> —— ' +
+          Skills.describe(opt) + '</span><span class="set-value">' + btn + '</span></div>';
+      });
+    });
+
+    /* 折出来的结果：**唯一出口**直接显示 —— 玩家该看到「我这一局会放什么」，
+       而不是自己把两张卡在脑子里折一遍。 */
+    var fold = Profile.skillsFor(charId);
+    var rows = [];
+    fold.slots.forEach(function (sl) {
+      rows.push(sl.name + '：冷却 ' + sl.cd + 's · 能量 ' + sl.cost +
+        '　（' + Skills.FORMS[sl.form].note + ' × ' + Skills.PAYLOADS[sl.payload].note + '）');
+    });
+    html += setRow('这一局会放什么', rows.length ? rows.join('<br>') :
+      '（还没有技能 —— 上面两张卡都选一个就有了；也可以直接开局，那样就是纯武器）');
+  }
+  el.skillCards.innerHTML = html;
+}
+
+
 function renderTalents() {
   if (!el.talentList) return;
   var charId = UI.talentChar;
@@ -1453,6 +1529,30 @@ var ACT_TALENTS: ActMap = {
       UI.toast(res.cost > 0 ? '已洗点（花了 ' + res.cost + ' 孢子）' : '已洗点（免费次数内）', '');
     } else UI.toast(res.reason, 'warn');
     renderTalents();
+  },
+  /* ---- 技能构筑（与天赋并列的另一块局外成长）---- */
+  'skill-char': function (t) { UI.skillChar = (t.dataset && t.dataset.charPick) || ''; renderSkills(); },
+  'skill-pick': function (t) {
+    var charId = UI.skillChar;
+    if (!Chars.BY_ID[charId]) return;
+    var res = Profile.pickSkillCard(charId, (t.dataset && t.dataset.card) || '', (t.dataset && t.dataset.opt) || '');
+    if (!res.ok) { UI.toast(res.reason, 'warn'); Sfx.deny(); return; }
+    /* 打了一张卡之后**重建技能槽**（如果这一局正是这个角色，立刻生效）。
+       为什么不是「读档才生效」：技能构筑是局外的东西，
+       玩家会期待它马上改掉手感。 */
+    if (Game.getSession && Game.getSession() && Game.getSession().charDef.id === charId) {
+      Game.refreshSkills(Profile.skillBuild(charId));
+    }
+    Sfx.buy();
+    renderSkills();
+  },
+  'skill-reset': function () {
+    if (!Profile.resetSkillBuild(UI.skillChar)) return;
+    if (Game.getSession && Game.getSession() && Game.getSession().charDef.id === UI.skillChar) {
+      Game.refreshSkills([]);
+    }
+    UI.toast('技能构筑已重打（免费）', '');
+    renderSkills();
   },
   'talent-char': function (t) {
     var cid = (t.dataset && t.dataset.charPick) || '';

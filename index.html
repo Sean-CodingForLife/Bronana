@@ -60,6 +60,7 @@
       <div class="row center">
         <button class="btn" data-act="hub">枢 纽</button>
         <button class="btn" data-act="talents">天 赋</button>
+        <button class="btn" data-act="skills">技 能</button>
         <button class="btn" data-act="back-title">返回</button>
         <button class="btn big" id="btn-confirm-char" data-act="confirm-char">确 认 出 发</button>
       </div>
@@ -332,7 +333,22 @@
       <div class="menu row">
         <button class="btn" data-act="talent-undo">撤 销 上 一 点</button>
         <button class="btn" data-act="talent-respec" id="btn-talent-respec">洗 点</button>
+        <button class="btn" data-act="skills">技 能 构 筑</button>
         <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 技能构筑：每个角色一张两张卡的树 -->
+    <section id="scr-skills" class="screen dim">
+      <h2 class="scr-h">技 能 构 筑</h2>
+      <p class="scr-note" id="skill-who">当前角色</p>
+      <!-- 角色切换（与天赋屏同一套：data-char-pick 由 ui.ts 填） -->
+      <div class="char-bar" id="skill-char"></div>
+      <div class="skills" id="skill-cards"></div>
+      <div class="scr-acts">
+        <button class="btn tiny" id="set-skill-reset" data-act="skill-reset">重打（免费）</button>
+        <button class="btn tiny" data-act="talents">天赋</button>
+        <button class="btn tiny" data-act="back-title"></button>
       </div>
     </section>
 

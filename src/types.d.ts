@@ -3465,6 +3465,8 @@ interface UIApi {
   selectedDanger: number;
   /** 天赋页当前查看的角色 */
   talentChar: string;
+  /** 技能构筑屏正在看哪个角色（与天赋屏各记一份） */
+  skillChar: string;
   /** 商店里"武器联动"那一段是否铺开（默认折叠：参考资料不该占掉买 / 合 / 卖的地方） */
   showSyn: boolean;
   /** 商店里"道具套装"那一段是否铺开 */
@@ -3511,7 +3513,7 @@ interface UIApi {
   replayStep?: (x: number, y: number, frame: number) => void;
 }
 
-type GameStateName = 'title' | 'chars' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'keep' | 'hub' | 'end';
+type GameStateName = 'title' | 'chars' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'skills' | 'keep' | 'hub' | 'end';
 
 /** 这一间的一扇门（"玩家自己选房间"的数据来源，见 Game.doors()） */
 interface DoorInfo {
@@ -3577,6 +3579,8 @@ interface GameApi {
   newRun(charId: string, seed?: number, danger?: number, opening?: OpeningLoadout | null, smods?: { owned?: Record<string, number>; forge?: string[] | Record<string, unknown> | null } | null, skillBuild?: Array<{ card: string; option: string }> | null): Session;
   step(dt: number, input: { x: number; y: number }): void;
   getSession(): Session | null;
+  /** 换技能构筑（技能构筑屏打了卡之后立刻生效；见 `game.ts` 里那段取舍） */
+  refreshSkills(build: Array<{ card: string; option: string }> | null): boolean;
   chooseLevelCard(i: number): boolean;
   buyOffer(i: number): boolean;
   buyPack(kind: string): boolean;

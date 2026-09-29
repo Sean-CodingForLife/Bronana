@@ -192,6 +192,7 @@ Music.SCENE_TRACK = {
   records: 'title',
   codex: 'title',
   talents: 'title',
+  skills: 'title',
   keep: 'title',
   hub: 'title',
   end: 'result'

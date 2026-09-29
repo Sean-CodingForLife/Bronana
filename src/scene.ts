@@ -83,6 +83,10 @@ var TABLE: Record<string, SceneDef> = {
     overlay: 'talents', sim: false, world: true, hud: false, strip: false, keys: 'back',
     note: '天赋：角色养成（多级永久树，只改开局条件）'
   },
+  skills: {
+    overlay: 'skills', sim: false, world: true, hud: false, strip: false, keys: 'back',
+    note: '技能构筑：每个角色一张两张卡的树（选技能 + 选改造器）'
+  },
   keep: {
     overlay: 'keep', sim: false, world: true, hud: false, strip: false, keys: 'back',
     note: '据点：跨局经营（花孢子解锁功能，永久）'
@@ -104,7 +108,7 @@ var REFRESH: Record<string, string> = {
      （有意为之：放弃不删档），按钮却停在上一次的"没有存档"状态，续玩入口看不见也点不到。 */
   title: 'title',
   shop: 'shop', camp: 'camp', levelup: 'cards', settings: 'settings', records: 'records',
-  paused: 'pause', codex: 'codex', talents: 'talents', keep: 'keep', hub: 'hub'
+  paused: 'pause', codex: 'codex', talents: 'talents', skills: 'skills', keep: 'keep', hub: 'hub'
 };
 
 /* =========================================================
@@ -126,6 +130,7 @@ var SCREEN_ACTS: Record<string, GameStateName> = {
   'records': 'records',
   'codex': 'codex',
   'talents': 'talents',
+  'skills': 'skills',
   'keep': 'keep',
   'hub': 'hub',
   'camp-back': 'shop',       // 营地是"局内商店旁边的一间"，回营地就是回商店

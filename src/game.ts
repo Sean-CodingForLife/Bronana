@@ -192,7 +192,7 @@ var Ch: ChamberApi = makeChamber({
      · UI.refresh() 缺 howto 分支 → 帮助浮层消失但游戏没恢复
    现在：合法转换写在表里，所有写入走 setState，UI 由 stateChange 事件驱动。
    ========================================================= */
-Game.STATES = ['title', 'chars', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub', 'end'];
+Game.STATES = ['title', 'chars', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
 
 Game.TRANSITIONS = {
   title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
@@ -214,7 +214,10 @@ Game.TRANSITIONS = {
   settings: ['title', 'chars', 'paused', 'hub'],
   records: ['title', 'chars', 'paused', 'end', 'hub'],
   codex: ['title', 'chars', 'paused', 'end', 'hub'],
-  talents: ['title', 'chars', 'paused', 'hub'],
+  talents: ['title', 'chars', 'paused', 'hub', 'skills'],
+  /* 技能构筑与天赋是**并列的两个可返回覆盖层**（可以互相跳），
+     所以两者的出边都包含对方 —— 缺一条就是「从这里进去退不回来」。 */
+  skills: ['title', 'chars', 'paused', 'hub', 'talents'],
   keep: ['title', 'chars', 'paused', 'hub'],
   /* 枢纽（N2）：**不是覆盖层**，而是与标题页平级的"家"。
      它是局与局之间的地方（Hades 那套），所以能去标题/选人/据点/图鉴，
@@ -3892,6 +3895,21 @@ function restoreFloor(data) {
 }
 
 Game.step = step;
+
+/* =========================================================
+   换技能构筑（技能构筑屏打了卡之后**立刻生效**）
+   ---------------------------------------------------------
+   为什么不是「下一局才生效」：技能构筑是**局外**的东西，
+   玩家点完那张卡会立刻回去打 —— 而他期待手感马上变。
+   代价写在明面上：它绕过了 `importRun` 那条「存的是开局时那一份」的纪律。
+   那是刻意的取舍 —— `importRun` 守的是**读档不回溯**，
+   而这里是玩家在界面上主动改当前这一局（同一件事的两种意图）。 */
+Game.refreshSkills = function (build) {
+  if (!S) return false;
+  applySkillBuild(S, S.charDef.id, build || []);
+  S.skillBuildSource = (build || []).slice();
+  return true;
+};
 
 Game.getSession = function () { return S; };
 
