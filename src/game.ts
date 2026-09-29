@@ -23,6 +23,7 @@ import { Enemies } from './enemies.ts';
 import { Forge } from './forge.ts';
 import { makeChamber } from './chamber.ts';
 import { makeGrid } from './grid.ts';
+import { makeImpact } from './impact.ts';
 import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
@@ -129,6 +130,13 @@ var S: Session = null as unknown as Session;
    放在 `S` 之后（`S` 也必须在它们之前声明）是有意的顺序，别随手挪走。
    ========================================================= */
 var Grid: GridApi = makeGrid({ session: function () { return S; } });
+var Imp: ImpactApi = makeImpact({
+  session: function () { return S; },
+  /* `decalCap` 住在 `Game.cfg`（配置在模拟层的门口）—— 用**函数**现取，
+     因为 `Game.cfg` 是可配置的，而模块加载时它可能还没被 `main.ts` 写好。 */
+  decalCap: function () { return Game.cfg.decalCap; },
+  onShake: function (amount) { Game.events.emit('shake', amount); }
+});
 var Ch: ChamberApi = makeChamber({
   session: function () { return S; },
   wallBreakFx: function (x, y) { Emit.wallBreak(x, y); },
@@ -1910,55 +1918,17 @@ function queryCircle(x, y, r, out?) { return Grid.queryCircle(x, y, r, out); }
    ========================================================= */
 
 /* =========================================================
-   血迹贴花
-   旧实现：`if (S.decals.length < 90) push(...)` —— 满了就永久停止添加，
-   实测一波 391 次击杀里 **77% 完全没有血迹**，而且三个圆的偏移写死，
-   每个血迹形状一模一样（seed 存了却从没被用过）。
-   现在：
-     · 环形缓冲：满了覆盖最旧的一个 → 每一次击杀都留痕，血迹永远反映最近的战斗
-     · 生成时随机形状（角度/距离/半径系数），每帧零计算
-     · 命中溅血受每秒预算限制（否则每秒上百次命中会把地面铺满）
-     · 玩家自己受伤也留血
+   血迹贴花 + 屏幕抖动请求
+   ---------------------------------------------------------
+   实现已搬到 `impact.ts`（它只做一件事：把"打中了"变成地上的痕迹
+   与一个抖动强度）。这里保留**同名转发**，调用点有 10 处以上。
+   ⚠ 这三个函数**会消费 `S.rnd()`**（血迹形状在生成时随机一次），
+   所以它们不是纯表现：动这个文件里的随机次数会改行为指纹。
+   ⚠ `Imp` 在文件顶部（`S` 之后）就建好了，不要在这里再 `makeImpact` 一次。
    ========================================================= */
-function addStain(x, y, r, color) {
-  var cap = Game.cfg.decalCap;
-  var d;
-  if (S.decals.length < cap) {
-    d = Comp.spawn('decal');
-    S.decals.push(d);
-  } else {
-    d = S.decals[S.decalCursor];
-    S.decalCursor++;
-    if (S.decalCursor >= cap) S.decalCursor = 0;
-  }
-  d.x = x; d.y = y; d.r = r; d.color = color;
-  d.seq = ++S.decalSeq;
-  // 形状只在生成时随机一次：每个血迹略有不同，但渲染时不需要任何随机数
-  var rnd = S.rnd;
-  d.a1 = rnd() * U.TAU;
-  d.a2 = rnd() * U.TAU;
-  d.d1 = 0.42 + rnd() * 0.42;
-  d.d2 = 0.42 + rnd() * 0.52;
-  d.s1 = 0.44 + rnd() * 0.30;
-  d.s2 = 0.24 + rnd() * 0.26;
-  return d;
-}
-
-/** 命中溅血：受预算限制，超预算就跳过（击杀不受限） */
-function tryHitStain(e) {
-  if (S.stainBudget < 1) return;
-  if (S.rnd() > 0.3) return;
-  S.stainBudget -= 1;
-  addStain(e.x + (S.rnd() - 0.5) * e.r, e.y + e.r * 0.25, e.r * (0.22 + S.rnd() * 0.16), e.def.dark);
-}
-
-/**
- * 请求屏幕抖动：模拟层只声明"冲击有多大"（0~1），
- * 具体怎么抖、抖多久由 render.ts 决定 —— 模拟层不依赖任何渲染实现。
- */
-function requestShake(amount) {
-  Game.events.emit('shake', amount);
-}
+function addStain(x, y, r, color) { return Imp.addStain(x, y, r, color); }
+function tryHitStain(e) { return Imp.tryHitStain(e); }
+function requestShake(amount) { Imp.requestShake(amount); }
 
 function damageEnemy(e, amount, opt) {
   if (e.dead) return 0;

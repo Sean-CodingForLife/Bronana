@@ -3189,6 +3189,24 @@ interface ChamberApi {
   depthBonus(floor: number, depth: number): number;
 }
 
+/* =========================================================
+   打中之后的痕迹（impact.ts）
+   ---------------------------------------------------------
+   血迹贴花 + 屏幕抖动请求。与 `emit.ts` 的分工：
+   `emit.ts` 是**活的**表现（粒子/飘字/火光，有生命周期、要回收、进指纹），
+   本模块是**留在地上的**痕迹（环形缓冲，没有生命周期）与一个数字（抖动强度）。
+   ⚠ `addStain` / `tryHitStain` 会**消费 `S.rnd()`**，所以它们不是纯表现：
+   动这里的随机次数就会挪动主随机流、改变行为指纹。
+   ========================================================= */
+interface ImpactApi {
+  /** 留一块血迹（环形缓冲，满了覆盖最旧的）。会消费 6 次 `S.rnd()` */
+  addStain(x: number, y: number, r: number, color: string): Decal;
+  /** 命中溅血（受 `S.stainBudget` 预算限制；击杀那一刀不受限） */
+  tryHitStain(e: Enemy): Decal | null;
+  /** 请求屏幕抖动：只声明"冲击多大"（0~1），怎么抖由渲染层决定 */
+  requestShake(amount: number): void;
+}
+
 interface GridApi {
   /** 重建整张表（每次敌人移动后调一次，不是每发子弹调一次） */
   rebuild(): void;

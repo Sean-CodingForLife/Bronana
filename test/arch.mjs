@@ -132,6 +132,11 @@ console.log('\n[3] 世界状态（会话 S）的写入者');
        **一个模块的全部职责**。写在这里而不是放宽判据，是因为
        "谁可以写世界状态"这张名单本身就是这份架构的声明。 */
     'chamber.ts': ['floor', 'map', 'roomId'],
+    /* 打中痕迹（从 `game.ts` 拆出来的）：它写的是**贴花缓冲自己的游标与预算**——
+       `decalCursor`（环形缓冲写到哪了）与 `stainBudget`（这一秒还能溅几块）。
+       这两个字段**只有它读**，但它们是会话字段（要跟着存档重置），所以不能
+       变成模块级变量 —— 那样换局时它们不会归零。 */
+    'impact.ts': ['decalCursor', 'stainBudget'],
     'emit.ts': ['particles', 'textParticles', 'freeParticles', 'freeTextParticles', 'visCursor', 'textCursor'],
     // 实验台：把这一间清空 / 直接改统计，好让某一屏拍得出来（不是玩法路径）
     'demo.ts': ['combineCount'],
