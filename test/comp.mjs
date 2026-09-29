@@ -93,7 +93,7 @@ console.log('\n[3] 造对象：字段齐全、形状一致、默认值独立');
   ok(!!e7 && /未注册/.test(e7), '未注册的原型无法 spawn', e7);
 
   const problems = Comp.selfCheck();
-  ok(problems.length === 0, '全部原型自查通过（字段不多不少）', problems.slice(0, 3).join(' | '));
+  ok(problems.ok && problems.problems.length === 0, '全部原型自查通过（字段不多不少）', problems.problems.slice(0, 3).join(' | '));
 
   // 形状一致：同原型所有对象的键顺序必须完全一致（V8 隐藏类稳定的前提）
   let shapeErr = [];
@@ -130,7 +130,7 @@ console.log('\n[3] 造对象：字段齐全、形状一致、默认值独立');
   ok(Number.isNaN(e1.nan) && e1.inf === Infinity && e1.ninf === -Infinity, '非有限数按原样保住', String(e1.inf));
 
   const problems2 = Comp.selfCheck();
-  ok(problems2.length === 0, '把边角原型也算进去后自查仍全绿（默认值逐字段比对）', problems2.slice(0, 3).join(' | '));
+  ok(problems2.ok && problems2.problems.length === 0, '把边角原型也算进去后自查仍全绿（默认值逐字段比对）', problems2.problems.slice(0, 3).join(' | '));
 
   // assign 校验：写未声明字段必须抛错
   const e = Comp.spawn('enemy');

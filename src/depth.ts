@@ -24,6 +24,7 @@
    ========================================================= */
 
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 
 var Depth = {} as DepthApi;
 
@@ -206,6 +207,84 @@ Depth.describe = function () {
   return lines.join('\n');
 };
 
+/* =========================================================
+   6. 定义期自检（`depthBand` / `actor` 两个家族的守卫）
+   ---------------------------------------------------------
+   判据原先只散在 `test/depth.mjs` 里（层号递增 / 名字不重复 / 有说明）。
+   搬进来的意义不是"再检查一遍"，而是**换到必经之路上**：
+   启动期（main.ts / cli.ts 的 SelfCheck.run）就会跑，不过就抛，一次列全。
+
+   每条判据都对着一个真实的静默故障：
+     · 层带**重名** → `BANDS[name]` 被后一条覆盖：前一条的层号静默丢失，
+       用它注册的实体从此画在另一个层上（不报错，只是层次看起来"有点怪"）
+     · 层号**重复** → `BAND_LIST_NAME`（z → 名字）被后写覆盖：
+       `describe()` 与调试叠层会把两条带报成同一条，`stats().bands` 也记到错的带名下
+     · 层带表**不按层号递增** → 表序就是"叠放顺序"的声明（describe / 调试叠层按表序打印），
+       乱序时那份报告与实际绘制顺序不符 —— 而它是排查层次问题时唯一的读数
+     · 派生表（`BANDS` / `BAND_LIST_NAME`）与源表**脱节** → `Depth.band(name)` 抛错、
+       或 z 映射到 '?'，两者都表现为"某个层不见了"
+     · 实体的层带**不在表里** → `a.z` 是 undefined → `compare()` 返回 NaN →
+       `sort` 的比较函数返回 NaN 时顺序**未定义**：整帧的层次静默乱掉
+     · 实体**缓存的 z 与层带表不一致**（`Depth.actor` 注册时把 z 抄了一份）→
+       改了层带号却没重新注册实体，它会永远画在旧层上
+
+   ⚠ 这一份**没有**"某个层带有没有人用 / 某个键有没有人读"这类判据：
+   那要扫源码，是检查期（test/depth.mjs）的活，启动期跑在浏览器里，没有 fs。
+   ========================================================= */
+Depth.audit = function () {
+  var problems: string[] = [];
+  var seenName: Record<string, boolean> = Object.create(null);
+  var seenZ: Record<string, boolean> = Object.create(null);
+  var prevZ = -Infinity;
+  var i, name, z;
+  for (i = 0; i < BAND_LIST.length; i++) {
+    var row = BAND_LIST[i];
+    name = row[0]; z = row[1];
+    if (!name) problems.push('第 ' + i + ' 条层带没有名字');
+    else if (seenName[name]) {
+      problems.push('层带重名：' + name + '（BANDS 会被后一条覆盖，前一条的层号静默丢失）');
+    } else seenName[name] = true;
+    if (seenZ[String(z)]) {
+      problems.push('层号重复：' + z + '（z→名字的映射会被后一条覆盖，describe() 会把两条带报成同一条）');
+    }
+    seenZ[String(z)] = true;
+    if (!(z > prevZ)) {
+      problems.push('层带表没有按层号递增：' + name + ' 的 z=' + z +
+        '（表序就是叠放顺序，describe() 按表序打印，乱序时它报的层次与真实绘制不符）');
+    }
+    prevZ = z;
+    /* 派生表必须与源表逐条对得上：拆成两处维护（或加带时只加了一边）时，
+       表现是"某个层不见了"，而不是一条能读懂的错。 */
+    if (BANDS[name] !== z) {
+      problems.push('派生表 BANDS 与层带表不一致：' + name + ' 表里是 ' + z + '，BANDS 里是 ' + BANDS[name]);
+    }
+    if (BAND_LIST_NAME[z] !== name) {
+      problems.push('z→名字的映射与层带表不一致：z=' + z + ' 映射到 ' + BAND_LIST_NAME[z] + '，表里是 ' + name);
+    }
+  }
+  for (name in BANDS) {
+    if (Object.prototype.hasOwnProperty.call(BANDS, name) && !seenName[name]) {
+      problems.push('BANDS 里有层带表没有的层：' + name + '（它是死配置，永远取不到）');
+    }
+  }
+  /* 每条已注册的可视实体：层带在场，且缓存的 z 与当前表一致。
+     实体由渲染层在 depth.ts 之后注册，所以这一半在**启动期**才真的查得到东西。 */
+  for (i = 0; i < ACTOR_NAMES.length; i++) {
+    var a = ACTORS[ACTOR_NAMES[i]];
+    if (!a) { problems.push('实体 ' + ACTOR_NAMES[i] + ' 没有记录（名字表与注册表脱节）'); continue; }
+    if (BANDS[a.band] === undefined) {
+      problems.push('实体 ' + a.name + ' 的层带不在表里：' + a.band +
+        '（它的 z 是 undefined，compare() 返回 NaN，整帧的层次顺序未定义）');
+      continue;
+    }
+    if (a.z !== BANDS[a.band]) {
+      problems.push('实体 ' + a.name + ' 缓存的 z=' + a.z + ' 与层带表的 ' + a.band + '=' + BANDS[a.band] +
+        ' 不一致（改了层带号却没重新注册实体：它会永远画在旧层）');
+    }
+  }
+  return { ok: problems.length === 0, problems: problems };
+};
+
 /* 注册到扩展点总账：层带是家族；可视实体引用层带（render.ts 注册实体时用） */
 Registry.family('depthBand', {
   note: 'Z 深度层带', owner: 'depth.ts',
@@ -219,4 +298,13 @@ Registry.family('actor', {
     });
   }
 });
+
+/* 定义期自检：不过就抛。加载期这一遍只查得到层带表（实体由渲染层稍后注册），
+   启动期那一遍（SelfCheck.register）两半都查。 */
+var depthVerdict = Depth.audit();
+if (!depthVerdict.ok) {
+  throw new Error('depth.ts 深度层带 / 实体表自检失败：\n' + depthVerdict.problems.join('\n'));
+}
+SelfCheck.register('Depth', Depth.audit);
+
 export { Depth };

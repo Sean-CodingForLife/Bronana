@@ -903,6 +903,8 @@ interface DailyApi {
      本模块只管"今天是什么" */
   bestOf(profile: { daily?: Record<string, DailyRecord> } | null, key?: string): DailyRecord | null;
   pick(a: DailyRecord | null, b: DailyRecord | null): DailyRecord | null;
+  /** 定义期自检（表自身的完整性；"某个字段有没有人读"是测试的活） */
+  audit(): { ok: boolean; problems: string[] };
 }
 
 /* ---------------- 成绩码（score.ts） ---------------- */
@@ -925,6 +927,8 @@ interface ScoreApi {
     { ok: boolean; reason: string; actual: ScoreClaims | null };
   pack(code: string, tape: RecTape | null): { ok: boolean; reason: string; text: string | null };
   unpack(text: string): { code: string; tape: RecTape | null } | null;
+  /** 定义期自检（声明表与 make / parse / hash 三处代码是否还对得上） */
+  audit(): { ok: boolean; problems: string[] };
 }
 
 /* ---------------- 容器与对象管理（containers.ts） ----------------
@@ -1043,6 +1047,8 @@ interface DepthApi {
   trace(fn: ((name: string, ref: any, order: number) => void) | null): boolean;
   stats(): DepthStats;
   describe(): string;
+  /** 定义期自检（层带表的编号/派生表覆盖、每条实体的层带在场且 z 与表一致） */
+  audit(): { ok: boolean; problems: string[] };
 }
 
 /* ---------------- 怪物 AI（ai.ts） ----------------
@@ -2143,6 +2149,8 @@ interface OfflineApi {
   rateAt(level: number): number;
   settle(elapsedMs: number, sporebedLevel: number): OfflineResult;
   describe(): string;
+  /** 定义期自检（速率表是否覆盖 0..MAX_LEVEL、单调、门槛与封顶自洽） */
+  audit(): { ok: boolean; problems: string[] };
 }
 
 /* ---------------- 每周挑战（season.ts） ---------------- */
@@ -2813,6 +2821,8 @@ interface ChallengesApi {
   visible(isDone?: (id: string) => boolean): ChallengeDef[];
   groups(): string[];
   describe(): string;
+  /** 定义期自检（id / 指标 / 分组 / 阈值 / 解锁目标 —— 写错的表现是"永远不完成"） */
+  audit(): { ok: boolean; problems: string[] };
 }
 
 /* ---------------- 启动期自检（selfcheck.ts） ---------------- */
@@ -3453,7 +3463,8 @@ interface CompApi {
   has(e: any, comp: string): boolean;
   unknownFields(e: any): string[] | null;
   audit(e: any): { arch: string | null; unknown: string[]; missing: string[] };
-  selfCheck(): string[];
+  /** 定义期启动期自检：全部原型逐字段齐全、默认值与模板一致（登记进 SelfCheck） */
+  selfCheck(): { ok: boolean; problems: string[] };
   query(sess: any, archName: string): any[];
   system(name: string, need: string[], fn: (e: any, dt: number, ctx: any) => any, opts?: { back?: boolean }): CompSystem;
   run(name: string, list: any[], dt: number, ctx?: any): number;

@@ -18,6 +18,7 @@
    ========================================================= */
 
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 
 var Challenges = {} as ChallengesApi;
 
@@ -84,6 +85,17 @@ var CHAR_METRICS: Record<string, string> = {
   charKills: 'kills',
   charWins: 'wins'
 };
+
+/**
+ * 分组的**值域**（声明处）。
+ * 以前分组只有"从表里派生"这一处（`Challenges.groups()`），于是它**无法被守**：
+ * 一条挑战把 `'累计击杀'` 打成 `'累计击殺'`，派生出来的分组就多一个，
+ * 界面按它分区时**多出一个只有一条的分区**，而没有任何地方会响 —— 玩家看不出，
+ * 开发者也只有肉眼比对界面才会发现。
+ * 所以这里把分组写成一张声明表，由 `Challenges.audit()` 双向对照（表里用到的 ⊆ 这里，
+ * 这里声明的每个分组也必须有人用）。
+ */
+var GROUPS: string[] = ['进程', '累计击杀', '累计收集', '极限', '角色', '隐藏'];
 
 /* =========================================================
    2. 挑战表
@@ -279,7 +291,91 @@ Challenges.describe = function () {
 };
 
 /* =========================================================
-   4. 登记进扩展点总账
+   4. 定义期自检（`challenge` / `challengeGroup` / `challengeMetric` 的守卫）
+   ---------------------------------------------------------
+   这一节原先整段只存在于 `test/profile.mjs` 第 6 节里（8 条断言）。
+   问题不是"没检查"，而是"只在测试里检查、启动期不跑"：
+   挑战表写错一个字的表现是**玩家打到了却什么都没发生**，
+   而唯一的发现途径是"有人跑测试"。现在它登记进 SelfCheck，两个入口启动时都跑。
+
+   每条判据都对着一个真实的静默故障（出处是 test/profile.mjs 第 6 节那一组断言）：
+     · id 重复 → `BY_ID` 后写的覆盖先写的：图鉴里少一条，那条的进度永远显示不出来
+     · 指标名写错 → `valueOf` 读到 undefined → `n()` 折成 0 → **挑战永远不完成**，
+       界面上只显示一条永远是 0/N 的进度条（最难查的一类，因为它看起来"只是没做到"）
+     · 分组写错 → 界面按 `groups()` 分区时多出一个只有一条的分区（见 GROUPS 的说明）
+     · `atLeast` ≤ 0（或 NaN）→ `valueOf(d) >= atLeast` **恒真**：一进游戏就自动完成、
+       白送解锁，而玩家不会觉得哪里不对（他会以为那是个开局福利）
+     · 角色挑战用了非角色指标（或反过来）→ 一条读 `CHAR_METRICS`、一条读 `flat`，
+       两边都可能永远读到 0（`charBestWave` 曾经就这样错过一次，那是个真出现过的 bug）
+     · 解锁项为空 → 完成了什么也不给，玩家看不到任何反馈
+     · 解锁目标不存在 → 同样"打完了什么也没发生"
+
+   ⚠ 跨模块的那一半（解锁目标）**必须先问"那个家族在不在场"**，理由见 tutorial.ts：
+   无头入口只加载模拟层时 `char` / `weapon` / `item` 可能还没注册，
+   直接 `Registry.ids()` 会抛"未注册的家族"，把模块加载打断 ——
+   而那个错误的表现与"目标写错了"完全无关。所以家族不在场时**跳过**（不是报错）。
+   分工也写清楚：`Registry.audit()`（全量模式）另有一半是"引用了压根未注册的家族"，
+   这里只管"家族在场但 id 写错"。
+   ========================================================= */
+Challenges.audit = function () {
+  var problems: string[] = [];
+  var ids: Record<string, boolean> = Object.create(null);
+  var usedGroup: Record<string, boolean> = Object.create(null);
+  var i, g, u;
+  for (i = 0; i < LIST.length; i++) {
+    var d = LIST[i];
+    if (!d.id) problems.push('第 ' + i + ' 条挑战没有 id（它在 BY_ID 里取不到）');
+    else if (ids[d.id]) problems.push('挑战 id 重复：' + d.id + '（BY_ID 里后一条会覆盖前一条）');
+    else ids[d.id] = true;
+
+    if (!METRICS[d.metric]) {
+      problems.push(d.id + ' 用的指标不在 METRICS 里：' + d.metric + '（读不到值 → 永远不完成）');
+    }
+    if (GROUPS.indexOf(d.group) < 0) {
+      problems.push(d.id + ' 的分组不在 GROUPS 里：' + d.group + '（界面会多出一个只有这一条的分区）');
+    } else usedGroup[d.group] = true;
+
+    if (!(d.atLeast > 0)) {
+      problems.push(d.id + ' 的 atLeast 不是正数：' + String(d.atLeast) + '（≤0 的挑战一进游戏就自动完成）');
+    }
+
+    if (d.char) {
+      if (!CHAR_METRICS[d.metric]) {
+        problems.push(d.id + ' 是角色挑战，但指标 ' + d.metric +
+          ' 不在 CHAR_METRICS 里（valueOf 直接 return 0：永远不完成）');
+      }
+    } else if (CHAR_METRICS[d.metric]) {
+      problems.push(d.id + ' 不是角色挑战，却用了角色指标 ' + d.metric +
+        '（flat 里没有它，读到 0：永远不完成）');
+    }
+
+    if (!d.unlock || !d.unlock.length) {
+      problems.push(d.id + ' 没有任何解锁产物（打完了什么也不给）');
+      continue;
+    }
+    for (u = 0; u < d.unlock.length; u++) {
+      var un = d.unlock[u];
+      if (!un || !un.family || !un.id) {
+        problems.push(d.id + ' 的解锁项缺 family / id（那条解锁不知道发给谁）');
+        continue;
+      }
+      /* 跨模块：家族不在场 = 那个模块没被加载，不代表目标写错了 —— 跳过（见上面那段注释） */
+      if (!Registry.has(un.family)) continue;
+      if (Registry.ids(un.family).indexOf(String(un.id)) < 0) {
+        problems.push(d.id + ' 的解锁目标 ' + un.family + ':' + un.id +
+          ' 不在那个家族里（打完了挑战什么也不给）');
+      }
+    }
+  }
+  /* 反向：声明了却没人用的分组 = 界面上一个空分区（或这条声明永远读不到） */
+  for (g = 0; g < GROUPS.length; g++) {
+    if (!usedGroup[GROUPS[g]]) problems.push('分组「' + GROUPS[g] + '」声明了却没有任何挑战用它');
+  }
+  return { ok: problems.length === 0, problems: problems };
+};
+
+/* =========================================================
+   5. 登记进扩展点总账
    ========================================================= */
 Registry.family('challenge', {
   note: '挑战 → 解锁（声明式：指标 + 阈值 + 解锁目标）', owner: 'challenges.ts',
@@ -296,11 +392,22 @@ Registry.family('challenge', {
 });
 Registry.family('challengeGroup', {
   note: '挑战分组', owner: 'challenges.ts',
-  values: function () { return Challenges.groups(); }
+  /* 值域取**声明表**而不是"从挑战表派生"：派生出来的域守不住自己 ——
+     一条挑战把分组名打错，派生出来的域就跟着多一个（见 GROUPS 与 audit 的说明）。 */
+  values: function () { return GROUPS.slice(); }
 });
 Registry.family('challengeMetric', {
   note: '挑战可用的指标（写错指标名的表现是"永远不完成"）', owner: 'challenges.ts',
   values: function () { return Object.keys(METRICS); }
 });
+
+/* 定义期自检：不过就抛（表写坏了不该等到玩家打到那一条才发现）。
+   加载期能安全跑的只有"本表"那一半：跨模块的解锁目标会因家族未注册而跳过，
+   启动期（SelfCheck.register 那一遍）两个家族都已在场，那一半才真的生效。 */
+var challengesVerdict = Challenges.audit();
+if (!challengesVerdict.ok) {
+  throw new Error('challenges.ts 挑战表自检失败：\n' + challengesVerdict.problems.join('\n'));
+}
+SelfCheck.register('Challenges', Challenges.audit);
 
 export { Challenges };

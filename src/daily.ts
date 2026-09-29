@@ -16,9 +16,20 @@
 
 import { Chars } from './data_chars.ts';
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 import { U } from './utils.ts';
 
 var Daily = {} as DailyApi;
+
+/**
+ * 每日记录里**声明**的字段（登记为 `dailyField` 家族）。
+ * 判据见文件末尾的 audit：它拿这张表去对 `Daily.of()` 的产出与 `dateKey` 的格式。
+ * （"`scoreOf` / `main.ts` 到底读不读它"那种静态核对是 test/daily.mjs 的活 ——
+ * 启动期跑在浏览器里，没有 fs。）
+ */
+var FIELDS: string[] = [
+  'key', 'seed', 'char', 'danger', 'wave', 'kills', 'level', 'win', 'score', 'at', 'frames'
+];
 
 /* =========================================================
    1. 日期 → 当天的规则
@@ -89,11 +100,74 @@ Daily.pick = function (a, b) {
 };
 
 /* =========================================================
-   5. 登记进扩展点总账
+   5. 定义期自检（`dailyField` 的守卫）
+   ---------------------------------------------------------
+   `dailyField` 是一张**声明表**（每日记录里有哪些字段）。它自己不会出错，
+   出错的是"它与真实代码脱节"—— 而那种错没有任何症状：
+   档案里那一格空了 / 分数恒为 0 / 同一天的两个人打出不同的局。
+   所以这一份 audit 的每一条都拿声明表去对**真实代码的产出与读取**。
+
+     · `of()` 产出的字段不在表里 → 存档与界面按这张表列字段，那个值静默消失
+       （新加"连胜数"这种字段时最容易发生：`of()` 加了，表忘了加）
+     · 表里声明的核心四键（key/seed/char/danger）没被 `of()` 产出 →
+       每日记录里那一格永远是空的（难度/种子丢了，成绩码也就无从验证）
+     · 角色不是已登记角色 → 挑战开局直接炸（或 `charFor` 给回 null）
+     · 同一个日期键两次拿到不同的规则（种子/角色依赖了时间或随机数）→
+       "同一天玩的人都拿到同一局"这条前提没了：成绩码互验全对不上，而且不可复现
+     · 日期键没补零 → 字符串序不再等于时间序（模块顶部就是靠这条才能把键直接排序）
+
+   ⚠ 这一份**没有**"某个字段有没有人读"这类判据：那要扫源码，是 test/daily.mjs 的活。
+   ========================================================= */
+Daily.audit = function () {
+  var problems: string[] = [];
+  var seen: Record<string, boolean> = Object.create(null);
+  var i;
+  for (i = 0; i < FIELDS.length; i++) {
+    if (seen[FIELDS[i]]) problems.push('字段在 dailyField 里声明了两次：' + FIELDS[i]);
+    seen[FIELDS[i]] = true;
+  }
+  /* 日期键：补零是"字符串序 = 时间序"的全部实现（档案里 daily 是一张按键排的表） */
+  var probe = Daily.dateKey(Date.UTC(2026, 0, 5));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(probe)) {
+    problems.push('dateKey 不是补零的 YYYY-MM-DD：' + probe + '（字符串序不再等于时间序，档案里的日期键会乱序）');
+  }
+  var rule = Daily.of('2026-01-05');
+  var keys = Object.keys(rule);
+  for (i = 0; i < keys.length; i++) {
+    if (FIELDS.indexOf(keys[i]) < 0) {
+      problems.push('of() 产出的字段 ' + keys[i] + ' 不在 dailyField 里（存档与界面按那张表列字段，这个值会静默丢掉）');
+    }
+  }
+  var core = ['key', 'seed', 'char', 'danger'];
+  for (i = 0; i < core.length; i++) {
+    if (keys.indexOf(core[i]) < 0) problems.push('of() 没有产出 ' + core[i] + '（每日记录的这一格永远是空的）');
+  }
+  if (!(rule.char && Chars.BY_ID[rule.char])) {
+    problems.push('of() 给的角色不是已登记角色：' + String(rule.char) + '（每日挑战开局会拿不到角色）');
+  }
+  var again = Daily.of('2026-01-05');
+  if (again.seed !== rule.seed || again.char !== rule.char) {
+    problems.push('同一个日期键两次得到的规则不同（种子/角色依赖了时间或随机数）—— ' +
+      '"同一天的人打同一局"这条前提没了');
+  }
+  return { ok: problems.length === 0, problems: problems };
+};
+
+/* =========================================================
+   6. 登记进扩展点总账
    ========================================================= */
 Registry.family('dailyField', {
   note: '每日挑战记录的字段', owner: 'daily.ts',
-  values: function () { return ['key', 'seed', 'char', 'danger', 'wave', 'kills', 'level', 'win', 'score', 'at', 'frames']; }
+  values: function () { return FIELDS.slice(); }
 });
+
+/* 定义期自检：不过就抛。它只读本模块的表与自己的纯函数（Chars 是直接 import，
+   求值顺序由 ES 模块保证：daily.ts 的模块体一定在 data_chars.ts 之后跑），
+   所以加载期跑是安全的。 */
+var dailyVerdict = Daily.audit();
+if (!dailyVerdict.ok) {
+  throw new Error('daily.ts 每日挑战自检失败：\n' + dailyVerdict.problems.join('\n'));
+}
+SelfCheck.register('Daily', Daily.audit);
 
 export { Daily };

@@ -21,6 +21,11 @@ build/
 
 # ---------------- 运行时与打包产物 ----------------
 *.tsbuildinfo
+# ⚠ 上面那条按**扩展名**匹配，而 tsc 的增量缓存文件是**无扩展名**的
+# （`tsconfig.json` 里写的是 `.tsbuildinfo` / `.tsbuildinfo-node`）。
+# 只留通配符会漏掉它们 —— 实测过：`git check-ignore .tsbuildinfo-node` 返回"未忽略"。
+.tsbuildinfo
+.tsbuildinfo-node
 *.tgz
 *.zip
 package-lock.json

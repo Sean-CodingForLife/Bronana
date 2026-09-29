@@ -19,6 +19,10 @@
     "checkJs": false,
     "isolatedModules": true,
     "noEmit": true,
+    /* 与浏览器侧同一条：增量缓存，分开一个文件名（两份配置不能共用缓存）。
+       实测热跑约 0.6s。 */
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo-node",
 
     "strict": false,
     "noImplicitAny": false,

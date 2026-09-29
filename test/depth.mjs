@@ -231,11 +231,13 @@ console.log('\n[8] 层次分离');
   /* **只依赖** utils / 总账这一层，而不是"必须恰好 import 两个模块" ——
      后者会把"模块里少了一个不再用的 import"也判成失败（实测：清掉未使用的
      `U` 之后这条红了）。分层守的是**依赖方向与允许的层**，
-     不是 import 的条数；`utils` 现在没被 import，恰恰是它**没有**越层依赖的证明。 */
-  const allowed = ['utils.ts', 'registry.ts'];
+     不是 import 的条数；`utils` 现在没被 import，恰恰是它**没有**越层依赖的证明。
+     `selfcheck.ts` 是纯机制（只依赖 registry / utils），
+     与 scene.ts / data_tiers.ts 登记自检时开的口子是同一条（层带表要在启动期自检）。 */
+  const allowed = ['utils.ts', 'registry.ts', 'selfcheck.ts'];
   const beyond = imports.filter(f => allowed.indexOf(f) < 0);
   ok(beyond.length === 0,
-    'depth.ts 只依赖 utils 与扩展点总账（不认识 Game / 实体 / 渲染层）', imports.join(','));
+    'depth.ts 只依赖 utils / 扩展点总账 / 自检登记处（不认识 Game / 实体 / 渲染层）', imports.join(','));
   ok(!/Session|session|\bsess\b/.test(src.replace(/^\s*\/\*[\s\S]*?\*\//gm, '')),
     'depth.ts 里没有会话/存档之类的玩法概念');
 }

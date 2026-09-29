@@ -1,0 +1,87 @@
+name: 报告 Bug
+description: 游戏行为不对、崩溃、卡住、数值明显异常
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先谢谢你来报问题。
+
+        **报之前请先做一件事**：跑一下 `pnpm test`。如果它红了，那很可能不是游戏的问题，
+        而是代码被改坏了 —— 那种情况直接把输出贴过来，比描述现象有用得多。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 你看到的现象。如果和"应该发生什么"对比就更清楚了。
+      placeholder: |
+        例：打完第 3 波的补给房之后，材料没涨（界面上还是 6）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: |
+        步骤越具体越好。**如果与种子有关，请务必写上种子** ——
+        这个项目的随机是可复现的（同种子必定同结果），有种子我就能跑到同一帧。
+      placeholder: |
+        1. pnpm dev
+        2. 选游侠，种子 20240922
+        3. 一路打到第 3 波
+        4. 进补给房 → 材料没变
+    validations:
+      required: true
+
+  - type: input
+    id: seed
+    attributes:
+      label: 种子（如果知道）
+      description: 选人界面 / 结算界面会显示。有它我就能精确复现。
+      placeholder: "20240922"
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 你跑的是哪个形态
+      options:
+        - pnpm dev（浏览器开发服务器）
+        - pnpm desktop（Electron 桌面）
+        - pnpm serve / 静态服务器（构建后的 dist/）
+        - pnpm sim（命令行模拟，无画面）
+        - 其它（请在下面说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: 控制台输出 / 截图
+      description: |
+        浏览器里按 F12 看 Console；桌面模式看终端。
+        游戏内按 `G` 可以开诊断面板（`#diag`），里面的数字对定位问题很有用。
+        截图请直接拖进这个框。
+    validations:
+      required: false
+
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: 操作系统、Node 版本（`node --version`）、pnpm 版本（`pnpm --version`）
+      placeholder: "Windows 11 · Node 24.16.0 · pnpm 12.5.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: selfcheck
+    attributes:
+      label: 自检命令的输出（如果跑过）
+      description: |
+        `pnpm test` 或 `pnpm run guards` 的输出。**这一栏常常直接给出答案** ——
+        本项目大量问题会被启动期自检抓到。
+      render: shell
+    validations:
+      required: false

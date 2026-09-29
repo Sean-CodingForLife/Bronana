@@ -94,8 +94,8 @@ const FORBID = [
     '场景表是纯数据，只依赖状态机 / 总账 / 自检登记处与 utils（不得反向依赖渲染层 / 界面层）'],
   ['bronana.ts', modFiles.filter(f => ['bronana.ts', 'rig.ts', 'draw2d.ts', 'comp.ts', 'utils.ts'].indexOf(f) < 0),
     '角色骨架只依赖 骨架层 / 组件层 / 绘制原语层 / 工具层'],
-  ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts'),
-    '组件层是纯声明与组合，只依赖 utils / 总账'],
+  ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts'),
+    '组件层是纯声明与组合，只依赖 utils / 总账 / 自检登记处（组件与原型两张表要在启动期自检，见 comp.ts 末尾）'],
   ['diag.ts', modFiles.filter(f => ['diag.ts', 'game.ts', 'render.ts', 'registry.ts', 'containers.ts', 'depth.ts', 'sprites.ts', 'utils.ts'].indexOf(f) < 0),
     '诊断面板只读各系统的账目，不依赖界面层'],
   ['record.ts', modFiles.filter(f => f !== 'record.ts' && f !== 'game.ts'),
@@ -106,8 +106,8 @@ const FORBID = [
     '扩展点总账是纯机制，只依赖 utils'],
   ['ai.ts', modFiles.filter(f => f !== 'ai.ts' && f !== 'utils.ts' && f !== 'registry.ts'),
     'AI 层只依赖 utils / 总账（要什么能力都由 AiCtx 注入，不认识 Game / 渲染层）'],
-  ['depth.ts', modFiles.filter(f => f !== 'depth.ts' && f !== 'utils.ts' && f !== 'registry.ts'),
-    '深度层只依赖 utils / 总账（层带与排序是纯机制，实体由渲染层注册）'],
+  ['depth.ts', modFiles.filter(f => f !== 'depth.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts'),
+    '深度层只依赖 utils / 总账 / 自检登记处（层带表要在启动期自检，实体仍由渲染层注册）'],
   /* 品级表与道具/武器表同层：纯数据 + 总账 + 自检登记处。
      它被 data_weapons / data_items / ui / game 四处读，所以它**不许**反向依赖任何一个 */
   ['data_tiers.ts', modFiles.filter(f => f !== 'data_tiers.ts' && f !== 'utils.ts' &&

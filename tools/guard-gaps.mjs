@@ -217,6 +217,36 @@ else {
   console.log('              ② 让真正消费它的那张表用 `refs` 引用它（那样 Registry.audit 就守住了）。');
 }
 
+/* =========================================================
+   [1b] 逐模块表（从已删除的 `module-audit.mjs` 并过来的）
+   ---------------------------------------------------------
+   那一份工具是这一份的**前一版**，判据是错的：它把
+   `scene.ts` 的 4 个家族判成"没人守"（其实 `Scene.validate` + `SelfCheck.register`
+   守着），把 `registry.ts` 判成"守卫不在必经之路上"（其实它是
+   `SelfCheck.scan()` 的内置最后一步，重复登记会抛）。
+   两份工具同时存在 = 必然有一份在撒谎，而人不知道该信哪一份。
+   所以那一份**删掉了**，只把这里这张"逐模块速查表"并过来 ——
+   它是那一份唯一不重复的价值。
+   ========================================================= */
+console.log('\n[1b] 逐模块速查（表=声明表 · 家=声明家族 · 检=有守卫函数 · 登=登记进 SelfCheck · 测=提到它的测试/工具）\n');
+{
+  console.log('  ' + PAD('模块', 22) + PADL('表', 4) + PADL('家', 4) + PADL('检', 4) + PADL('登', 4) + PADL('测', 4) +
+    PADL('代码行', 7));
+  const rows = mods.slice().sort((a, b) => (b.tables.length + b.declares.length) - (a.tables.length + a.declares.length));
+  for (const m of rows) {
+    if (!m.tables.length && !m.declares.length) continue;   // 只列"有表或家族"的
+    const noGuard = !m.selfGuarded && m.declares.length;
+    console.log('  ' + PAD(m.file, 22) +
+      PADL(m.tables.length, 4) + PADL(m.declares.length, 4) + PADL(m.audits.length, 4) +
+      PADL(m.registers.length, 4) + PADL(m.tests.length + m.tools.length, 4) + PADL(m.codeLoc, 7) +
+      (noGuard ? '  \x1b[33m（有家族但模块级自检没登记 —— 靠引用守护）\x1b[0m' : ''));
+  }
+  console.log('  \x1b[90m注：「检」是守卫函数个数（audit/validate/selfCheck/check），' +
+    '「登」是 SelfCheck.register 次数。\x1b[0m');
+  console.log('  \x1b[90m    两者都为 0 但「家」>0 的模块，靠别的模块用 `refs` 引用它来守（见 [1] 的修法②）。\x1b[0m');
+}
+
+
 console.log('\n[2] 硬性缺陷\n');
 if (!notRegistered.length) console.log('  \x1b[32m✔ 无参的守卫却没登记进 SelfCheck 的模块：无\x1b[0m');
 else for (const m of notRegistered) console.log('  \x1b[31m✘ ' + m.file + '（' + m.bootable.join(',') + '）—— 无参、能进启动期，但没登记\x1b[0m');

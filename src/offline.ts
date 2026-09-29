@@ -21,6 +21,7 @@
    ========================================================= */
 
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 
 var Offline = {} as OfflineApi;
 
@@ -87,9 +88,75 @@ Offline.describe = function () {
   return lines.join('\n');
 };
 
+/* =========================================================
+   登记进扩展点总账
+   ========================================================= */
 Registry.family('offlineRate', {
   note: '离线产出速率表（按菌床等级）', owner: 'offline.ts',
   values: function () { return Object.keys(RATE_PER_MIN).map(String); }
 });
+
+/* =========================================================
+   定义期自检（`offlineRate` 的守卫）
+   ---------------------------------------------------------
+   `offlineRate` 是"菌床每一级给多少孢子"的声明。它的错法全都**不报错**：
+   玩家花了材料、挂了几小时，回来一看是 0 —— 而这块内容本来就是可选的附加档，
+   "没有产出"看起来就像"我还没买对"。
+
+   每条判据都对着一个真实的静默故障：
+     · 0..MAX_LEVEL 某一级不在速率表里 → `rateAt` 用 `RATE_PER_MIN[lv] || 0` 兜底：
+       那一级静默变成 0（买了菌床、挂满时间，一点产出都没有）
+     · 表里有超出 MAX_LEVEL 的档 → `rateAt` 先 `Math.min(MAX_LEVEL, …)` 夹一次，
+       那一档**永远读不到**（据点表把菌床加到 3 级时，玩家花了钱什么也不换）
+     · 第 0 级不是 0 → 那就成了"人人有的日常补贴"，正是这块内容刻意反着抄掉的东西
+       （见文件头四条自我约束的第 1 条）
+     · 速率随等级下降 → 升一级反而更差（花了材料变穷）
+     · `MIN_MINUTES ≥ MAX_HOURS * 60` → 门槛比封顶还高：**永远不结算**，整块内容失效
+   ========================================================= */
+Offline.audit = function () {
+  var problems: string[] = [];
+  var lv, k;
+  for (lv = 0; lv <= Offline.MAX_LEVEL; lv++) {
+    var r = RATE_PER_MIN[lv];
+    if (typeof r !== 'number' || !isFinite(r) || r < 0) {
+      problems.push('速率表缺少第 ' + lv + ' 级（或不是有限非负数）：rateAt 会静默回落到 0 —— 买了菌床也不产出');
+    }
+  }
+  for (k in RATE_PER_MIN) {
+    if (!Object.prototype.hasOwnProperty.call(RATE_PER_MIN, k)) continue;
+    var n = Number(k);
+    if (!(n >= 0 && n <= Offline.MAX_LEVEL) || Math.floor(n) !== n) {
+      problems.push('速率表里有超出 0..' + Offline.MAX_LEVEL + ' 的档：' + k +
+        '（rateAt 永远读不到它 —— 菌床升到那一级时，花掉的材料什么也不换）');
+    }
+  }
+  if (Offline.rateAt(0) !== 0) {
+    problems.push('第 0 级（没买菌床）的速率是 ' + Offline.rateAt(0) +
+      '，不是 0 —— 那就成了"人人都有的补贴"');
+  }
+  for (lv = 1; lv <= Offline.MAX_LEVEL; lv++) {
+    if (Offline.rateAt(lv) < Offline.rateAt(lv - 1)) {
+      problems.push('第 ' + lv + ' 级的速率（' + Offline.rateAt(lv) + '）比第 ' + (lv - 1) +
+        ' 级（' + Offline.rateAt(lv - 1) + '）低：升一级反而更差');
+    }
+  }
+  if (!(typeof Offline.MAX_HOURS === 'number' && isFinite(Offline.MAX_HOURS) && Offline.MAX_HOURS > 0)) {
+    problems.push('MAX_HOURS 不是正数：' + String(Offline.MAX_HOURS));
+  }
+  if (!(typeof Offline.MIN_MINUTES === 'number' && isFinite(Offline.MIN_MINUTES) && Offline.MIN_MINUTES > 0)) {
+    problems.push('MIN_MINUTES 不是正数：' + String(Offline.MIN_MINUTES));
+  } else if (Offline.MIN_MINUTES >= Offline.MAX_HOURS * 60) {
+    problems.push('门槛 ' + Offline.MIN_MINUTES + ' 分钟 ≥ 单次封顶 ' + (Offline.MAX_HOURS * 60) +
+      ' 分钟：永远达不到门槛，离线产出完全失效');
+  }
+  return { ok: problems.length === 0, problems: problems };
+};
+
+/* 定义期自检：不过就抛。只读本模块的表，所以加载期跑是安全的。 */
+var offlineVerdict = Offline.audit();
+if (!offlineVerdict.ok) {
+  throw new Error('offline.ts 离线产出表自检失败：\n' + offlineVerdict.problems.join('\n'));
+}
+SelfCheck.register('Offline', Offline.audit);
 
 export { Offline };

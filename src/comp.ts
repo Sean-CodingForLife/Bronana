@@ -22,6 +22,7 @@ comp.ts — 组件式组合运行时
   ========================================================= */
 
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 
 var Comp = {} as CompApi;
 
@@ -251,6 +252,27 @@ Comp.audit = function (e) {
   return { arch: (e && e.$arch) || null, unknown: unknown || [], missing: missing };
 };
 
+/* =========================================================
+   定义期自检（`component` / `archetype` 两个家族的守卫）
+   ---------------------------------------------------------
+   这一份判据原先**只在 `test/comp.mjs` 里被调**（`Comp.selfCheck()`），
+   也就是护栏存在、但不在必经之路上：改坏一个组件的默认值，只有跑测试才发现得到。
+   现在它返回 `SelfCheck.scan()` 约定的 `{ok, problems}` 并登记进启动期自检
+   （`SelfCheck.register('Comp', …)`，见文件末尾），
+   于是浏览器入口与命令行入口在启动时都会跑它，不过就抛（一次列全）。
+
+   为什么它**能**在加载期跑一遍（不像 tutorial.ts 那样只登记）：
+   这一份判据只读本模块的表（DEFS / ARCHS / 工厂产物），不读任何别的家族，
+   所以"谁先加载"对它没有影响。
+
+   每条判据都对着一个真实的静默故障：
+     · 生成的工厂把默认值**内联进源码**（`compileFactory`），写错（NaN / -0 /
+       科学计数法 / 字符串转义）只会在"裸产物 vs 模板"的 `Object.is` 比对里现形 ——
+       不比对的话表现为"某个组件字段莫名其妙是 NaN"，查起来极贵
+     · 数组默认值被两个对象共享 → 给一个拾取物 push 元素，另一个也变了
+     · 原型引用的组件若不在场，`archetype()` 当场抛；但**注册后的表**再被改坏
+       （补丁 / 重构漏改）不会有人喊，只有 spawn 会失败
+   ========================================================= */
 /** 自查：所有原型都试造一个对象，检查字段完整性 */
 Comp.selfCheck = function () {
   var problems: string[] = [];
@@ -291,7 +313,7 @@ Comp.selfCheck = function () {
       }
     }
   }
-  return problems;
+  return { ok: problems.length === 0, problems: problems };
 };
 
 
@@ -524,4 +546,13 @@ Registry.family('archetype', {
     });
   }
 });
+
+/* 定义期自检：不过就抛（与 danger.ts 同一条纪律 —— 表写坏了不该等到玩家遇到才发现）。
+   只读本模块的表，所以加载期跑是安全的；登记之后启动期还会再跑一遍。 */
+var compVerdict = Comp.selfCheck();
+if (!compVerdict.ok) {
+  throw new Error('comp.ts 组件 / 原型表自检失败：\n' + compVerdict.problems.join('\n'));
+}
+SelfCheck.register('Comp', Comp.selfCheck);
+
 export { Comp };

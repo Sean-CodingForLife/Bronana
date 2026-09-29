@@ -1,0 +1,121 @@
+# =========================================================
+# Bronana · CI
+# ---------------------------------------------------------
+# 这个项目的"改对了"不是"看起来能跑"，而是"几道门全绿"。
+# 这些门在本机都能跑（见 CONTRIBUTING.md），这里只是把它们搬到 CI 上，
+# 让"忘了跑测试"不再是一个可能的失误。
+#
+# ⚠ **变体名是查过真实版本才写的**（不是凭记忆）：
+#     actions/checkout       最新 v7.0.1 → 用 @v7
+#     pnpm/action-setup      最新 v6.1.0 → 用 @v6
+#                            （v6.1.0 的发布说明第一条就是 "support pnpm v12"，
+#                              而本仓库的 packageManager 正好是 pnpm@12.5.1 ——
+#                              用 v4 那类旧版本会装不上 pnpm）
+#     actions/setup-node     最新 v7.0.0 → 用 @v7
+# =========================================================
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一个分支上重复触发时，取消前一次（省机器，也让"最新一次"更快出结果）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 五道门
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 取代码
+        uses: actions/checkout@v7
+
+      # 不写 `version:` —— 让它读 package.json 的 `packageManager` 字段。
+      # 那里写死着 pnpm@12.5.1，比在这里再抄一遍更难漂（抄一遍就是两个真相）。
+      - name: 装 pnpm（版本从 packageManager 字段读）
+        uses: pnpm/action-setup@v6
+
+      - name: 装 Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 装依赖（锁定版本，`--frozen-lockfile` 防止 CI 偷偷改锁文件）
+        run: pnpm install --frozen-lockfile
+
+      # ---------- 门 1：类型 ----------
+      - name: 门 1 · typecheck（tsc ×2）
+        run: pnpm run typecheck
+
+      # ---------- 门 2：48 套测试 ----------
+      # 这是最慢的一步（本机约 3 分钟，CI 上通常更久）。
+      # 它同时跑性能预算断言（test/perf.mjs），所以帧预算也在这一门里。
+      - name: 门 2 · 48 套测试
+        run: pnpm test
+
+      # ---------- 门 3：行为指纹 ----------
+      # 三个固定种子的模拟跑哈希。**纯重构必须逐位不变**。
+      # 如果它红了：要么是 bug，要么是**有意的行为变更** ——
+      # 后者要同时更新 test/smoke.mjs 的基线并写进 CHANGELOG.md（见 CONTRIBUTING.md）。
+      - name: 门 3 · 行为指纹
+        run: pnpm run fingerprint
+
+      # ---------- 门 4：分层与守卫 ----------
+      - name: 门 4a · 分层 / 环 / 死代码 / 未读字段
+        run: pnpm run audit
+
+      - name: 门 4b · 家族与模块守卫
+        run: pnpm run guards
+
+      - name: 门 4c · 登记漂移（每个工具/每套测试有没有入口）
+        run: pnpm run drift
+
+      - name: 门 4d · YAML 校验（CI 与 issue 模板本身）
+        run: pnpm run yaml
+
+      # ---------- 门 5：内容与资源的账单 ----------
+      - name: 门 5a · 美术规范与资源归属
+        run: pnpm run art
+
+      - name: 门 5b · 声明表 ↔ 运行时读点对账
+        run: pnpm run reconcile
+
+      - name: 门 5c · i18n 表（只报"表中孤儿"，未翻译量不是失败）
+        run: pnpm run ui-text -- --check
+
+      # ---------- 附加：数值曲线与循环 ----------
+      - name: 附加 · 数值曲线体检
+        run: pnpm run curves
+
+      - name: 附加 · 三模块循环体检
+        run: pnpm run loop
+
+      - name: 附加 · 局内进度字段一致性
+        run: pnpm run flow
+
+# =========================================================
+# 刻意**没有**放进 CI 的东西，以及为什么
+# ---------------------------------------------------------
+# · `pnpm run bal`（平衡基准）—— 本机跑一轮要十几分钟，而且它输出的是
+#   "给人读的对比表"而不是断言。适合手工跑，不适合做门。
+# · `pnpm run probe` / `pnpm run fun`（随机局探针）—— 它们是探索工具，
+#   随机性大、耗时不可控。已经包在内做，但作为门会变成噪声源。
+# · `pnpm run matrix`（维度矩阵）—— 单机约 25 分钟，且是分片跑的。
+# · `pnpm run coverage` —— 覆盖率"上升/下降多少算红"没有客观判据，
+#   做成门只会逼人写无意义的测试。
+# · `pnpm shot`（Electron 真机截图）—— 要图形环境与真 Electron，
+#   在 CI runner 上不稳；它是**人工验收**工具（看有没有画歪）。
+#
+# 换句话说：CI 只跑**结论确定**的检查。其余那些是"给人看的尺子"，
+# 不在这个文件里假装它们能自动判对错。
+# =========================================================
