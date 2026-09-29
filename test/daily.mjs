@@ -13,10 +13,13 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { loadAll, SIM_MODULES } from './_load.mjs';
 import { uiMissingActs } from './_acts.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
+/* 源码文本：用来做"与平台无关"的静态判据（不许出现本地时间读取） */
+const DAILY_SRC = fs.readFileSync(path.join(ROOT, 'src', 'daily.ts'), 'utf8');
 let failures = 0;
 function ok(cond, label, extra) {
   if (cond) console.log('  \x1b[32mPASS\x1b[0m ' + label);
@@ -40,13 +43,45 @@ console.log('[1] 日期键（UTC）与共享种子');
   ok(/^\d{4}-\d{2}-\d{2}$/.test(Daily.dateKey(0)), '零填充（字符串序 = 时间序）', Daily.dateKey(0));
   ok(Daily.dateKey(a) === Daily.dateKey(a + 1000), '同一秒内稳定');
 
-  // UTC 而不是本地时区：换一个本地区域设置也必须得到同一个键
-  const savedTZ = process.env.TZ;
-  const keyBefore = Daily.dateKey(a);
-  process.env.TZ = 'Pacific/Kiritimati';     // UTC+14
-  const keyAfter = Daily.dateKey(a);
-  process.env.TZ = savedTZ;
-  ok(keyBefore === keyAfter, '改时区不影响日期键（用的是 getUTC* 而不是本地时间）', keyBefore + ' / ' + keyAfter);
+  /* UTC 而不是本地时区：换一个本地区域设置也必须得到同一个键。
+     ------------------------------------------------------------------
+     ⚠ **改 `process.env.TZ` 在 glibc 上不生效**：Node 一旦用过 `Date`，
+       时区就被缓存了（Windows/ICU 会重新读，Linux/glibc 常常不会）。
+       所以"设一下 TZ、再算一次、断言相等"这条判据在 Linux 上**恒真** ——
+       它看着在守时区无关，其实什么都没验（这才是它"本机过、CI 也过"的原因，
+       不是因为它真的验到了）。正确做法有两条，两条都做：
+
+         (a) 真的在新时区里跑：起一个子进程，`TZ` 在**进程启动前**就设好
+         (b) 静态判据：源码里不许出现本地时间读取（`getHours` / `getDate` …）
+       只做 (b) 会被"用了 getUTC* 但拼错一个字段"骗过；只做 (a) 会让
+       这套测试依赖平台能不能重读时区。两条一起才是稳的。 */
+  /* ⚠ 只查"**本地时间分量**"的读取（`getHours` / `getDate` …）。
+     `getTime()` **不算** —— 它返回 epoch 毫秒，与时区无关
+     （第一版用 `get(?!UTC)` 把 `getTime` 也报了出来，那会逼着人把正确的写法改掉）。 */
+  const localTimeCalls = [...DAILY_SRC.matchAll(
+    /\bget(?:FullYear|Month|Date|Day|Hours|Minutes|Seconds|Milliseconds|TimezoneOffset)\(/g)].map(m => m[0]);
+  ok(localTimeCalls.length === 0,
+    'daily.ts 里**一次本地时间读取都没有**（只有 getUTC*；这条与平台无关）',
+    localTimeCalls.join(','));
+  const tzProbe = (tz) => {
+    const code = 'import("./src/daily.ts").then(m=>{' +
+      'process.stdout.write(m.Daily.dateKey(Date.UTC(2026,4,1,23,30)))' +
+      '}).catch(e=>{console.error(e.message);process.exit(1)})';
+    const r = spawnSync(process.execPath, ['-e', code], {
+      cwd: ROOT, encoding: 'utf8', env: { ...process.env, TZ: tz }
+    });
+    return (r.stdout || '').trim() || ('ERR:' + (r.stderr || '').trim().split('\n')[0]);
+  };
+  const utcKey = tzProbe('UTC');
+  const kiritimatiKey = tzProbe('Pacific/Kiritimati');   // UTC+14
+  const tahitiKey = tzProbe('Pacific/Tahiti');           // UTC-10
+  ok(utcKey === '2026-05-01',
+    '（子进程·TZ=UTC）日期键正确', utcKey);
+  ok(kiritimatiKey === utcKey,
+    '**在真的 UTC+14 进程里**日期键不变（这才叫"改时区不影响"）',
+    utcKey + ' vs ' + kiritimatiKey);
+  ok(tahitiKey === utcKey,
+    '**在真的 UTC-10 进程里**日期键也不变', utcKey + ' vs ' + tahitiKey);
 
   ok(Daily.seedFor('2026-05-01') === Daily.seedFor('2026-05-01'), '同一天同一种子');
   ok(Daily.seedFor('2026-05-01') !== Daily.seedFor('2026-05-02'), '不同天不同种子');

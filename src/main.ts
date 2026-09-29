@@ -297,9 +297,12 @@ function runInput(summary): ProfileRunInput {
     char: summary.char,
     wave: summary.wave, level: summary.level,
     kills: summary.kills, scrap: summary.scrap,
-    /* **带出去的材料**：用 earned（打出来的累计），不是 scrap（手里剩的）。
-       理由见 Profile.applyRun 里那段 —— 用"剩下的"会让"少买东西"变成攒钱手段。 */
+    /* **两种货币各报各的**（名字近、含义完全不同，混起来不报错）：
+       · `earned`    = 这一局一共打出来多少**废料**（不是手里剩多少）
+       · `materials` = 这一局打到多少**材料**（只有它能进材料钱包）
+       档案层按这两个名字读，见 `Profile.applyRun` 里那段。 */
     earned: summary.earned,
+    materials: summary.materials,
     damage: summary.damage, taken: summary.taken, healed: summary.healed,
     packs: summary.packs || 0, win: summary.win,
     danger: summary.danger || 0,

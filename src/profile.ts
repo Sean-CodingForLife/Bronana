@@ -463,15 +463,24 @@ Profile.CODEX_MASTERED = CODEX_MASTERED;
    ========================================================= */
 /**
  * 一局折算多少孢子。刻意让"波次"是主项 —— 它奖励的是"打得更久"，
- * 而不是"刷得快"；同时保留一点击杀与材料项，让不同打法都有收益。
+ * 而不是"刷得快"；同时保留一点击杀与两种货币项，让不同打法都有收益。
  * 这是**局外货币**：不进局内经济，所以不会让某一局变简单。
+ *
+ * ⚠ 这里原先只读 `run.scrap`（**废料**）—— 而它的旧注释、`economy.ts` 的
+ * `spores` 那一档、以及 `talents.ts` 对 `waveIncome` 的说明都写着"材料"。
+ * 两根线分开之后这个分叉变得要紧：材料是**制造业的本钱**、废料是**商店的本钱**，
+ * 只读废料会让"经营流攒下的那一半收益"在结算里凭空消失
+ * （它在 `RunSummary` 里叫 `materials`，早就报出来了，只是没人读）。
+ * 现在两根线都算：废料 /40、材料 /20 —— 材料更贵（它只有清间与奖励房给），
+ * 所以同样数量它更值钱。缺字段（旧档 / 别处造的 summary）按 0。
  */
 Profile.sporesForRun = function (run) {
   if (!run) return 0;
   var wave = Math.max(0, num(run.wave));
   var kills = Math.max(0, num(run.kills));
-  var mats = Math.max(0, num(run.scrap));
-  return Math.floor(wave * 2 + kills / 25 + mats / 40 + (run.win ? 25 : 0));
+  var scrap = Math.max(0, num(run.scrap));
+  var mats = Math.max(0, num(run.materials));
+  return Math.floor(wave * 2 + kills / 25 + scrap / 40 + mats / 20 + (run.win ? 25 : 0));
 };
 Profile.spores = function () { return data.spores; };
 
@@ -786,14 +795,18 @@ Profile.applyRun = function (run, totals) {
   if (coreGain > 0) { data.core += coreGain; report.core = coreGain; }
 
   /* **材料入账**（`economy.ts` 的 bridge 那一档，只供经营）。
-     入账的是 `run.earned` —— 也就是玩家**在局内攒下的那个数**
-     （`stats_total.scrap`），不是 `run.scrap`（那是结算时手里还剩多少）。
-     这个区分是必须的：手里剩多少取决于他买了多少东西，而"带出去"应当是
-     "打出来多少" —— 否则"少买东西"会变成一种攒钱手段，而那是反直觉的。
+     入账的是 `run.materials` —— 这一局**真正打到多少材料**
+     （`S.materialEarned`，由 `gainMaterial` 一笔笔记的），不是 `run.scrap`。
+
+     ⚠ 这里曾经读的是 `run.earned`，而当时的 `earned` 装的是**废料累计** ——
+     于是一局结束会往材料钱包里再发一遍废料数，而材料在局内
+     （`gainMaterial` → `Profile.addMaterial`）**已经当场入过账了**。
+     两笔叠起来的症状是"材料总是比打到的多"，而且它不报错、不进任何断言。
+     现在名字与货币一一对应：`run.scrap` = 废料，`run.materials` = 材料。
 
      **它不吃孢子那套倍率**：孢子代表"打得深"，而材料是"打了多少" ——
      两者混在一起会让经营也复利起来。 */
-  var matGain = Math.max(0, Math.floor(num(run.earned)));
+  var matGain = Math.max(0, Math.floor(num(run.materials)));
   if (matGain > 0) { Profile.addMaterial(matGain); report.material = matGain; }
 
   // 1) 每角色记录（挑战条件里有一类是"用某角色…"，它读的就是这里）
@@ -803,7 +816,7 @@ Profile.applyRun = function (run, totals) {
   if (!pc.talents) pc.talents = [];
   pc.runs += 1;
   pc.kills += Math.max(0, num(run.kills));
-  pc.materials += Math.max(0, num(run.scrap));
+  pc.materials += Math.max(0, num(run.materials));
   pc.level = Math.max(pc.level, Math.max(0, num(run.level)));
   pc.bestWave = Math.max(pc.bestWave, Math.max(0, num(run.wave)));
   if (run.win) pc.wins += 1;

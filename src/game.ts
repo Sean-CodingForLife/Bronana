@@ -1449,21 +1449,26 @@ function startWave(n) {
      密室四处 + 每只怪的掉落）。每波白送材料会让"打得好不好"与"经营能做什么"
      脱钩 —— 那正是改造前"先攒钱盖房"越过战斗的那条捷径。 */
 
-  /* 天赋"经营"扇区：每波到账的废料。
-     与击杀**脱钩**是刻意的 —— 废料几乎全部来自击杀时，
-     "更能打"本身就是最好的经济，经济流会被战力流完全支配（这是实测出来的）。
+  /* 天赋"经营"扇区 / 道具套装：每波到账的**材料**。
+     `waveIncome`（天赋表里的键名）说的就是材料 —— "每波 +8 材料"。
+     与击杀**脱钩**是刻意的：材料几乎全部来自击杀时，"更能打"本身就是最好的经济，
+     经济流会被战力流完全支配（实测出来的结论，见下面那段）。
      Brotato 的 Harvesting 就是每波结算的，这里照抄那一点。
-     它同时进"累计收集"，所以也会通过 scrap/40 折算成孢子。 */
+
+     ⚠ **这里曾经发的是废料**（`p.scrap`），而键名、天赋文案（"每波 +8 材料"）、
+     `talents.ts` 的键说明（"每波开始到账的**材料**"）三处说的都是材料 ——
+     键名与实现分叉，工具与文档都跟着说错。它不会报错，只会让
+     "经济流"换个货币变富：实测经济流 5 点的**废料**多 50%、而**材料**只多 25%
+     （那 25% 来自 `harvesting`），于是 `tools/balance.mjs` 报
+     "战斗流在所有指标上都不弱于其他配置 —— 等于没有选择"。
+     根因就是这一行：经济流拿到的不是它该拿的那种钱。
+     （材料是制造业的本钱，废料是商店的本钱 —— 两者不能互换，见 economy.ts。） */
   /* 两个来源相加：天赋经济扇区 + 道具套装的档位（同一套键名 `waveIncome`，
      所以这里只多一项相加，不需要第二条读点）。 */
   var waveIncome = Math.round(
     ((S.omods && S.omods.waveIncome) || 0) +
     ((S.itemSets && S.itemSets.econ && S.itemSets.econ.waveIncome) || 0));
-  if (waveIncome > 0) {
-    p.scrap = (p.scrap || 0) + waveIncome;
-    S.stats_total.scrap += waveIncome;
-    S.waveScrap += waveIncome;
-  }
+  if (waveIncome > 0) gainMaterial(waveIncome);
 
   Game.events.emit('waveStart', n);
 }
@@ -2940,11 +2945,22 @@ function buildSummary(win) {
     level: p.level,
     kills: S.stats_total.kills,
     scrap: Math.round(S.stats_total.scrap),
-    /* **带出去的废料**（`economy.ts` 的 bridge 那一档）：就是 `stats_total.scrap`
-       本身 —— 它是"这一局一共打出来多少"，而不是"结束时手里剩多少"。
-       `scrap` 那一项（上面一行）保留原义：它给战绩屏看"这一局留下了多少"，
-       两者在结算里读的是**不同的问题**，所以两个字段都要有。 */
+    /* ---- 两种货币分开报（**曾经混成一个字段，代价是一笔真实的双计**）----
+       本作有**两种**局内货币，名字容易混、读错了不报错：
+         · 废料 `scrap`    —— 商店本钱，与击杀挂钩（`stats_total.scrap`）
+         · 材料 `material` —— **制造业本钱**，清间与奖励房给，
+                              而且它**当场进钱包**（`Profile.wallet.material`）
+       这里曾经只有一个 `earned`，而它被三处当作**材料**入账
+       （`Profile.applyRun` 的 `addMaterial`、`Save.recordRun` 的 totalMaterials、
+       `main.ts` 的派发），实际填的却是**废料累计** —— 于是玩家每局都拿到一笔
+       凭空多出来的材料（等于废料又发了一遍）。它不报错，只让"材料"这个数字说谎。
+
+       现在两个字段各自只装自己那种货币：
+         · `earned`    = 废料累计（"这一局一共打出来多少废料"，不是手里剩多少）
+         · `materials` = 材料累计（`S.materialEarned`，`gainMaterial` 记的那一笔账）
+       下面每一处消费点都按这两个名字读，不再互相顶替。 */
     earned: Math.round(S.stats_total.scrap),
+    materials: Math.max(0, Math.round(S.materialEarned || 0)),
     damage: Math.round(S.stats_total.dmg),
     taken: Math.round(S.stats_total.taken),
     healed: Math.round(S.stats_total.healed),

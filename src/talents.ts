@@ -85,6 +85,11 @@ var ECON_KEYS: Record<string, string> = {
   // 5 点经济 5.4 波，而且战力流的材料还更多，因为杀得多）。
   // Brotato 的 Harvesting 是**每波结算**的，与击杀脱钩 —— 照抄这一点，
   // 经济流才有"我不需要杀得多也能攒钱"的立足点。
+  // ⚠ 数值刻意压得小：模拟层每清一间**本来就会给一笔材料**
+  // （`endWave` 的 `round((4 + 波次×1.5) × 收获倍率)`，早期一间 10~19），
+  // 所以"每波 +8"在一局早期就接近翻倍。经济流的优势该来自
+  // "折扣 + 收获 + 每波一笔"三者叠加，而不是单靠这一项把材料总量打穿 ——
+  // 后者会让已记录在案的"成型过快"变得更严重。
   waveIncome: '每波开始到账的材料（game.ts startWave；与击杀脱钩的固定产出）'
 };
 /** 折出来的默认值（全 0 = 恒等，这是行为指纹不受影响的前提） */
@@ -94,7 +99,6 @@ var ECON_DEFAULTS: OpeningEcon = { shopDiscount: 0, campDiscount: 0, rerollDisco
     孢子倍率的上限 = 两个孢子节点叠满（商人 +25% + 商会 +60% = +85%），
     再与据点的 +50% 相加后在 profile.ts 里统一封顶（Profile.SPORE_MUL_CAP）。 */
 var ECON_CAP: Record<string, number> = { shopDiscount: 0.6, campDiscount: 0.6, rerollDiscount: 0.6, sporeMul: 0.85, waveIncome: 60 };
-
 /* =========================================================
    3c. 节点表
    ---------------------------------------------------------
@@ -146,17 +150,23 @@ var SHARED = [
   /* ---- 经营（第五块扇区：养成 → 经营那一条边） ----
      这一区的节点**刻意不直接加战力**，代价大多是生命/伤害 ——
      选了它就是在"这局更能打"和"长期更富"之间做取舍。
-     `waveIncome` 是主力：它和击杀脱钩，所以"打不动但会攒钱"是一条真实的路。 */
-  n('g1', 'economy', 'minor', '集市', '收获 +6、每波 +8 材料', { stats: { harvesting: 6 }, econ: { waveIncome: 8 } }),
-  n('g2', 'economy', 'minor', '眼力', '幸运 +6、每波 +8 材料', { stats: { luck: 6 }, econ: { waveIncome: 8 } }),
-  n('g3', 'economy', 'notable', '议价', '商店折扣 +8%、刷新折扣 +12%、每波 +16 材料',
-    { econ: { shopDiscount: 0.08, rerollDiscount: 0.12, waveIncome: 16 } }),
+     `waveIncome` 是主力：它和击杀脱钩，所以"打不动但会攒钱"是一条真实的路。
+     ⚠ 数值经过一次**实测校准**：原先 8/8/16/12/28/12（满投入每波 +47 材料）
+     是按"每波收入约 40 废料"定的，但材料与废料是两种货币、量级也完全不同 ——
+     模拟层每清一间**本来就会给一笔材料**（早期 10~19）。按 8/8/16 会给到
+     "早期翻倍"，实测把 `tools/balance.mjs` 的支配性检查推到了另一个极端。
+     现在满投入每波 +25 材料（约等于"每清一间多拿一件半的料"），
+     经济流的优势落在"折扣 + 收获 + 每波一笔"三者叠加。 */
+  n('g1', 'economy', 'minor', '集市', '收获 +6、每波 +4 材料', { stats: { harvesting: 6 }, econ: { waveIncome: 4 } }),
+  n('g2', 'economy', 'minor', '眼力', '幸运 +6、每波 +4 材料', { stats: { luck: 6 }, econ: { waveIncome: 4 } }),
+  n('g3', 'economy', 'notable', '议价', '商店折扣 +8%、刷新折扣 +12%、每波 +8 材料',
+    { econ: { shopDiscount: 0.08, rerollDiscount: 0.12, waveIncome: 8 } }),
   // 精通类别仍用 'economy' → 与工程扇区的「经济精通」**互斥**（同类精通全树只能选一次）
-  n('g4', 'economy', 'mastery', '商人', '孢子产出 +25%、每波 +12 材料，但生命上限 −3（与工程的「经济精通」互斥）',
-    { econ: { sporeMul: 0.25, waveIncome: 12 }, stats: { maxHp: -3 } }, 'economy'),
-  n('g5', 'economy', 'keystone', '商会', '孢子产出 +60%、商店折扣 +12%、营地折扣 +25%、每波 +28 材料，但伤害 −8%、生命上限 −5',
-    { econ: { shopDiscount: 0.12, campDiscount: 0.25, sporeMul: 0.60, waveIncome: 28 }, stats: { damage: -0.08, maxHp: -5 } }),
-  n('g6', 'economy', 'minor', '库存', '每波 +12 材料（不再是开局一次性）', { econ: { waveIncome: 12 } })
+  n('g4', 'economy', 'mastery', '商人', '孢子产出 +25%、每波 +6 材料，但生命上限 −3（与工程的「经济精通」互斥）',
+    { econ: { sporeMul: 0.25, waveIncome: 6 }, stats: { maxHp: -3 } }, 'economy'),
+  n('g5', 'economy', 'keystone', '商会', '孢子产出 +60%、商店折扣 +12%、营地折扣 +25%、每波 +14 材料，但伤害 −8%、生命上限 −5',
+    { econ: { shopDiscount: 0.12, campDiscount: 0.25, sporeMul: 0.60, waveIncome: 14 }, stats: { damage: -0.08, maxHp: -5 } }),
+  n('g6', 'economy', 'minor', '库存', '每波 +6 材料（不再是开局一次性）', { econ: { waveIncome: 6 } })
 ];
 
 /** 本职子树：每个角色两节点（显著点强化本职机制，基石给身份） */

@@ -869,14 +869,21 @@ console.log('\n[6] 存档系统：战绩记录');
   const empty = Save.records();
   ok(empty.runs === 0 && empty.bestWave === 0, '没有记录时返回全 0 的可用对象（不是 null）');
 
-  Save.addRun({ win: false, wave: 5, level: 6, kills: 40, earned: 100 });
-  Save.addRun({ win: false, wave: 3, level: 9, kills: 80, earned: 50 });
-  Save.addRun({ win: true, wave: 8, level: 12, kills: 20, earned: 10 });
+    /* ⚠ 这里的**两种货币刻意取不同的数**（earned 100/50/10 = 废料累计，
+       materials 7/3/2 = 材料累计）：早先两边都是同一个数字，
+       所以"战绩屏的累计收集读的是废料而不是材料"这个 bug **测不出来** ——
+       它在这个夹具里恒等成立。用不同的数才量得出读的是哪一个。 */
+    Save.addRun({ win: false, wave: 5, level: 6, kills: 40, earned: 100, materials: 7 });
+    Save.addRun({ win: false, wave: 3, level: 9, kills: 80, earned: 50, materials: 3 });
+    Save.addRun({ win: true, wave: 8, level: 12, kills: 20, earned: 10, materials: 2 });
   const r = Save.records();
   ok(r.runs === 3 && r.wins === 1, '局数与胜场累计', r.runs + '/' + r.wins);
   ok(r.bestWave === 8 && r.bestKills === 80 && r.bestLevel === 12,
     '最好成绩取最大值而不是最后一次', JSON.stringify({ w: r.bestWave, k: r.bestKills, l: r.bestLevel }));
-  ok(r.totalKills === 140 && r.totalMaterials === 160, '总量累加', r.totalKills + '/' + r.totalMaterials);
+    ok(r.totalKills === 140, '总击杀累加', r.totalKills);
+    ok(r.totalMaterials === 12,
+      '「累计收集」累加的是**材料**（7+3+2），不是废料（100+50+10）',
+      'totalMaterials=' + r.totalMaterials);
   ok(Save.addRun(null) === null, '空 summary 不会写坏记录');
 
   // 记录损坏 → 退回空白记录，而不是崩

@@ -258,8 +258,8 @@ var ITEM_SETS: SynergyItemSetDef[] = [
     tiers: [
       tier(2, '顺手', '拾取范围 +10、幸运 +3', { pickupRange: 10, luck: 3 }),
       tier(3, '惯犯', '收获 +10、幸运 +6', { harvesting: 10, luck: 6 }),
-      tier(4, '老手', '收获 +22、每波材料 +14（写进 econ，与天赋同一条路）',
-        { harvesting: 22 }, { waveIncome: 14 })
+      tier(4, '老手', '收获 +22、每波材料 +8（写进 econ，与天赋同一条路）',
+        { harvesting: 22 }, { waveIncome: 8 })
     ]
   },
   {

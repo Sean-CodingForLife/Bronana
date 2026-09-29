@@ -419,25 +419,34 @@ console.log('\n[10] 经营扇区：折扣与孢子真的生效，且"空开局"�
   ok(Talent.ECON_CAP.shopDiscount === 0.6, '折扣上限 0.6（与据点/营地同一套）');
   ok(Talent.ECON_CAP.sporeMul === 0.85, '孢子倍率的单项上限 = 两个孢子节点叠满（+85%）');
 
-  /* ---- 每波材料（waveIncome）：与击杀脱钩的那一半，靠它经济流才立得住 ---- */
-  const incomeRun = (n) => {
-    Game.newRun('ranger', 4242, 0, Talent.openingFor('ranger', []), null);
-    const s = Game.getSession();
-    s.player.scrap = 0;
-    s.stats_total.scrap = 0;
-    s.player.scrap += n;          // 直接塞一份修正，绕过天赋表（测的是模拟层的读点）
-    s.stats_total.scrap += n;
-    return s;
-  };
+  /* ---- 每波**材料**（waveIncome）：与击杀脱钩的那一半，靠它经济流才立得住 ----
+     ⚠ 这里曾经断言 `player.scrap`（废料）—— 而键名、天赋文案（"每波 +8 材料"）
+     与 `talents.ts` 的键说明三处说的都是**材料**，模拟层实现的却是废料。
+     键名与实现分叉 4 个字段、3 份文档，谁都没红。它只在 `tools/balance.mjs`
+     上显形：经济流换个货币变富，于是"战斗流在所有指标上都不弱于他人"。
+     现在断言落在**材料**上 —— 那才是这个键名承诺的东西。 */
+  const matBefore = Profile.material();
   Game.newRun('ranger', 4242, 0, { stats: {}, weapons: [], items: [], scrap: 0, econ: { waveIncome: 20 } }, null);
   const si = Game.getSession();
-  ok(si.player.scrap === 20, '开局第一波就到账（每波 +20 → 20）', si.player.scrap);
-  ok(si.stats_total.scrap === 20, '并且算进"本局累计收集"（所以也会折算成孢子）', si.stats_total.scrap);
+  ok(Profile.material() === matBefore + 20,
+    '开局第一波就到账的是**材料**（每波 +20 → 材料 +20）',
+    String(Profile.material() - matBefore));
+  ok(si.materialEarned === 20,
+    '并且记进了这一局的"打到多少材料"（结算与界面展示读它）', String(si.materialEarned));
+  ok(si.player.scrap === 0 && si.stats_total.scrap === 0,
+    '**一废料都不给**（材料与废料是两种货币，不能互换）',
+    'p.scrap=' + si.player.scrap + ' total=' + si.stats_total.scrap);
+
+  const matBefore2 = Profile.material();
   Game.newRun('ranger', 4242, 0, Talent.openingFor('ranger', ['g6']), null);
-  ok(Game.getSession().player.scrap === 12, '「库存」每波 +12', Game.getSession().player.scrap);
+  ok(Profile.material() === matBefore2 + 6,
+    '「库存」每波 +6 材料', String(Profile.material() - matBefore2));
+
+  const matBefore3 = Profile.material();
   Game.newRun('ranger', 4242, 0, null, null);
-  ok(Game.getSession().player.scrap === 0, '空开局 → 一分不给（恒等）');
-  void incomeRun;
+  ok(Profile.material() === matBefore3 && Game.getSession().materialEarned === 0,
+    '空开局 → 一分不给（恒等，这是行为指纹不受影响的前提）',
+    String(Profile.material() - matBefore3));
 
   // 互斥：经营扇区的精通与工程扇区的「经济精通」是同一类 → 只能选一个
   const both = ['e4', 'g4'];

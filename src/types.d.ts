@@ -1497,6 +1497,10 @@ interface RunSummary {
   kills: number; scrap: number; damage: number; taken: number; healed: number;
   /** **带出去的材料**：局内攒下的累计（`stats_total.scrap`），不是手里剩的那个数 */
   earned?: number;
+    /** **这一局打到多少材料**（另一种货币：制造业的本钱）。
+     *  它由 `gainMaterial` 一笔笔记账，与 `earned`（废料累计）**不是一回事** ——
+     *  混用过一次，代价是每局凭空多一笔材料（废料又发了一遍）。 */
+    materials?: number;
   charName: string; weapons: string[]; items: string[];
   stats: StatMap; packs: number; packSpent: number; quit?: boolean;
   /** 本局难度等级（0 = 基准） */
@@ -1974,6 +1978,10 @@ interface ProfileRunInput {
   kills: number; scrap: number; damage: number; taken: number; healed: number;
   /** **带出去的材料**：局内攒下的累计（`stats_total.scrap`），不是手里剩的那个数 */
   earned?: number;
+    /** **这一局打到多少材料**（另一种货币：制造业的本钱）。
+     *  它由 `gainMaterial` 一笔笔记账，与 `earned`（废料累计）**不是一回事** ——
+     *  混用过一次，代价是每局凭空多一笔材料（废料又发了一遍）。 */
+    materials?: number;
   packs: number; win?: boolean;
   /** 本局难度等级（通关时按它解锁下一级） */
   danger?: number;

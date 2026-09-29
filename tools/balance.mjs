@@ -335,19 +335,50 @@ function expTalents() {
   ];
   table('结果（' + SEEDS.length + ' 个种子平均 · 模式 ' + MODE + '）', res);
 
-  // 判定：**严格的支配性**（在所有指标上都不弱于所有其他配置才算支配）。
-  // 带容差：两个配置的波次平均可能只差 0.01 波，那是噪声不是优势。
-  const METRICS = ['wave', 'materials', 'spores'];
-  const EPS = { wave: 0.15, materials: 15, spores: 2 };
-  const geq = (a, b, k) => a[k] >= b[k] - EPS[k];
-  const dominators = res.filter(r => res.every(o => o === r || METRICS.every(k => geq(r, o, k))));
-  console.log('\n  逐项最强：' + METRICS.map(k => k + '=' + res.reduce((a, b) => (b[k] > a[k] ? b : a)).label).join(' · '));
-  console.log('  支配性检查（容差 波次±0.15 / 材料±15 / 孢子±2）：' + (dominators.length
-    ? '⚠ ' + dominators.map(r => r.label).join('、') + ' 在所有指标上都不弱于其他所有配置（等于没有选择）'
-    : '✔ 没有任何配置在所有指标上都不弱于其他配置（取舍是真的）'));
-  console.log('  差距：整套经济 ' + f1(res[5].wave) + ' 波 / ' + f0(res[5].spores) + ' 孢子 vs 战斗流 ' +
-    f1(res[1].wave) + ' 波 / ' + f0(res[1].spores) + ' 孢子（波次 ' + f1(res[5].wave - res[1].wave) +
-    '，孢子 ×' + f1(res[5].spores / Math.max(1, res[1].spores)) + '）');}
+    /* 判定：**按轴**比较，不是跨轴支配。
+       ---------------------------------------------------------
+       原来的判据是"在所有指标上都不弱于所有其他配置"—— 但"波次"是战斗轴的
+       度量、"材料"是经营轴的度量，两个流派**本该各自在自己的轴上赢**。
+       实测里战斗流永远赢波次（它就是为了赢波次），于是这条判据长期报 ⚠，
+       而那个 ⚠ 掩盖了真正该看的东西：**有没有哪一条轴是没人赢的**。
+
+       现在按轴比：
+         · 战斗轴 = 波次（打得深）
+         · 经营轴 = 材料（打得富）—— 折扣与收获的兑现形式就是它
+         · 局外轴 = 孢子（养成进度）
+       判据两条：
+         (a) 每条轴都要有人赢（否则那条轴上的节点是死的，没人会点）
+         (b) 没有任何配置在所有轴上都不弱于他人（**那**才叫"没有选择"） */
+    const AXES = {
+      '战斗轴（打得深）': { get: r => r.wave, eps: 0.15, unit: '波' },
+      '经营轴（打得富）': { get: r => r.materials, eps: 15, unit: '材料' },
+      '局外轴（养成进度）': { get: r => r.spores, eps: 2, unit: '孢子' }
+    };
+    const names = Object.keys(AXES);
+    console.log('\n  逐轴最强（**按轴比**，不跨轴 —— 跨轴支配是错的判据，见代码注释）');
+    const leaders = {};
+    for (const ax of names) {
+      const A = AXES[ax];
+      const best = res.reduce((a, b) => (A.get(b) > A.get(a) ? b : a));
+      const second = res.filter(r => r !== best).reduce((a, b) => (A.get(b) > A.get(a) ? b : a));
+      leaders[ax] = best;
+      const lead = Math.abs(A.get(best) - A.get(second));
+      console.log('    ' + ax.padEnd(16) + best.label.padEnd(22) +
+        f1(A.get(best)) + ' ' + A.unit + '（领先第二名 ' + f1(lead) + '）' +
+        (lead <= A.eps ? '  \x1b[33m⚠ 与噪声同量级\x1b[0m' : ''));
+    }
+    /* (b) 跨轴支配仍然查一次，但作为"真·没有选择"的告警 —— 不是判据错，是设计真的退化 */
+    const METRICS = ['wave', 'materials', 'spores'];
+    const EPS = { wave: 0.15, materials: 15, spores: 2 };
+    const geq = (a, b, k) => a[k] >= b[k] - EPS[k];
+    const dominators = res.filter(r => res.every(o => o === r || METRICS.every(k => geq(r, o, k))));
+    console.log('  跨轴支配（三个轴都不弱于所有对手）：' + (dominators.length
+      ? '\x1b[33m⚠ ' + dominators.map(r => r.label).join('、') + ' —— 这一次是真的"没有选择"，' +
+        '不是判据错了：查一下别的流派有没有自己的轴\x1b[0m'
+      : '\x1b[32m✔ 没有任何配置在三个轴上都压过对手\x1b[0m'));
+    const distinct = new Set(names.map(ax => leaders[ax].label));
+    console.log('  轴的多样性：' + distinct.size + '/' + names.length + ' 条轴由不同配置领先（' +
+      names.map(ax => ax.split('（')[0] + '=' + leaders[ax].label).join(' · ') + '）');}
 
 /* =========================================================
    实验二：营地组合（批次 D）

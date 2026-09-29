@@ -147,9 +147,14 @@ Save.addRun = function (summary) {
   if (summary.win) r.wins += 1;
   r.totalKills += kills;
   /* 跨局累计收集：喂它的是 **earned**（带出去的材料），不是 `scrap`（局内废料）——
-     两个是不同的问题："这一局一共打出来多少" 与 "局内花剩多少"。
-     用错的那个会让战绩屏上的"累计收集"随着玩家少买东西而变少。 */
-  r.totalMaterials += Number(summary.earned) || 0;
+     ⚠ 三种东西名字近、含义完全不同，而**用错不报错**：
+       · `scrap`     = 结算时手里还剩多少废料（取决于买了多少东西）
+       · `earned`    = 这一局一共打出来多少**废料**
+       · `materials` = 这一局打到多少**材料**（另一种货币，制造业的本钱）
+     这里要的是第三种：战绩屏上的"累计收集"数的是带出去的材料。
+     （早先读的是 `earned`，那时它装的是废料累计 —— 于是"累计收集"数的是废料，
+     而界面上把它叫材料。） */
+  r.totalMaterials += Number(summary.materials) || 0;
   if (wave > r.bestWave) r.bestWave = wave;
   if (kills > r.bestKills) r.bestKills = kills;
   if (level > r.bestLevel) r.bestLevel = level;

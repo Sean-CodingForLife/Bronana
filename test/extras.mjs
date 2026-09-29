@@ -14,6 +14,7 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { loadAll, SIM_MODULES } from './_load.mjs';
 import { uiMissingActs } from './_acts.mjs';
 
@@ -152,13 +153,35 @@ console.log('[3] 每周挑战：UTC 的 ISO 周');
   ok(Season.weekKey(Date.UTC(2026, 4, 4, 12)) !== fri, '下一周的周一是新的键',
     Season.weekKey(Date.UTC(2026, 4, 4, 12)));
 
-  // 时区无关
-  const savedTZ = process.env.TZ;
+  /* 时区无关。⚠ 上一版是"设 process.env.TZ 再算一遍、断言相等" ——
+     那条判据在 **glibc 上恒真**（Node 用过 Date 之后时区就缓存了，
+     Linux 常常不再重读）。所以它看着在守时区无关、其实什么都没验。
+     现在两条一起做：**真的在新时区的子进程里算**（TZ 在进程启动前设好）+ 
+     源码里不许出现本地时间读取。 */
+  const seasonSrc = fs.readFileSync(path.join(ROOT, 'src', 'season.ts'), 'utf8');
+  /* ⚠ 只查"**本地时间分量**"的读取（`getHours` / `getDate` …）。
+     `getTime()` **不算** —— 它返回的是 epoch 毫秒，与时区无关
+     （第一版把它也报出来了，那会逼着人把正确的写法改掉）。 */
+  const localCalls = [...seasonSrc.matchAll(
+    /\bget(?:FullYear|Month|Date|Day|Hours|Minutes|Seconds|Milliseconds|TimezoneOffset)\(/g)].map(m => m[0]);
+  ok(localCalls.length === 0,
+    'season.ts 里一次本地时间读取都没有（只有 getUTC*；与平台无关）', localCalls.join(','));
+  const tzProbe = (tz) => {
+    const code = 'import("./src/season.ts").then(m=>{' +
+      'process.stdout.write(m.Season.weekKey(Date.UTC(2026,4,1,12)))' +
+      '}).catch(e=>{console.error(e.message);process.exit(1)})';
+    const r = spawnSync(process.execPath, ['-e', code], {
+      cwd: ROOT, encoding: 'utf8', env: { ...process.env, TZ: tz }
+    });
+    return (r.stdout || '').trim() || ('ERR:' + (r.stderr || '').trim().split('\n')[0]);
+  };
   const before = Season.weekKey(Date.UTC(2026, 4, 1, 12));
-  process.env.TZ = 'Pacific/Kiritimati';
-  const afterTZ = Season.weekKey(Date.UTC(2026, 4, 1, 12));
-  process.env.TZ = savedTZ;
-  ok(before === afterTZ, '改时区不影响周键（用的是 getUTC*）', before + ' / ' + afterTZ);
+  const kiritimati = tzProbe('Pacific/Kiritimati');     // UTC+14
+  const tahiti = tzProbe('Pacific/Tahiti');             // UTC-10
+  ok(kiritimati === before,
+    '**在真的 UTC+14 进程里**周键不变（这才叫"改时区不影响"）', before + ' / ' + kiritimati);
+  ok(tahiti === before,
+    '**在真的 UTC-10 进程里**周键也不变', before + ' / ' + tahiti);
 
   // ISO 跨年：2027-01-01（周五）属于 2026 年第 53 周
   ok(Season.weekKey(Date.UTC(2027, 0, 1, 12)) === '2026-W53',
