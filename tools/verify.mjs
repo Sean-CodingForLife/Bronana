@@ -116,6 +116,12 @@ const GATES = [
     name: '局内进度字段一致性',
     cmd: ['node', ['tools/flow-audit.mjs']],
     why: '存档往返后每个进度字段逐一对得上（"读档静默少一半进度"是最难查的一类）'
+  },
+  {
+    id: 'readme',
+    name: 'README 存量表与实测一致',
+    cmd: ['node', ['tools/readme-stats.cjs', '--check']],
+    why: '**漂了的统计比没有统计更糟** —— 它看起来是量过的（这张表真的漂过）'
   }
 ];
 

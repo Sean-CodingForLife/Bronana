@@ -57,6 +57,8 @@
     "guards": "node tools/guard-gaps.mjs",
     "yaml": "node tools/yaml-check.mjs",
     "drift": "node tools/registry-drift.mjs",
+    "readme:stats": "node tools/readme-stats.cjs",
+    "readme:check": "node tools/readme-stats.cjs --check",
     "draw": "node tools/draw-census.mjs",
     "score": "node tools/score.mjs",
     "ui-text": "node tools/extract-ui-text.mjs",

@@ -227,7 +227,10 @@ src/                  ← 全部是真正的 ES 模块：import / export，没�
   depth.ts            Z 深度：层带 + 层内 y 排序 + 确定性 tie-break（sim 不参与）★
   sprites.ts          全部造型绘制（怪物 / 武器 / 道具 / 特效；豆豆转交 bronana.ts）
   emit.ts             粒子发生器（特效配方 + 对象池）
-  game.ts             模拟层（纯逻辑，无 DOM）★
+  game.ts             模拟层（纯逻辑，无 DOM）★ 会话 / 状态机 / 武器 / 波次 / 主更新 / 存档
+  chamber.ts          **房间层**：玩家在这一层走到哪了（地图状态 / 迷雾 / 门 / 暗门墙 / 翻层 / 深度回报）★
+  grid.ts             **空间网格**：把敌人编进格子 + "圈里有谁"（子弹 / 近战 / 爆炸的范围查询）★
+  impact.ts           **打中之后的痕迹**：血迹贴花（环形缓冲）+ 屏幕抖动请求（⚠ 会消费 `S.rnd()`）★
   record.ts           录制回放：带子 = 种子 + 每帧输入 + 命令帧号（非确定性无从隐藏）★
   envelope.ts         信封 + 版本 + 迁移链的**工厂**（存档与账号档案各拿一份独立版本）★
   diag.ts             诊断面板（卡顿 / 分配 / 容器水位；只读）
@@ -688,11 +691,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 55 个 · 24793 行（另有 `types.d.ts` 2821 行） |
+| 模块 | 68 个 · 32175 行（另有 `types.d.ts` 3703 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 33 · `utils.ts` 22（它谁也不依赖）· `selfcheck.ts` 20 |
-| 依赖最重的模块 | `ui.ts` 32 · `game.ts` 27 · `main.ts` 24 |
-| 超过 700 行的模块 | `game.ts` 3446 · `ui.ts` 2589 · `sprites.ts` 1254 · `render.ts` 1111 · `profile.ts` 1028 · `dungeon.ts` 981 · `affixes.ts` 792 · `main.ts` 796 |
+| 扇入最高的模块 | `registry.ts` 43 · `selfcheck.ts` 40 · `utils.ts` 25 |
+| 依赖最重的模块 | `ui.ts` 37 · `game.ts` 31 · `main.ts` 29 |
+| 超过 700 行的模块 | `game.ts` 3530 · `ui.ts` 2882 · `sprites.ts` 1540 · `render.ts` 1400 · `profile.ts` 1377 · `dungeon.ts` 992 · `main.ts` 920 · `affixes.ts` 792 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
