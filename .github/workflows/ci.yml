@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   verify:
-    name: 五道门
+    name: 全部门（清单与 tools/verify.mjs 对账，见那个文件的 ciDrift）
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -97,10 +97,17 @@ jobs:
       - name: 门 5a · 美术规范与资源归属
         run: pnpm run art
 
-      - name: 门 5b · 声明表 ↔ 运行时读点对账
+      # 这一条是**补上的**：加 `solid` 那条门时忘了往这个文件里抄一份，
+      # 于是 CI 比 `pnpm verify` 少跑一道门，而两边都显示绿色。
+      # 现在 `tools/verify.mjs` 自己会对账（每个门的脚本名必须出现在本文件里），
+      # 所以这张手抄的清单**漂不了了** —— 漏一条 `pnpm verify` 当场变红。
+      - name: 门 5b · 音效调用普查（该响的时候有没有人按按钮）
+        run: pnpm run audio:census
+
+      - name: 门 5c · 声明表 ↔ 运行时读点对账
         run: pnpm run reconcile
 
-      - name: 门 5c · i18n 表（只报"表中孤儿"，未翻译量不是失败）
+      - name: 门 5d · i18n 表（只报"表中孤儿"，未翻译量不是失败）
         run: pnpm run ui-text -- --check
 
       # ---------- 附加：数值曲线与循环 ----------
@@ -118,6 +125,9 @@ jobs:
 
       - name: 附加 · 硬编码体检
         run: pnpm run hardcode -- --strict
+
+      - name: 附加 · SOLID 体检
+        run: pnpm run solid -- --strict
 
 # =========================================================
 # 刻意**没有**放进 CI 的东西，以及为什么

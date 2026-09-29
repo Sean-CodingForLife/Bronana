@@ -1,19 +1,31 @@
 # 参与开发
 
 先把最要紧的一件事说清楚：**这个项目"改对了"的定义不是"看起来能跑"，
-而是"下面那五道门全绿"**。它们都是可执行的命令，不是人工检查表。
+而是"下面这些门全绿"**。它们都是可执行的命令，不是人工检查表。
 
 ```bash
 pnpm i                 # 装依赖（只有 4 个 devDependencies，没有运行时依赖）
 pnpm dev               # 起开发服务器 → http://127.0.0.1:5180
 
-# —— 提交前必须全绿的五道门 ——
+# —— 提交前跑这一条就够（它就是下面那些门的总和）——
+pnpm verify            # 全部 17 道门，约 90 秒
+pnpm verify --quick    # 迭代用的快档，约 20 秒（跳过测试套件，并明说跳了什么）
+pnpm verify --list     # 只是列出有哪些门、每道门在挡什么
+
+# —— 也可以单独跑某一道 ——
 pnpm typecheck         # tsc ×2（src + node 两套配置），必须 0 错
-pnpm test              # 48 套测试，必须全绿
+pnpm test              # 52 套测试，必须全绿
 pnpm fingerprint       # 行为指纹，必须逐位不变（除非你是有意改行为，见下）
 pnpm run audit         # 分层 / 环 / 死代码 / 未读字段
 pnpm run guards        # 家族与模块守卫
 ```
+
+> ⚠ **加门的唯一去处是 `tools/verify.mjs` 的 `GATES` 表。**
+> `.github/workflows/ci.yml` 每个门一个 step（失败时一眼看出是哪道），
+> 而那张手抄的清单**已经漂过一次** —— 加 `solid` 时忘了往 CI 里抄一份，
+> 于是 CI 比 `pnpm verify` 少跑一道门，**两边都显示绿色**。
+> 现在 `verify.mjs` 自己对账：每个门的脚本名必须出现在 `ci.yml` 里，
+> 漏一条当场变红。所以往 `GATES` 加门之后，**顺手往 `ci.yml` 加一个 step**。
 
 其余体检工具见 [`README.md`](README.md) 的"全量测试"一节，或直接看 `package.json` 的
 `scripts`（每一个都能单独跑）。

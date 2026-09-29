@@ -64,6 +64,7 @@
     "readme:check": "node tools/readme-stats.cjs --check",
     "solid": "node tools/solid-audit.cjs",
     "hardcode": "node tools/hardcode-audit.cjs",
+    "audio:census": "node tools/audio-census.mjs",
     "draw": "node tools/draw-census.mjs",
     "score": "node tools/score.mjs",
     "ui-text": "node tools/extract-ui-text.mjs",

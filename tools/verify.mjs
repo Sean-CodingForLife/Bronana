@@ -95,6 +95,14 @@ const GATES = [
     why: '每一类美术资源都要有"生产模块"；登记为备用的效果不算缺口，但没登记的算'
   },
   {
+    id: 'audio',
+    name: '音效调用普查（该响的时候有没有人按按钮）',
+    cmd: ['node', ['tools/audio-census.mjs']],
+    why: '`Sfx.audit()` 只验"声明过的都挂了函数"，它验不了另一半：**声明了却没有任何调用点** —— ' +
+      '表现是"那件事没声音"，而**无声是最难注意到的一类退化**（玩家会以为自己没开音量）。' +
+      '这条同时对齐"模拟层广播的意图 ↔ 入口接的线"，并抓 `Sfx.xxx` 写错字母'
+  },
+  {
     id: 'reconcile',
     name: '声明表 ↔ 运行时读点对账',
     cmd: ['node', ['tools/reconcile.mjs']],
@@ -146,13 +154,68 @@ const GATES = [
   }
 ];
 
+/* =========================================================
+   自检：**CI 的步骤清单必须与这张表对得上**
+   ---------------------------------------------------------
+   为什么把这件事放进 `verify.mjs` 自己身上，而不是再写一个工具：
+   它验的是"**这张表**有没有被别处如实照抄"，判据只依赖这个文件里的
+   `GATES` 与 `ci.yml` 的文本 —— 换任何别的文件来管都得先把 `GATES` 读出去。
+
+   ## 这段失败史：它已经漂过一次，而且漂得静默
+
+   `.github/workflows/ci.yml` 是一份**手抄**的步骤清单（每个门一个 step，
+   这样失败时一眼看出是哪道门）。手抄的清单会漂，而且漂了没人知道：
+   加 `solid` 那条门的时候忘了往 `ci.yml` 里抄一份 ——
+   于是 **CI 比 `pnpm verify` 少跑一道门**，而两边都显示绿色。
+   这与 `README` 那张存量表是同一个病（"漂了的统计比没有统计更糟"），
+   只是这次漂的是**门本身**：你以为 CI 守住了，它没有。
+
+   判据只认一条能当场验证的事实：**每个门的 npm 脚本名都出现在 ci.yml 里**。
+   不比对顺序、不比对 step 名字（那些可以自由写）—— 只要求"这一步真的跑了"。
+   反向不查：CI 可以跑 verify 之外的东西（构建 `dist/` 就是必须的，
+   而它不在门的清单里）。
+   ========================================================= */
+function ciDrift() {
+  const ciPath = path.join(ROOT, '.github', 'workflows', 'ci.yml');
+  if (!fs.existsSync(ciPath)) return { ok: true, missing: [], note: '（没有 ci.yml，跳过）' };
+  /* 每个门在 package.json 里对应的脚本名：`cmd[1]` 里那个 `tools/xxx` 或 `test/xxx` 的文件名 */
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const scripts = pkg.scripts || {};
+  const ci = fs.readFileSync(ciPath, 'utf8');
+  /* ci.yml 里出现过的所有 `pnpm run <name>` / `pnpm <name>` 与 `node tools/xxx` */
+  const used = new Set();
+  for (const m of ci.matchAll(/pnpm (?:run )?([a-zA-Z0-9:_-]+)/g)) used.add(m[1]);
+  const missing = [];
+  for (const g of GATES) {
+    /* 这个门的命令指向哪个工具/测试文件 → 找出所有指向它的脚本名（可能不止一个） */
+    const target = (g.cmd[1] || []).find(a => /^(tools|test)\//.test(String(a)));
+    if (!target) continue;
+    const names = Object.keys(scripts).filter(k => String(scripts[k]).includes(target));
+    if (!names.length) continue;                      // 没有脚本名就无从比对（门自己没登记）
+    if (!names.some(n => used.has(n))) missing.push({ gate: g.id, file: target, as: names.join(' / ') });
+  }
+  return { ok: missing.length === 0, missing };
+}
+const CI_DRIFT = ciDrift();
+if (!CI_DRIFT.ok) {
+  console.log('\n\x1b[31m✘ CI 比这张表少跑门（手抄的清单漂了）\x1b[0m');
+  for (const m of CI_DRIFT.missing) {
+    console.log('    · 门 `' + m.gate + '`（' + m.file + '）在 ci.yml 里找不到（脚本名：' + m.as + '）');
+  }
+  console.log('\n  修法：往 `.github/workflows/ci.yml` 加一个 step 跑它。');
+  console.log('  \x1b[90m这与 README 那张存量表是同一个病：清单看起来是量过的，其实漏了。\x1b[0m\n');
+  process.exit(1);
+}
+
 if (LIST) {
   console.log('\n=== `pnpm verify` 会跑的门 ===\n');
   for (const g of GATES) {
     console.log('  ' + g.id.padEnd(14) + (g.slow ? '\x1b[33m[慢：--quick 跳过]\x1b[0m ' : '') + g.name);
     console.log('  ' + ' '.repeat(14) + '\x1b[90m' + g.why + '\x1b[0m');
   }
-  console.log('\n  共 ' + GATES.length + ' 条 · 全量约 90s · --quick 约 20s\n');
+  console.log('\n  共 ' + GATES.length + ' 条 · 全量约 90s · --quick 约 20s');
+  console.log('  与 `ci.yml` 的步骤清单对账：' +
+    (CI_DRIFT.note ? CI_DRIFT.note : (CI_DRIFT.ok ? '\x1b[32m✔ 每条门都在 CI 里\x1b[0m' : '\x1b[31m✘ 有门没进 CI\x1b[0m')) + '\n');
   process.exit(0);
 }
 

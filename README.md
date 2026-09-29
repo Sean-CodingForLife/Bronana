@@ -5558,7 +5558,7 @@ C 两个方向都对照：有脚本没进套件、进套件没脚本，都报出
 
 | 文件 | 内容 |
 | --- | --- |
-| `.github/workflows/ci.yml` | 五道门：typecheck / 49 套测试 / 行为指纹 / 分层+守卫+漂移+YAML / 内容账单。**每个门一个 step**（失败时一眼看出是哪道） |
+| `.github/workflows/ci.yml` | 五道门：typecheck / 测试套件 / 行为指纹 / 分层+守卫+漂移+YAML / 内容账单。**每个门一个 step**（失败时一眼看出是哪道）。<br>⚠ **这份清单是手抄的，而且它漂过**：加 `solid` 那条门时忘了往这里抄一份，于是 CI 比 `pnpm verify` 少跑一道门、而两边都显示绿色。现在 `tools/verify.mjs` 自己会**对账**（每个门的脚本名必须出现在这个文件里，漏一条 `pnpm verify` 当场变红）—— 手抄的清单从此漂不了 |
 | `.github/ISSUE_TEMPLATE/*.yml` | bug 报告（要求种子 —— 本项目随机可复现）与功能建议（要求**从问题说起**，不是从方案说起） |
 | `.github/pull_request_template.md` | 检查表直接列那五道门，并要求说明指纹动了没有 |
 | `CHANGELOG.md` | **没有 tag、没有发布版本**这件事写在开头 —— 假装有版本线比没有更糟 |
@@ -6207,7 +6207,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **16 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **52 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | 逐位不变：`8b90ed4f` / `08205e33` / `f4f27172`（纯重构的判据） |
 | 模块 | 69 个 · 34k 行（另有 `types.d.ts` 3.9k 行） |
