@@ -18,7 +18,12 @@
    ⚠ 工坊（营地）的买卖**不在这里**：它是跨局的账号资产，
    买与卖在 `Profile.campBuy / campSell`，见下面第 3 节。
    ========================================================= */
-import { Camp } from './camp.ts';
+/* ⚠ 这里**不该**再 import `Camp`（原先是 `import { Camp } from './camp.ts'`）：
+   营地的买卖搬去 `Profile.campBuy/campSell` 之后，本文件已经没有一处**代码**
+   用到它 —— 只剩注释里提到那个名字。
+   它是个**真死 import**，代价不只是"一行没用"：`arch-audit` 的依赖图会把它
+   算成一条真实的边（分层方向、扇入扇出都会被它影响），于是架构结论带着一条
+   不存在的依赖。抓到它的是 `arch-audit` 的"未使用的具名 import"那一节。 */
 import { Affixes } from './affixes.ts';
 import { Comp } from './comp.ts';
 import { Craft } from './craft.ts';

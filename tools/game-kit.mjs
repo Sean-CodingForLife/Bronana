@@ -20,6 +20,7 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import srcFiles from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -28,11 +29,21 @@ const JSON_OUT = process.argv.includes('--json');
 /* ---------------- 读源码（一次读全，下面所有检查共用） ----------------
    ⚠ **只扫实现文件，不扫类型声明与注释以外的东西**：
    第一版把 `types.d.ts` 也算进来，于是"成就"在注释「图鉴里该列出来的」里被撞词，
-   把一项**根本不存在**的功能报成了"已有"。尺子先于结论 —— 
-   撞词假阳是这份工具最坏的失效方式（它会让人以为已经做了）。 */
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && f !== 'types.d.ts');
+   把一项**根本不存在**的功能报成了"已有"。尺子先于结论 ——
+   撞词假阳是这份工具最坏的失效方式（它会让人以为已经做了）。
+
+   ⚠ 用共享扫描器（`tools/src-files.cjs`）而**不是** `readdirSync(SRC)`：
+   本工具通篇按文件名取源码（`src['audio.ts']`），而 `readdirSync` 在
+   目录化之后**拿不到子目录里的文件** —— 于是每一项 `src['xxx']` 都是
+   `undefined`，检查全部静默失效，而工具照样报"已有 26 / 缺 0"。
+   所以这里**同时用两种键**：完整路径 + 裸文件名，目录化前后都能取到。 */
+const relFiles = srcFiles.list().filter(f => !f.endsWith('.d.ts'));
 const src = Object.create(null);
-for (const f of files) src[f] = fs.readFileSync(path.join(SRC, f), 'utf8');
+/* 裸名 → 源码（保持既有检查的写法不变） */
+for (const rel of relFiles) src[srcFiles.relName(rel)] = fs.readFileSync(path.join(SRC, rel), 'utf8');
+/* 完整路径 → 源码（目录化后想按路径取也能取到） */
+for (const rel of relFiles) src[rel] = src[srcFiles.relName(rel)];
+const files = relFiles;
 /** 去掉注释后的源码（判断"真的写了代码"还是"只在注释里提过"用这个） */
 function codeOf(f) {
   return (src[f] || '')

@@ -20,6 +20,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { SYSTEMS, EXCEPTIONS, BY_ID, SYS_OF } = require('./systems.cjs');
+const srcFiles = require('./src-files.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -30,15 +31,40 @@ function stripComments(s) {
 }
 function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-/* ---------------- 1. 逐个模块扫描 ---------------- */
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && f !== 'types.d.ts').sort();
+/* ---------------- 1. 逐个模块扫描 ----------------
+   ⚠ **目录无关的解析**（这是"目录化分层"的前置条件）。
+   改写之前这里假定 `src/` 是平铺的：`readdirSync(SRC)` 拿到裸文件名当 key，
+   而 import 字符串也是 `'./game.ts'` → `'game.ts'`，两边天然相等。
+   一旦文件进了子目录（`src/sim/game.ts`），import 会写成 `'./combat.ts'`
+   而 key 是 `'sim/game.ts'` —— **对不上**，于是 `if (!mods[d]) continue`
+   会把所有跨目录依赖**静默跳过**：环检测、扇入、分层方向全都会"变绿"，
+   因为它们根本没看见那些边。这类"尺子读漏了"的失效在本项目栽过多次。
+
+   现在分两层：
+     · `files`  —— **完整相对路径**（`sim/game.ts`），目录化后依然唯一
+     · `keyOf`  —— 把任意 import 串解析成 `files` 里的 key（同目录按相对路径找，
+                   找不到就退回按裸文件名找）。于是"平铺"与"目录化"两种形态
+                   都能解析，搬家不会让审计失效。 */
+const files = srcFiles.list().filter(f => !f.endsWith('.d.ts'));
+/** 裸文件名 → 完整路径（用于把 `'./game.ts'` 这种同目录引用解析成 key） */
+const byBase = Object.create(null);
+for (const f of files) byBase[srcFiles.relName(f)] = f;
+/** 把 import 串解析成 files 里的 key；解析不出就返回 null（外部模块） */
+function keyOf(fromRel, importStr) {
+  const target = path.posix.normalize(path.posix.join(path.posix.dirname(fromRel), importStr));
+  if (files.indexOf(target) >= 0) return target;
+  const base = srcFiles.relName(importStr);
+  return byBase[base] || null;
+}
 
 function scanModules() {
   const mods = {};
   for (const f of files) {
     const raw = read(path.join(SRC, f));
     const src = stripComments(raw);
-    const deps = [...src.matchAll(/^import\s[^'"]*from\s*'\.\/([^']+)'/gm)].map(m => m[1]);
+    const deps = [...src.matchAll(/^import\s[^'"]*from\s*'([^']+)'/gm)]
+      .map(m => keyOf(f, m[1]))
+      .filter(Boolean);
     mods[f] = {
       file: f,
       loc: raw.split('\n').length,

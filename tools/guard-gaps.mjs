@@ -29,6 +29,10 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import srcFiles from './src-files.cjs';
+import { createRequire } from 'node:module';
+const require2 = createRequire(import.meta.url);
+const { SYSTEMS: SYSTEMS_FOR_PARITY } = require2('./systems.cjs');
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -37,12 +41,20 @@ const JSON_OUT = process.argv.includes('--json');
    默认只拦缺陷级 —— 理由见文件末尾"结果"那一节。 */
 const STRICT = process.argv.includes('--strict');
 
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && f !== 'types.d.ts').sort();
+/* ⚠ 用共享扫描器（`tools/src-files.cjs`）而不是 `readdirSync(SRC)`：
+   后者假定 `src/` 是平铺的 —— 一旦目录化，**子目录里的模块会被静默漏掉**，
+   而本工具照样全绿。见 `src-files.cjs` 文件头的说明。 */
+const relFiles = srcFiles.list().filter(f => !f.endsWith('.d.ts'));
+/** 完整路径 → 裸文件名（本工具通篇按模块名讲话，报告里写 `game.ts` 更可读） */
+const files = relFiles.map(srcFiles.relName);
 const raw = Object.create(null);
-for (const f of files) raw[f] = fs.readFileSync(path.join(SRC, f), 'utf8');
-const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 const code = Object.create(null);
-for (const f of files) code[f] = strip(raw[f]);
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+for (let i = 0; i < relFiles.length; i++) {
+  const text = fs.readFileSync(path.join(SRC, relFiles[i]), 'utf8');
+  raw[files[i]] = text;
+  code[files[i]] = strip(text);
+}
 
 const readDir = (d) => {
   const o = Object.create(null);
@@ -185,9 +197,15 @@ const untested = mods.filter(m => !m.tests.length && !m.tools.length);
 /* 提示：有声明表但没进总账 */
 const tableNoFamily = mods.filter(m => m.tables.length && !m.declares.length);
 const big = mods.filter(m => m.codeLoc > 700).sort((a, b) => b.codeLoc - a.codeLoc);
-/* **缺陷级只有这一项**：无参、能进启动期、却没登记 —— 写了守卫但没接上必经之路。
+/* 盘上的模块 vs 分层表（**每个文件都必须有人认领**）。
+   算在这里而不是打印时 —— 它进"缺陷级"，所以必须在算 DEFECTS 之前就有值。
+   这条是"目录化分层"的前置守卫：新文件放进子目录而忘了写进分层表，
+   它就永远不会被"边只能高→低"覆盖。 */
+const parity = srcFiles.parity(SYSTEMS_FOR_PARITY);
+/* **缺陷级**：① 无参、能进启动期、却没登记（写了守卫但没接上必经之路）
+   ② 盘上有文件没人认领 / 表里有模块盘上没有。
    `unguarded` 是提示级，理由见文件末尾。 */
-const DEFECTS = notRegistered.length;
+const DEFECTS = notRegistered.length + parity.problems.length;
 
 if (JSON_OUT) {
   console.log(JSON.stringify({ fams: famRows, unguarded: unguarded.map(f => f.name), notRegistered: notRegistered.map(m => m.file), untested: untested.map(m => m.file) }, null, 1));
@@ -207,7 +225,24 @@ console.log('  守住的家族：' + (famRows.length - unguarded.length) + ' / '
   ' · 引用 ' + famRows.filter(f => f.how === '引用').length +
   ' · 两道都有 ' + famRows.filter(f => f.how === '自检+引用').length + '）\n');
 
-console.log('[1] 没人守的家族（值域写错要等玩家遇到才发现）\n');
+/* =========================================================
+   [0] 盘上的模块 vs 分层表（**每个文件都必须有人认领**）
+   ---------------------------------------------------------
+   这条是"目录化分层"的前置守卫。此前没人对账过，于是有一个文件
+   一直漂在体系外而没人发现：`types.d.ts`（盘上 66 个、表里 65 个）。
+   它不算运行时模块，但**必须被明确登记为"不算"** ——
+   否则下一次"盘上多一个文件"也会以同样的方式悄悄溜过去。
+
+   目录化之后这条更重要：新文件放进 `src/sim/` 而忘了写进分层表，
+   它就永远不会被分层检查覆盖（"边只能高→低"对它不成立）。
+   ========================================================= */
+console.log('[0] 模块与分层表对账（盘上 ' + parity.files.length + ' 个 .ts · 表里 ' +
+  Object.keys(parity.declared).length + ' 个 · 明确不算的 ' +
+  Object.keys(srcFiles.UNAFFILIATED).length + ' 个）\n');
+if (parity.ok) console.log('  \x1b[32m✔ 每个文件都被认领了（在分层表里，或明确登记为"不算运行时模块"）\x1b[0m');
+else for (const p of parity.problems) console.log('  \x1b[31m✘\x1b[0m ' + p);
+
+console.log('\n[1] 没人守的家族（值域写错要等玩家遇到才发现）\n');
 if (!unguarded.length) console.log('  \x1b[32m✔ 无\x1b[0m');
 else {
   console.log('  ' + PAD('家族', 20) + PAD('声明于', 20) + '说明');
@@ -285,8 +320,8 @@ console.log('  \x1b[36m提示级\x1b[0m：没人守的家族 ' + unguarded.lengt
    那是把两类东西混成一个数字：前者上一节自己用的是黄字 `!`（提示），
    后者才是红的。混起来以后，这个总数既不等于红也不等于黄，谁也没法据此行动。
    现在分开算，并且**让退出码真的跟着红走**。 */
-console.log('  \x1b[31m缺陷级\x1b[0m：无参却未登记的启动期自检 ' + notRegistered.length + ' 个' +
-  (notRegistered.length ? ' \x1b[31m✘\x1b[0m' : ' \x1b[32m✔\x1b[0m'));
+console.log('  \x1b[31m缺陷级\x1b[0m：无参却未登记的启动期自检 ' + notRegistered.length + ' 个 · 没被认领的文件 ' + parity.problems.length + ' 个' +
+  (DEFECTS ? ' \x1b[31m✘\x1b[0m' : ' \x1b[32m✔\x1b[0m'));
 if (unguarded.length) {
   console.log('  ⚠ ' + unguarded.length + ' 个家族没人守，但**这不一定该修**：');
   console.log('    家族只要没人跨表引用，`Registry.audit()` 本来就不查它；');
