@@ -1256,8 +1256,6 @@ var ACT_SETTINGS: ActMap = {
   },
   'fullscreen': function () { U.toggleFullscreen(); renderSettings(); },
   'set-speed': function () { Settings.set('speed', Settings.get('speed') >= 2 ? 1 : 2); renderSettings(); },
-  'set-volume-up': function () { Settings.set('volume', Settings.get('volume') + Settings.def('volume').step); renderSettings(); },
-  'set-volume-down': function () { Settings.set('volume', Settings.get('volume') - Settings.def('volume').step); renderSettings(); },
   'set-shake-up': function () { Settings.set('shake', Settings.get('shake') + Settings.def('shake').step); renderSettings(); },
   'set-shake-down': function () { Settings.set('shake', Settings.get('shake') - Settings.def('shake').step); renderSettings(); },
   'keys-default': function () {
@@ -1277,6 +1275,27 @@ var ACT_SETTINGS: ActMap = {
     refreshContinueButton();
     UI.toast('已清空存档、记录、账号档案与设置', 'warn');
   },
+};
+
+/* =========================================================
+   音量（单独一组，**不是**设置组的一部分）
+   ---------------------------------------------------------
+   为什么拆出来：`test/ui-check.mjs` 有一条"没有杂物箱"的判据 ——
+   **单组超过 20 个动作就先拆开**。加了分组音量之后设置组到了 21 个，
+   于是这条尺子红了。它红得对：那一组里同时住着"开关""循环切档""改键"
+   "清空存档"四类东西，本来就该按**它管什么**分开，而不是按"哪个界面"。
+
+   四条增减动作写的是同一个形状（读 `Settings.def(...).step`，不写死步长）：
+   把步长写进这里的话，改一次步长要改五处，而漏改一处就是"总音量能拖到
+   0.02 一档、分组音量只能拖 0.05 一档"这种没人会发现的偏差。
+   ========================================================= */
+var ACT_VOLUME: ActMap = {
+  'set-volume-up': function () { Settings.set('volume', Settings.get('volume') + Settings.def('volume').step); renderSettings(); },
+  'set-volume-down': function () { Settings.set('volume', Settings.get('volume') - Settings.def('volume').step); renderSettings(); },
+  'set-sfxvol-up': function () { Settings.set('sfxVolume', Settings.get('sfxVolume') + Settings.def('sfxVolume').step); renderSettings(); },
+  'set-sfxvol-down': function () { Settings.set('sfxVolume', Settings.get('sfxVolume') - Settings.def('sfxVolume').step); renderSettings(); },
+  'set-musvol-up': function () { Settings.set('musicVolume', Settings.get('musicVolume') + Settings.def('musicVolume').step); renderSettings(); },
+  'set-musvol-down': function () { Settings.set('musicVolume', Settings.get('musicVolume') - Settings.def('musicVolume').step); renderSettings(); }
 };
 
 var ACT_CHARS: ActMap = {
@@ -1529,6 +1548,7 @@ var ACT_SAVES: ActMap = {
 var ACT_GROUPS: Record<string, ActMap> = {
   shell: ACT_SHELL,
   settings: ACT_SETTINGS,
+  volume: ACT_VOLUME,
   saves: ACT_SAVES,
   chars: ACT_CHARS,
   shop: ACT_SHOP,
@@ -2722,6 +2742,8 @@ function renderSettings() {
   var s = qq('set-sound'); if (s) s.textContent = Settings.get('sound') ? '开' : '关';
   var mu = qq('set-music'); if (mu) mu.textContent = Settings.get('music') ? '开' : '关';
   var v = qq('set-volume-val'); if (v) v.textContent = Math.round(Settings.get('volume') * 100) + '%';
+  var sv = qq('set-sfxvol-val'); if (sv) sv.textContent = Math.round(Settings.get('sfxVolume') * 100) + '%';
+  var mv = qq('set-musvol-val'); if (mv) mv.textContent = Math.round(Settings.get('musicVolume') * 100) + '%';
   var sp = qq('set-speed'); if (sp) sp.textContent = Settings.get('speed') + 'x';
   var sh = qq('set-shake-val'); if (sh) sh.textContent = Math.round(Settings.get('shake') * 100) + '%';
   var fp = qq('set-fps'); if (fp) fp.textContent = Settings.get('fps') ? '开' : '关';

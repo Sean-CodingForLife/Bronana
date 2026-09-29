@@ -8,6 +8,14 @@ import { SelfCheck } from './selfcheck.ts';
 var Sfx = ({
   ctx: null,
   master: null,
+  /* 两条分组总线（init 里建）。**默认 1 = 与改造前完全同响度** ——*/
+  sfxBus: null,
+  musicBus: null,
+  /* 相对比例：总音量由 `volume` 管，这两项只管两条总线之间怎么配比 */
+  sfxVolume: 1,
+  musicVolume: 1,
+  /** 闪避系数（duckFor 用；1 = 不让路） */
+  duck: 1,
   enabled: true,
   volume: 0.22
 } as SfxApi);
@@ -20,7 +28,7 @@ Sfx.init = function () {
     Sfx.ctx = new AC();
     Sfx.master = Sfx.ctx.createGain();
     Sfx.master.gain.value = Sfx.enabled ? gainOf(Sfx.volume) : 0;
-    /* 主输出链：`gain → limiter → destination`。
+    /* 主输出链：`master → limiter → destination`。
        改造前是 `gain → destination`，**中间一个节点都没有** —— 后果不是音质差
        而是**硬削波**：`explode` 一次就叠了 noise(0.5) + tone(0.34)，
        `waveClear` 是四个音以 95ms 间隔排出去，彼此重叠求和；求和超过 1.0 时
@@ -34,6 +42,30 @@ Sfx.init = function () {
     lim.release.value = 0.1;
     Sfx.master.connect(lim);
     lim.connect(Sfx.ctx.destination);
+
+    /* =========================================================
+       两条分组总线：`master ← { sfxBus, musicBus }`
+       ---------------------------------------------------------
+       改造前**只有一条 master**，音乐与音效共用它。那是"单一音量出口"这个
+       正确决定的副产品：它保证了"调了音量音乐也变、静音了音乐也停"，
+       但代价是**没有分组能力** —— 玩家想"音效大一点、音乐小一点"做不到。
+
+       现在分成两条，但**单一出口这件事没有丢**：
+         · `master` 仍然是唯一的**总音量**（玩家的 `volume` 落在它上面）
+         · 两条总线各有自己的**相对比例**（默认 1 = 与改造前完全同响度）
+         · 音乐仍然**没有**自己直连 `destination` 的路径 —— 这正是
+           `test/audio.mjs` 那条断言要防的事，断言本身改成查这一点
+
+       为什么要 fan-out 而不是串起来（`master → sfxBus → musicBus`）：
+       串联会让两条总线的音量**相乘**，"音效 0.5、音乐 0.5"会变成音乐 0.25。
+       并联（master 同时接到两条）语义才对：各自独立、最后在 master 汇总。 */
+    Sfx.sfxBus = Sfx.ctx.createGain();
+    Sfx.sfxBus.gain.value = gainOf(Sfx.sfxVolume);
+    Sfx.sfxBus.connect(Sfx.master);
+
+    Sfx.musicBus = Sfx.ctx.createGain();
+    Sfx.musicBus.gain.value = gainOf(Sfx.musicVolume);
+    Sfx.musicBus.connect(Sfx.master);
   } catch (e) { Sfx.enabled = false; }
 };
 
@@ -100,6 +132,71 @@ Sfx.setVolume = function (v) {
   return Sfx.volume;
 };
 
+/* =========================================================
+   分组音量：音乐与音效各自一条总线
+   ---------------------------------------------------------
+   总音量（`volume`）仍然落在 `master` 上，所以"调总音量两条一起变"
+   这件事没有变。这两项只管**两条总线之间的配比**。
+   默认 1 = 改造前完全同响度 —— 老存档没有这两个字段时取默认值，
+   所以升级不会让任何人的响度变掉。
+   ========================================================= */
+/* 音乐侧的两个值（总线比例 / 闪避系数）改了就通知一声。
+   **为什么是回调而不是直接调 `Music.refresh()`**：`audio.ts` 与 `music.ts`
+   都在第 6 层（声音是同一层的两半），互相 import 会立刻构成循环依赖 ——
+   而分层表会把这条边算成违规。回调把"谁听"变成注册制：
+   `music.ts` 自己订阅，`audio.ts` 一个模块名都不用知道。 */
+var musicListeners: Array<() => void> = [];
+Sfx.onMusicVolume = function (fn) {
+  if (typeof fn === 'function' && musicListeners.indexOf(fn) < 0) musicListeners.push(fn);
+  return musicListeners.length;
+};
+
+/** 把音乐总线的增益推一遍（比例 × 闪避），并通知订阅者 */
+function refreshMusicBus() {
+  if (Sfx.musicBus) Sfx.musicBus.gain.value = gainOf(Sfx.musicVolume) * (Sfx.duck || 1);
+  for (var i = 0; i < musicListeners.length; i++) {
+    /* 订阅者（`music.ts`）要在**它自己那条曲目总线**上把同样的值再走一遍曲线，
+       所以它自己读 `Sfx.musicVolume` / `Sfx.duck`，这里不传参。 */
+    try { musicListeners[i](); } catch (e) { /* 订阅者出错不该影响发声 */ }
+  }
+}
+Sfx.refreshMusic = refreshMusicBus;
+
+Sfx.setBusVolume = function (which, v) {
+  var x = Math.max(0, Math.min(1, Number(v) || 0));
+  if (which === 'music') {
+    Sfx.musicVolume = x;
+    refreshMusicBus();
+  } else {
+    Sfx.sfxVolume = x;
+    if (Sfx.sfxBus) Sfx.sfxBus.gain.value = gainOf(x);
+  }
+  return x;
+};
+
+/* =========================================================
+   闪避（ducking）：重要音效响起时**把音乐压低**再放回来
+   ---------------------------------------------------------
+   行业判据（audio-design 清单）：结算/升级/爆炸这类"该被听见"的音，
+   不该和背景音乐平分注意力。做法不是把音效调响（那会让耳朵累），
+   而是**让音乐暂时让路**。
+
+   为什么现在才做：它需要一条**独立的音乐总线**（上面的 `musicBus`）——
+   在"只有一条 master"的结构下无从下手，因为压低音乐必然也压低音效。
+
+   实现刻意从简：`duck` 是一个 0..1 的系数，乘在音乐总线上；
+   `duckFor()` 把它压到 `DUCK_LEVEL` 并在 `ms` 后按 `setTimeout` 放回。
+   没有用侧链压缩器：那需要把 sfxBus 接到压缩器的 sidechain 上，
+   而 Web Audio 的 `DynamicsCompressor` **没有** sidechain 输入
+   （要做真侧链得自己搭 `AudioWorklet`）。对"结算音"这种**离散事件**
+   来说，定时包络完全够用，且行为可预测、可测。
+   ========================================================= */
+var DUCK_LEVEL = 0.35;        // 压到 35%（约 -9dB）—— 听得出让路，但不至于"音乐停了"
+Sfx.DUCK_LEVEL = DUCK_LEVEL;
+var duckTimer = null;
+/** 让音乐让路 `ms` 毫秒（重复调用会重置计时，不会叠加压低） */
+Sfx.duckFor = function (ms) { return beginDuck(ms); };
+
 function env(node, t0, a, d, peak) {
   var g = node.gain;
   g.cancelScheduledValues(t0);
@@ -120,7 +217,7 @@ function tone(freq, dur, type, peak, slideTo?, when?) {
   osc.frequency.setValueAtTime(freq, t0);
   if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + dur);
   env(g, t0, 0.006, dur, peak === undefined ? 0.5 : peak);
-  osc.connect(g); g.connect(Sfx.master);
+  osc.connect(g); g.connect(Sfx.sfxBus);
   osc.start(t0); osc.stop(t0 + dur + 0.04);
 }
 
@@ -140,7 +237,7 @@ function noise(dur, peak, filterHz, q?, when?) {
   f.type = 'lowpass'; f.frequency.value = filterHz || 1400; f.Q.value = q || 1;
   var g = ctx.createGain();
   env(g, t0, 0.004, dur, peak === undefined ? 0.4 : peak);
-  src.connect(f); f.connect(g); g.connect(Sfx.master);
+  src.connect(f); f.connect(g); g.connect(Sfx.sfxBus);
   src.start(t0);
 }
 
@@ -181,6 +278,47 @@ function vary() {
 }
 Sfx.JITTER = JITTER;
 
+/* =========================================================
+   哪几个音效要**让音乐让路**（闪避）—— 这是数据，不是散在各处的调用
+   ---------------------------------------------------------
+   为什么是一张表而不是在 `game.ts` 里逐个手写 `Sfx.duckFor(...)`：
+     1. `game.ts` 是模拟层（第 4 层），让它去管"混音策略"是把表现层的决定
+        塞进模拟层 —— 而且每加一个"该被听见"的音效就要回去改 `game.ts`；
+     2. 表在这里可以被自检直接验（id 必须真实存在、时长必须合理），
+        散在调用点就只能靠人眼。
+   只有**低频且重要**的音效进这张表：爆炸、升级、清波、买入、受伤。
+   命中和开火**不进** —— 它们每秒响十几次，闪避会变成持续的抖动（"抽气"），
+   那正是 audio-design 清单里警告的 pumping。
+   ========================================================= */
+var DUCK_FOR = {
+  explode: 420,
+  levelUp: 520,
+  waveClear: 600,
+  waveStart: 320,
+  hurt: 260,
+  buy: 200
+};
+Sfx.DUCK_FOR = DUCK_FOR;
+
+/** 一次闪避的启动（`duckFor` 的同步部分）—— 建 `musicBus` 之前不生效 */
+function beginDuck(ms) {
+  if (!Sfx.musicBus) return false;
+  Sfx.duck = DUCK_LEVEL;
+  refreshMusicBus();
+  if (duckTimer) clearTimeout(duckTimer);
+  duckTimer = setTimeout(function () {
+    duckTimer = null;
+    Sfx.duck = 1;
+    refreshMusicBus();
+  }, Math.max(0, Number(ms) || 0));
+  return true;
+}
+/** 一个音效播完之后，按表决定要不要压低音乐 */
+function duckIfLoud(id) {
+  var ms = DUCK_FOR[id];
+  if (ms) beginDuck(ms);
+}
+
 Sfx.shoot = function (kind) {
   if (!throttle('shoot', 45)) return;
   var j = vary();
@@ -196,18 +334,18 @@ Sfx.kill = function () {
   noise(0.1, 0.34 * j.peak, 900 * j.pitch, undefined, j.when);
   tone(150 * j.pitch, 0.09, 'triangle', 0.22 * j.peak, 60 * j.pitch, j.when);
 };
-Sfx.hurt = function () { var j = vary(); tone(220 * j.pitch, 0.16, 'square', 0.4 * j.peak, 90 * j.pitch, j.when); };
+Sfx.hurt = function () { duckIfLoud('hurt'); var j = vary(); tone(220 * j.pitch, 0.16, 'square', 0.4 * j.peak, 90 * j.pitch, j.when); };
 /* **命中音**：改造前"开火有声、命中无声" —— 而玩家真正想听见的是"打着了"。
    音色刻意做得比 `kill` 短、比 `deny` 高：它是**最高频的反馈**（每秒可能十几次），
    必须轻、必须短，否则会盖住别的音。
    与 `kill` 的分工：`hit` = "打到了但没死"，`kill` = "打死了"（更低、更闷）。 */
 Sfx.hit = function () { if (throttle('hit', 40)) { var j = vary(); tone(760 * j.pitch, 0.045, 'square', 0.15 * j.peak, 520 * j.pitch, j.when); } };
-Sfx.levelUp = function () { tone(520, 0.1, 'square', 0.3); setTimeout(function () { tone(700, 0.1, 'square', 0.3); }, 90); setTimeout(function () { tone(950, 0.16, 'square', 0.3); }, 180); };
-Sfx.buy = function () { var j = vary(); tone(700 * j.pitch, 0.07, 'square', 0.28 * j.peak, 900 * j.pitch, j.when); };
+Sfx.levelUp = function () { duckIfLoud('levelUp'); tone(520, 0.1, 'square', 0.3); setTimeout(function () { tone(700, 0.1, 'square', 0.3); }, 90); setTimeout(function () { tone(950, 0.16, 'square', 0.3); }, 180); };
+Sfx.buy = function () { duckIfLoud('buy'); var j = vary(); tone(700 * j.pitch, 0.07, 'square', 0.28 * j.peak, 900 * j.pitch, j.when); };
 Sfx.deny = function () { tone(160, 0.12, 'square', 0.3, 110); };
-Sfx.explode = function () { var j = vary(); noise(0.32, 0.5 * j.peak, 700 * j.pitch, 0.6, j.when); tone(90 * j.pitch, 0.3, 'triangle', 0.34 * j.peak, 40 * j.pitch, j.when); };
-Sfx.waveStart = function () { tone(320, 0.14, 'square', 0.3); setTimeout(function () { tone(480, 0.2, 'square', 0.3); }, 140); };
-Sfx.waveClear = function () { [440, 590, 740, 990].forEach(function (f, i) { setTimeout(function () { tone(f, 0.13, 'square', 0.26); }, i * 95); }); };
+Sfx.explode = function () { duckIfLoud('explode'); var j = vary(); noise(0.32, 0.5 * j.peak, 700 * j.pitch, 0.6, j.when); tone(90 * j.pitch, 0.3, 'triangle', 0.34 * j.peak, 40 * j.pitch, j.when); };
+Sfx.waveStart = function () { duckIfLoud('waveStart'); tone(320, 0.14, 'square', 0.3); setTimeout(function () { tone(480, 0.2, 'square', 0.3); }, 140); };
+Sfx.waveClear = function () { duckIfLoud('waveClear'); [440, 590, 740, 990].forEach(function (f, i) { setTimeout(function () { tone(f, 0.13, 'square', 0.26); }, i * 95); }); };
 Sfx.click = function () { var j = vary(); tone(420 * j.pitch, 0.04, 'square', 0.2 * j.peak, 560 * j.pitch, j.when); };
 Sfx.pickup = function () { if (throttle('pickup', 60)) { var j = vary(); tone(1400 * j.pitch, 0.04, 'square', 0.12 * j.peak, 1800 * j.pitch, j.when); } };
 
@@ -260,10 +398,13 @@ Sfx.audit = function () {
       problems.push('音效 ' + d.id + ' 在声明表里，但 Sfx.' + d.id + ' 不是函数（它不会响）');
     }
   }
-  /* 反向：挂了函数但没进声明表 = 清单会漂（下次有人照着清单改，会漏掉它） */
+  /* 反向：挂了函数但没进声明表 = 清单会漂（下次有人照着清单改，会漏掉它）。
+     豁免的是**混音控制**（不是"会响的音":音量旋钮、总线配比、闪避、
+     订阅）——它们不发声，进 `LIST` 会让"音效清单"变成"成员清单"。 */
   var SKIP: Record<string, boolean> = {
     init: true, resume: true, setEnabled: true, setVolume: true, gainOf: true,
-    audit: true, LIST: true, JITTER: true, blocked: true
+    audit: true, LIST: true, JITTER: true, blocked: true,
+    setBusVolume: true, duckFor: true, refreshMusic: true, onMusicVolume: true
   };
   for (var k in bag) {
     if (SKIP[k]) continue;
@@ -276,6 +417,29 @@ Sfx.audit = function () {
     problems.push('音量曲线看起来是线性的（gainOf(0.5) = ' + Sfx.gainOf(0.5) + '）—— 滑杆在低端会"不灵"');
   }
   if (Sfx.gainOf(0) !== 0 || Sfx.gainOf(1) !== 1) problems.push('音量曲线的两端必须正好是 0 与 1');
+
+  /* ---- 闪避表：id 必须真实存在，时长必须合理 ---- */
+  if (!(DUCK_LEVEL > 0 && DUCK_LEVEL < 1)) {
+    problems.push('闪避系数必须落在 (0,1)：' + DUCK_LEVEL + '（0 = 音乐直接消失，1 = 没让路）');
+  }
+  for (var dk in DUCK_FOR) {
+    var ms = DUCK_FOR[dk];
+    if (typeof bag[dk] !== 'function') {
+      problems.push('闪避表里的 ' + dk + ' 不是一个真实音效（那一行永远不会触发）');
+    }
+    if (!(ms >= 100 && ms <= 2000)) {
+      problems.push(dk + ' 的闪避时长不合理：' + ms + 'ms（太短听不出让路，太长像音乐被掐了）');
+    }
+  }
+  /* **高频音效不许进闪避表**：每秒响十几次的音一让路，音乐就会被反复抽气
+     （audio-design 清单里的 pumping）。这条是判据，不是注释。 */
+  var highFreq = ['shoot', 'hit', 'melee', 'click', 'pickup', 'kill'];
+  for (var hf = 0; hf < highFreq.length; hf++) {
+    if (DUCK_FOR[highFreq[hf]]) {
+      problems.push(highFreq[hf] + ' 是高频音效，不该进闪避表 —— 会把音乐抽成"呼吸"（pumping）');
+    }
+  }
+
   for (var j in JITTER) {
     if (!(JITTER[j] > 0 && JITTER[j] < 0.2)) {
       problems.push('抖动幅度 ' + j + '=' + JITTER[j] + ' 不在 (0, 0.2) 内（听得出"跑调"或等于没变化）');

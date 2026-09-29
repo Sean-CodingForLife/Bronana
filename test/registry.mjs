@@ -156,6 +156,8 @@ console.log('\n[4] 静态契约');
     sound: ['set-sound'],
     music: ['set-music'],
     volume: ['set-volume-up', 'set-volume-down'],
+    sfxVolume: ['set-sfxvol-up', 'set-sfxvol-down'],
+    musicVolume: ['set-musvol-up', 'set-musvol-down'],
     speed: ['set-speed'],
     fps: ['set-fps'],
     shake: ['set-shake-up', 'set-shake-down'],

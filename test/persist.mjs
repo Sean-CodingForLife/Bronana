@@ -81,8 +81,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
   }
 
   const ALLOWED = {
-    'game.ts': ['S', '_seat', '_cand', '_candT', '_candRaw', '_segQ'],
-    'emit.ts': ['S', 'STEP_CTX'],
+    'game.ts': ['S', '_seat', '_cand', '_candT', '_candRaw', '_segQ'],    'emit.ts': ['S', 'STEP_CTX'],
     'render.ts': ['w', 'h', '_skin', '_pose', '_parts', '_seat', '_flashOpt', 'pf', '_atlasWarm',
       // 横幅（"第 N 间 · 房型"）的文本与倒计时：**纯表现**，所以它住在渲染层而不是会话上
       'banner'],
@@ -93,7 +92,10 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
        于是它们既被 `isMutable` 判成"可变"，又不在"当前存在的可变状态"清单里，
        白名单一登记就成了"已删除的条目"。下面的孤儿检查按**属性名**判，
        整类"对象字段型的可变状态"从此都能正常登记。 */
-    'music.ts': ['current', 'intensity', 'timer', 'step', 'enabled', 'wantedIntensity'],
+    'music.ts': ['current', 'intensity', 'timer', 'step', 'enabled',
+      // 交叉淡入用的**曲目总线**与**请求但还没生效**的强度档
+      // （`wanted` 与 `intensity` 分开存，是"换挡走小节线"的实现方式）
+      'bus', 'wanted'],
     /* i18n 的当前语言：**纯偏好**（它自己落盘在 settings 里，不进存档）。
        `slots.ts` 的两项是"当前槽位"与"最近一次坏档回退的记录" ——
        前者是**偏好性质的会话状态**（该由界面决定何时切，不参与模拟），
@@ -124,7 +126,10 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     // 惰性解析出来的摇杆 DOM 引用（缓存）+ 手柄按键的复用缓冲 + 改键回调 + 一次性的"已解析"标记
     // `_padHeld`：上一帧手柄有没有按住键（只在"有→无"时清一次缓冲，避免每帧分配两个对象）
     'input.ts': ['hasDOM', '_capture', '_padKeys', '_padOnce', '_padHeld', '_stickEl', '_knobEl', '_stickReady'],
-    'audio.ts': ['lastSfx'],
+    /* `lastSfx` = 节流表（纯表现：同一音效的时间戳）。
+       `duckTimer` = 闪避的放回定时器 —— 它也是纯表现，而且**必须**登记：
+       一个没被放回的定时器会让音乐永远小声，而这件事没有任何别的尺子看得见。 */
+    'audio.ts': ['lastSfx', 'duckTimer'],
     'draw2d.ts': [],
     'utils.ts': ['Perf', 'PAL_MODE'],
     /* 首局引导：`seen`（说过哪几条）与 `enabled`（开关）都是**纯偏好** ——

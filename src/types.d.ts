@@ -397,11 +397,27 @@ interface MusicApi {
   timer: any;
   step: number;
   enabled: boolean;
+  /** 音乐总线上的**淡入淡出增益**（换曲交叉淡入 / 强度换挡用）。不走它 = 硬切 */
+  bus: GainNode | null;
+  /** 上一次强度档（`update` 用它避免每帧重设）；换挡**在小节线上**生效，不在这里 */
+  wanted: number;
+  /** 交叉淡入的时长（秒）。硬切是"每帧调 play 会把曲子掐回第一拍"的旧行为 */
+  FADE: number;
+  /** `Music.bus` 的稳态值 = 音乐总线比例 × 闪避（**不含**淡入淡出包络） */
+  targetGain(): number;
+  /** 把 `Music.bus` 推到目标（唯一写入口：淡入淡出 / 脉冲 / 换曲都走它） */
+  setGain(target: number, sec?: number): boolean;
+  /** 强度换挡的"咬"：短促压低再放回（换挡走小节线，见 `schedule`） */
+  pulse(): boolean;
+  /** 配比 / 闪避变了：让**正在放的那首**立刻跟上（订阅自 `Sfx.onMusicVolume`） */
+  refresh(): boolean;
+  /** 交叉淡入：把 `Music.bus` 从 `from` 线性推到 `to`，`sec` 秒后归位 */
+  fade(from: number, to: number, sec: number): void;
   stepDur(track: MusicTrackDef): number;
   schedule(ctx: any): void;
   tone(at: number, freq: number, dur: number, wave: string, peak: number, dest: any): void;
   hit(at: number, kind: string, peak: number, dest: any): void;
-  /** 放一条曲子（同一首不重启） */
+  /** 放一条曲子（同一首不重启；换曲时**交叉淡入**而不是硬切） */
   play(id: string): boolean;
   stop(): boolean;
   /** **唯一的换曲入口**：按场景 + 强度决定放什么 */
@@ -2954,6 +2970,31 @@ interface SfxApi {
   gainOf(v: number): number;
   /** 改音量的唯一出口（初始化与 applySetting 都走它，保证同一条曲线） */
   setVolume(v: number): number;
+  /* ---- 分组总线：`master ← { sfxBus, musicBus }` ----
+     `master` 仍是**唯一的总音量**；两条总线只管"音效与音乐之间怎么配比"。
+     音乐**必须**走 `musicBus`，不许自己直连 `destination`（`test/audio.mjs` 守这条）。 */
+  sfxBus: GainNode | null;
+  musicBus: GainNode | null;
+  /** 两条总线的相对比例（0..1，默认 1 = 与"只有一条 master"时完全同响度） */
+  sfxVolume: number;
+  musicVolume: number;
+  /** 当前闪避系数（1 = 不让路）。`duckFor` 期间为 `DUCK_LEVEL` */
+  duck: number;
+  /** 闪避压到多低（自检与测试读它，别处不许再写一个数字） */
+  DUCK_LEVEL: number;
+  /** **哪几个音效要让音乐让路**（音效 id → 压低时长 ms）。
+   *  低频重要的那些（爆炸/升级/清波…）在内，高频的（命中/开火）**不在** ——
+   *  高频的一让路，音乐会被反复抽气（pumping）。 */
+  DUCK_FOR: Record<string, number>;
+  /** 让音乐让路 `ms` 毫秒（重要音效响起时）；无 `musicBus` 时返回 false */
+  duckFor(ms: number): boolean;
+  /** 改某条总线的相对比例；`which` 只认 `'sfx'` / `'music'` */
+  setBusVolume(which: string, v: number): number;
+  /** 订阅"音乐配比/闪避变了"（`music.ts` 用它把正在放的曲目跟上）；
+   *  用回调而不是直接调 `Music.refresh()`，是为了不在第 6 层里循环依赖 */
+  onMusicVolume(fn: () => void): number;
+  /** 立刻把音乐总线的增益推一遍（比例 × 闪避），并通知订阅者 */
+  refreshMusic(): void;
   /** 每次播放的抖动幅度（音高/音量/起音时刻）—— 只在自检与测试里读 */
   JITTER: { pitch: number; peak: number; when: number };
   /** 音效声明表（自检与文档用；**唯一出处**，不是另抄一份） */

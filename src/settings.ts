@@ -29,7 +29,13 @@ var Settings = {} as SettingsApi;
 var FIELDS: Record<string, SettingDef> = {
   sound: { type: 'bool', def: true, label: '音效', note: '总开关（音乐一起关）' },
   music: { type: 'bool', def: true, label: '背景音乐', note: '程序化生成的占位曲；关掉只留音效' },
-  volume: { type: 'number', def: 0.22, min: 0, max: 1, step: 0.02, label: '音量' },
+  volume: { type: 'number', def: 0.22, min: 0, max: 1, step: 0.02, label: '总音量' },
+  /* ---- 分组音量：音效与音乐各自的比例（乘在总音量之上） ----
+     为什么默认 1 而不是 0.5：默认值必须让**升级前后响度完全一样**。
+     老存档里没有这两个字段，取默认值 1 时与改造前（只有一条 master）
+     同响度；给它们各写 0.5 会让所有老玩家一升级就"突然小声了一半"。 */
+  sfxVolume: { type: 'number', def: 1, min: 0, max: 1, step: 0.05, label: '音效音量', note: '相对总音量的比例' },
+  musicVolume: { type: 'number', def: 1, min: 0, max: 1, step: 0.05, label: '音乐音量', note: '相对总音量的比例；调到 0 = 只留音效' },
   speed: { type: 'enum', def: 1, values: [1, 2], label: '游戏速度' },
   fps: { type: 'bool', def: false, label: '帧率叠加层', note: '左上角显示 fps / 帧耗时 / 实体数' },
   shake: { type: 'number', def: 1, min: 0, max: 2, step: 0.1, label: '屏幕抖动' },

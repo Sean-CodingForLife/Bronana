@@ -74,7 +74,13 @@ function applySetting(key, value) {
        滑杆值要过一条**感知曲线**（响度是对数感知的，线性赋值会让滑杆"不灵"）。
        曲线只在 `audio.ts` 里实现一处，否则初始化与改设置会走两条不同的曲线。 */
     Sfx.setVolume(value);
-  } else if (key === 'music') Music.setEnabled(!!value);
+  }
+  /* 分组音量：走 `Sfx.setBusVolume`（同样有唯一实现）。
+     它会把音乐总线推一遍，并**通知正在放的那首曲子**跟上 —— 所以滑杆
+     是即时生效的，不用等下一首。 */
+  else if (key === 'sfxVolume') Sfx.setBusVolume('sfx', value);
+  else if (key === 'musicVolume') Sfx.setBusVolume('music', value);
+  else if (key === 'music') Music.setEnabled(!!value);
   else if (key === 'speed') Game.speed = value >= 2 ? 2 : 1;
   else if (key === 'fps') R.showFps = !!value;
   else if (key === 'shake') applyShake();
