@@ -101,13 +101,13 @@
 | --- | --- | --- | --- |
 | 存纯数据而非运行时对象 | ✅ | `exportRun` / `Profile.snapshot` 都是纯数据 | — |
 | 有版本号字段 | ✅ | `Envelope.create({name, version:1})`（`profile.ts:37`） | — |
-| **版本迁移链** | ❌ | `env.migration` 存在但**从未注册过任何迁移** | 至今靠"新字段缺省即默认"兼容；`Envelope.open` 对缺级会返回 null |
+| **版本迁移链** | ✅ | `save.ts` 的信封升到 **v2**，登记了第一级真迁移（v1 的据点等级是**数字**、v2 是 `{设施id: 等级}`）；链的**连续性**与"更新的档必须被拒"都有判据 | — |
 | 原子写 | 🟡 | `localStorage` 无改名语义；靠**双写 `.bak`** + 读坏回退 | Windows 上 rename 不保证原子，`.bak` 是实际保命的那一层 |
 | 读档防御（逐字段夹取） | ✅ | `Profile.load` 逐字段夹取 + `onlyKnown` 白名单；`perChar` 用无原型对象防 `__proto__` | — |
 | 坏档告知玩家 | ✅ | `Slots.lastRecovery()` → 界面提示"档坏过、已回退" | — |
 | 槽位与自动存档分离 | ✅ | 3 槽位（`Storage.slotKey`）+ `Save.saveRun/clearRun` | — |
 | 导入导出有校验和 | ✅ | `BRNA1.<base64>.<fnv1a>` | — |
-| **"用旧版本的档启动"有测试** | ❌ | 没有这类测试 | 迁移链为空 = 这条永远没被验过 |
+| **"用旧版本的档启动"有测试** | ✅ | `test/migration.mjs`：`test/fixtures/run-v1.json` 是一份**真的 v1 存档**（由 `tools/make-migration-fixture.mjs` 在代码还是 v1 时导出，那个脚本会拒绝在 v2 上重跑）。两条路径都验：信封（**形状**）与 `importRun`（**语义**） | — |
 
 ### ⑤ `game-feel`
 

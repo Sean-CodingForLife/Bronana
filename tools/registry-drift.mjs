@@ -39,7 +39,18 @@ const ONE_SHOT = ['apply-comp', 'batch-close', 'batch-num', 'decal-decide', 'dec
 /* 被别的文件 import 的库（不是给人直接跑的命令） */
 const LIBS = ['systems'];
 
-const readDir = d => fs.readdirSync(path.join(ROOT, d));
+/* **只在特定版本上才能成功的脚本**：夹具生成器要求在"当前存档版本 = 1"时
+   才肯跑（跑在 v2 上会把夹具覆盖成新版，夹具就失去意义了）。
+   它不该有 npm 脚本 —— 货架上的命令应该**始终**能跑成功，而这个脚本
+   升版之后会**故意**拒绝自己。要跑它只能直接 `node tools/…`，
+   那时你一定会先读到它的前置检查在说什么。 */
+const VERSION_LOCKED = ['make-migration-fixture'];
+
+/* ⚠ 只看**文件**：`test/` 下面现在有子目录（`fixtures/` 放迁移夹具），
+   而 `readFileSync` 撞上目录会抛 EISDIR —— 那是"工具被数据目录绊倒"，
+   不是"代码有问题"。第一版就是这么崩的。 */
+const readDir = d => fs.readdirSync(path.join(ROOT, d))
+  .filter(f => fs.statSync(path.join(ROOT, d, f)).isFile());
 
 /* 一个文件名有没有被 repo 里任何文件 import / require。
    ⚠ 匹配的是**带引号的相对路径**（`'./_run.mjs'` / `'../test/_run.mjs'`），
@@ -63,7 +74,8 @@ const toolRows = toolFiles.map(f => {
   const keys = Object.entries(scripts).filter(([, v]) => v.includes('tools/' + f)).map(([k]) => k);
   const oneShot = ONE_SHOT.indexOf(base) >= 0;
   const lib = LIBS.indexOf(base) >= 0 || isImported(f, ['tools', 'test']);
-  return { file: f, base, keys, oneShot, lib, ok: keys.length > 0 || oneShot || lib };
+  const locked = VERSION_LOCKED.indexOf(base) >= 0;
+  return { file: f, base, keys, oneShot, lib, locked, ok: keys.length > 0 || oneShot || lib || locked };
 });
 const toolsMissingEntry = toolRows.filter(r => !r.ok);
 

@@ -24,10 +24,34 @@ var Save = {} as SaveApi;
  * 信封机制共用，但**版本号与迁移链是本域自己的**：
  * 只改档案格式时不必让 run/records 跟着一起跨版本。
  * 约定见 envelope.ts：`migration(from, fn)` 把 from 版的 data 改成 from+1 版。
- * 现在只有 v1，所以迁移表是空的 —— 价值在于"下次改格式时不必再想机制"，
- * 测试用合成旧档（v0）验证这条链真的能跑通。
  */
-var env = Envelope.create({ name: 'save', version: 1 });
+var env = Envelope.create({ name: 'save', version: 2 });
+
+/* =========================================================
+   v1 → v2：把据点等级写成**对象**而不是数字
+   ---------------------------------------------------------
+   v1 的 `keep` 是"据点一共几级"这一个数字（早期据点只有一条升级线）。
+   后来据点变成"多个设施各几级"，`Stronghold.modsFor(owned)` 要的是一个
+   `{ 设施id: 等级 }` 映射 —— 于是新存档写的是对象，而**所有 v1 存档**里
+   那个数字在新代码里含义完全不同：`levelOf(3, id)` 读出 `undefined`，
+   表现是"读档之后据点加成全部消失"，而且不报错。
+
+   迁移做的事：认形状。数字（v1）→ `{}`（这一局的据点修正归零）。
+   为什么不能"把数字猜成某个设施几级"：那个数字说不出是哪座设施，
+   猜错会**凭空送出一份加成**；而归零只是"这一局没有据点加成"，
+   与"老档本来就没有多设施据点"这个事实一致。
+
+   ⚠ 这一级迁移存在之后，`importRun` 里那条"形状不对就当空"的守卫
+   **保留不删**：迁移管的是"从信封读进来的老档"，而 `importRun` 也可能
+   被其它入口直接调用（成绩码、测试、将来的云存档）—— 两道防线守的是
+   两条不同的路径，不是重复。
+   ========================================================= */
+env.migration(1, function (data) {
+  var out: Record<string, any> = {};
+  for (var k in data) if (Object.prototype.hasOwnProperty.call(data, k)) out[k] = data[k];
+  if (typeof out.keep === 'number') out.keep = {};
+  return out;
+});
 
 Save.VERSION = env.VERSION;
 Save.migration = env.migration;

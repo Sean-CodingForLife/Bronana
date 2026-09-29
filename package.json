@@ -20,6 +20,7 @@
     "typecheck:report": "node tools/tsc-report.cjs",
     "test": "node test/run-all.mjs",
     "suites": "node tools/run-suites.cjs",
+    "test:migration": "node test/migration.mjs",
     "test:feel": "node test/feel.mjs",
     "test:modes": "node test/modes.mjs",
     "test:dungeon": "node test/dungeon.mjs",

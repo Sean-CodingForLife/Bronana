@@ -3163,7 +3163,6 @@ Game.importRun = function (data) {
      注意存的是**这一局开局时**的图纸集合，而不是"现在档案里的"：
      中途解锁的新图纸不该回溯地改变一局已经开始的对局。 */
   var smods = { owned: data.keep, forge: data.forge };
-
   var sess = Game.newRun(info.char,
     isFinite(Number(data.seed)) ? Number(data.seed) : undefined,
     isFinite(Number(data.danger)) ? Number(data.danger) : 0,
