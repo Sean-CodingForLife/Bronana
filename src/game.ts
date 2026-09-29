@@ -1,0 +1,3604 @@
+/* =========================================================
+game.ts — 模拟层（纯逻辑，无 DOM / 无 canvas）
+浏览器与 Node 无头测试共用同一份代码
+========================================================= */
+
+import { AI } from './ai.ts';
+import { Affixes } from './affixes.ts';
+import { Registry } from './registry.ts';
+import { Arena } from './arena.ts';
+import { Boons } from './boons.ts';
+import { Comp } from './comp.ts';
+import { Containers } from './containers.ts';
+import { Chars } from './data_chars.ts';
+import { Elems } from './data_elems.ts';
+import { Items } from './data_items.ts';
+import { Tiers } from './data_tiers.ts';
+import { Weapons } from './data_weapons.ts';
+import { Col } from './collide.ts';
+import { Danger } from './danger.ts';
+import { Dungeon } from './dungeon.ts';
+import { Emit } from './emit.ts';
+import { Enemies } from './enemies.ts';
+import { Forge } from './forge.ts';
+import { Bronana } from './bronana.ts';
+import { Camp } from './camp.ts';
+import { Craft } from './craft.ts';
+import { Market } from './market.ts';
+import { Stats } from './stats.ts';
+import { Synergy } from './synergy.ts';
+import { Stronghold } from './stronghold.ts';
+import { Curves } from './curves.ts';
+import { PAL, U } from './utils.ts';
+
+/* 精英三段倍率：**值住在 `curves.ts` 的 `elite.*`**（那张表里能一次看到
+   "精英一共改了哪几个量"）。这里保留常量名，是因为它们在 `spawnEnemy` 里
+   是循环外的固定值 —— 每只怪都去查一次表纯属浪费。
+   `Curves.audit()` 保证表里的值与改造前的 `3.2 / 1.35 / 1.12` 逐位相同。 */
+var ELITE_HP = Curves.at('elite.hp', 1), ELITE_DMG = Curves.at('elite.dmg', 1), ELITE_SPEED = Curves.at('elite.speed', 1);
+/* 每次升级抽几张卡：值住在 `curves.ts` 的 `player.cardGain`（那条曲线的形状是
+   `exponential {a:1, r:1}` = 恒为 1 的常数），这里读一次并缓存。
+   **为什么必须从表里读而不是再写一个 4**：`player.cardGain` 的注释写着
+   "玩家每级长多少的一半答案在它这里" —— 如果运行时另有一个常数，
+   那张表就成了第二个出处，改表不会有任何效果。`Curves.at` 在模块加载时调一次，
+   与 `ELITE_*` 同一处理，不影响主循环。 */
+var LEVELUP_CARDS = 4 * Curves.at('player.cardGain', 1);
+/* **每个 Boss 给几笔核心材料**（`economy.ts` 的 `meta-rare` 那一档：每局 1~5 笔）。
+   一层一只 Boss、一局三层 —— 所以一局满打满算 3 笔，而经营与养成**都要花它**。
+   为什么是常数而不是曲线：这一档的设计意图就是"每局只有几笔"，
+   让它随深度成长会把它推回 bridge 那一档（孢子已经在做那件事了）。 */
+var CORE_PER_BOSS = 1;
+
+/** 武器挂点的复用坐标（fire 里同步用完即弃，不产生每帧分配） */
+var _seat = { x: 0, y: 0 };
+
+var Game = ({
+  state: 'title',       // title | chars | playing | levelup | shop | paused | howto | end
+  time: 0,
+  speed: 1,
+  wave: 0,
+  events: U.Bus(),
+  toast: null,
+  cfg: {
+    maxWeapons: 6,
+    /* ---- 房间时限（秒）----
+       房间制之后这个数字的含义**变了**：以前是"这一波要撑多久"，
+       现在是"这一间要在多久内打完"。所以它是一条**紧箍**而不是耐力条：
+       越晚的房间怪越多（预算按 Enemies.step 拉长），时限跟着放宽，但封在 45 秒
+       （旧设计封在 60 秒且是"必须撑满"，现在封在 45 秒且"越快越好"）。
+       超过时限：场上剩下的怪狂暴 + 这一间的奖励打折（见 overrun/endWave）。 */
+    waveTime: function (w) { return Math.min(45, 13 + 1.7 * (Enemies.equivWave(w) - 1)); },
+    /** 时限内清完的奖励倍率 / 超时的惩罚倍率（差 1.5 倍，是"效率"这个玩点的份量） */
+    clearBonus: 1.2,
+    overrunBonus: 0.8,
+    /** 打完 Boss 给下一层挑几条契约（抽签候选数） */
+    boonChoices: 2,
+    /** 超时后场上剩下的怪（一次性）：移速 / 伤害倍率 */
+    overrun: { speed: 1.25, dmg: 1.15 },
+    enemyCap: 300,
+    decalCap: 90,          // 血迹环形缓冲容量
+    stainPerSec: 8,        // 命中溅血每秒预算
+    stainBurst: 8,         // 预算上限（攒着不用也不会爆）
+
+    /* ---- 帧模型：逻辑帧 / 物理帧的固定步长 ----
+       模拟层只认这一份 dt。main.ts 用它做累积器，测试也用它的整数倍步进，
+       所以"逻辑帧多长"不会在两个地方各写一遍（改造前 main.ts 写 1/60、
+       8 个测试各自写 1/60，改一次要动 9 处）。 */
+    fixedDt: 1 / 60,
+    maxSteps: 6,           // 一次渲染最多补几步（超过就丢弃积压，避免雪崩）
+    maxFrameDt: 0.25       // 单帧 dt 上限（切后台回来不跳帧）
+  }
+} as unknown as GameApi);
+
+/* 当前激活的会话（无则 null）。
+   ---------------------------------------------------------
+   这一行以前是 `var S = null` —— 于是 `S` 是**隐式 any**：
+   这个 3100 行的模拟内核里，所有 `S.xxx` 的读取都不受 TypeScript 检查。
+   实测的代价是真金白银的：`S.fmods.bonusTier`（图纸改版时删掉的键）一直
+   静默读到 undefined、恒等于 0，而 `tsc` 全绿 —— 这类 bug 不会崩，只会让代码说谎。
+
+   现在写成 `Session` 却不带 null 检查：**先要字段检查，再谈 null 安全**。
+   两个理由：
+     · 代码里已经到处是 `if (!S) return` 前置守卫，null 检查是第二层收益；
+     · `S = { ... }` 那个字面量现在会被编译器照着 `Session` 逐个核对 ——
+       分组声明与真实字段第一次由编译器而不是由测试来对账。
+   代价写在明面上：`null as unknown as Session` 是一次**有意为之的类型谎**，
+   所以它必须配一条测试（`test/persist.mjs [2b-2]`：game.ts 读的每个 `S.字段`
+   都必须在 7 个分组里声明过）—— 谎言的护栏不能只是注释。 */
+var S: Session = null as unknown as Session;
+
+/* =========================================================
+   状态机
+   以前 state 是裸字符串，15 处写入散在 4 个文件里，没有任何校验。
+   实测后果：
+     · 非商店状态调用 nextWave() 会**直接跳掉一整波**（"下一波"连点两次就中招）
+     · 非商店状态调用 buyOffer() 能买走商店货（残留点击）
+     · UI.refresh() 缺 howto 分支 → 帮助浮层消失但游戏没恢复
+   现在：合法转换写在表里，所有写入走 setState，UI 由 stateChange 事件驱动。
+   ========================================================= */
+Game.STATES = ['title', 'chars', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub', 'end'];
+
+Game.TRANSITIONS = {
+  title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
+  // 注意：chars 不能直接进 playing —— 那样会出现"playing 但没有会话"的状态，
+  // 模拟层访问 S 会直接崩。进入对局必须走 newRun（它用 force 建好会话再切状态）。
+  chars: ['title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
+  playing: ['levelup', 'shop', 'paused', 'howto', 'title', 'end'],
+  levelup: ['playing', 'paused', 'shop', 'end'],
+  // 营地是商店旁边的一个可选去处（不是必经）：自动化跑局不会进它，
+  // 所以行为指纹不受影响 —— 这也是把它做成"可选"而不是"必经一步"的原因之一。
+  shop: ['playing', 'camp', 'paused', 'levelup', 'end'],
+  camp: ['shop', 'playing', 'paused', 'end'],
+  paused: ['playing', 'levelup', 'shop', 'camp', 'title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub', 'end'],
+  // howto / settings / records / codex / talents 是"可返回覆盖层"：出边必须**包含全部可能的来处**，
+  // 因为返回就是沿来处那条边回去（缺一条边 = 从那里进来就退不回去）。
+  // 覆盖层之间**互不相通**：允许 A→B 就会出现"A 的来处被 B 改写"，
+  // 于是 A⇄B 来回弹、永远回不到真正的那一屏。
+  howto: ['title', 'chars', 'playing', 'paused', 'shop', 'levelup', 'hub'],
+  settings: ['title', 'chars', 'paused', 'hub'],
+  records: ['title', 'chars', 'paused', 'end', 'hub'],
+  codex: ['title', 'chars', 'paused', 'end', 'hub'],
+  talents: ['title', 'chars', 'paused', 'hub'],
+  keep: ['title', 'chars', 'paused', 'hub'],
+  /* 枢纽（N2）：**不是覆盖层**，而是与标题页平级的"家"。
+     它是局与局之间的地方（Hades 那套），所以能去标题/选人/据点/图鉴，
+     也能在局中从暂停过去，并且**能沿原路回到那一局的暂停** ——
+     否则"暂停 → 枢纽"会变成一次性丢掉这一局（存档点还在，但手里的局没了）。 */
+  hub: ['title', 'chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'paused'],
+  end: ['chars', 'title', 'records', 'codex', 'hub']
+};
+
+/** 可返回覆盖层：进入时记住来处，退出时沿那条边走回去 */
+var RETURN_STATES: Record<string, boolean> = {
+  howto: true, settings: true, records: true, codex: true, talents: true, keep: true
+};
+/** 真实的对局状态（不是覆盖层） */
+var RUN_STATES: Record<string, boolean> = { playing: true, levelup: true, shop: true };
+Game._returnFrom = Object.create(null);
+
+/**
+ * 覆盖层的返回目标。来处必须**仍然可达**（状态机里真有这条边），
+ * 否则退回 title —— 而不是发一个必被拒绝的转换、让按钮看起来没反应。
+ */
+Game.returnFrom = function (state) {
+  var back = Game._returnFrom[state];
+  var allow = Game.TRANSITIONS[state] || [];
+  if (!back || back === state || allow.indexOf(back) < 0) return 'title';
+  return back;
+};
+
+/** 该转换是否被允许（同状态视为幂等，算允许） */
+Game.canSetState = function (to) {
+  if (to === Game.state) return true;
+  var allow = Game.TRANSITIONS[Game.state];
+  return !!allow && allow.indexOf(to) >= 0;
+};
+
+/**
+ * 唯一的状态入口。
+ * 非法转换被拒绝并发 'stateDenied'（不抛异常：一次残留点击不该让游戏崩）。
+ * force=true 供开发/测试强制跳转。
+ */
+Game.setState = function (to, force) {
+  if (to === Game.state) return true;
+  if (!force && !Game.canSetState(to)) {
+    Game.events.emit('stateDenied', { from: Game.state, to: to });
+    return false;
+  }
+  var from = Game.state;
+  // 暂停的"来处"只记**真实对局状态**：从帮助/设置/战绩退回暂停时不能覆盖它，
+  // 否则再点"继续"会被送回那个覆盖层（实测：暂停 → 设置 → 返回 → 继续 = 又进了设置）。
+  // 覆盖层同样记住来处，但只记真实屏幕，免得两个覆盖层互相改写、来回弹。
+  if (to === 'paused') { if (RUN_STATES[from] || !Game._pauseFrom) Game._pauseFrom = from; }
+  else if (to === 'hub') { Game._hubFrom = from; }
+  else if (RETURN_STATES[to]) { if (!RETURN_STATES[from]) Game._returnFrom[to] = from; }
+  Game.state = to;
+  Game.events.emit('stateChange', { from: from, to: to });
+  return true;
+};
+
+/** 动作入口前置校验：不在指定状态就拒绝（并给出提示） */
+function requireState(s, what) {
+  return requireStateIn([s], what);
+}
+
+/**
+ * 同上，但允许一组状态。
+ * 营地是"从商店过去的一个可选去处"，所以"下一波"在商店与**营地**里都该能用
+ * （只认 shop 的话，玩家在营地按下"下一波"会被告知"当前不在商店界面"）。
+ */
+var STATE_LABEL: Record<string, string> = {
+  shop: '商店', camp: '营地', levelup: '升级', playing: '战斗中', chars: '选人', end: '结算'
+};
+function requireStateIn(list, what) {
+  if (list.indexOf(Game.state) >= 0) return true;
+  Game.events.emit('stateDenied', { from: Game.state, to: list[0], action: what });
+  Game.events.emit('deny', '当前不在' + (STATE_LABEL[list[0]] || list[0]) + '界面');
+  return false;
+}
+
+/* =========================================================
+   会话创建
+   ========================================================= */
+function newSession(charDef, seed, danger, opening, smods) {
+  // 玩家也走原型：字段由组件声明，不再手写字面量
+  // （骨架由 player 原型的生成钩子随对象一起造出来，见 bronana.ts 的 Comp.onSpawn）
+  var p: Player = Comp.spawn('player', {
+    charDef: charDef,
+    x: Arena.W / 2, y: Arena.H / 2,
+    r: 20,
+    face: 1,
+    base: Stats.base(),
+    upgrades: Stats.empty(),
+    xpNeed: Stats.xpNeeded(1)
+  });
+
+  // 据点修正：与难度同一套路 —— 开局折叠**一份**，模拟里不回表
+  var keep = Stronghold.modsFor(smods && smods.owned ? smods.owned : (smods || null));
+  var ownedKeep = (smods && smods.owned) ? smods.owned : null;
+  /* 图纸工坊的修正走同一条路（开局折一次）。空 = 全 0 = 恒等，这是行为指纹不变的前提。
+     注意它**只解锁能力**（能合什么、槽位几个、回收多少），没有一条改属性 ——
+     否则"永久属性"会把局内的取舍直接买断，那正是 brotato 刻意不做的事。 */
+  var fmods = Forge.modsFor(smods && (smods as { forge?: Record<string, unknown> }).forge);
+
+  // 应用角色
+  var k;
+  for (k in charDef.stats) {
+    if (Object.prototype.hasOwnProperty.call(charDef.stats, k)) p.base[k] += charDef.stats[k];
+  }
+  p.charDef = charDef;
+  // 天赋的产物（**开局条件**）在这里一次性并进基础属性；
+  // 模拟层别处完全不认识"天赋"，它只看到一份更高的起始属性
+  applyOpening(p, opening);
+
+  // 难度：整局的修正折成**一份**，只在开局算一次（模拟里不再回表）
+  var dlevel = Math.max(0, Math.min(Danger.MAX, Math.floor(Number(danger) || 0)));
+  var dmods = Danger.modsFor(dlevel);
+
+  // 播种：默认按时间；传入 seed 则完全可复现（测试、复现 bug、存档续玩都用它）
+  var sd = (seed === undefined || seed === null) ? ((Date.now() ^ 0x9e3779b9) >>> 0) : (seed >>> 0);
+
+  // 开局条件只折一次（属性在这里并进 p.base，经济修正折成 omods）
+  var op = sanitizeOpening(opening);
+
+  S = {
+    rnd: U.rng(sd),
+    seed: sd,
+    danger: dlevel,
+    dmods: dmods,
+    opening: op,
+    /** 天赋的经济修正（与 dmods/kmods 同形：开局算一次，模拟里不回表） */
+    omods: op.econ,
+    /** 据点：已买到的设施等级 + 折叠好的修正（跨局永久，开局算一次） */
+    keep: ownedKeep ? cloneNumMap(ownedKeep) : {},
+    kmods: keep,
+    /** 图纸工坊：已解锁的图纸 + 折叠好的修正（跨局永久，开局算一次）。
+        归一成映射再存：档案给的可能是 id 数组（`Profile.forgeOwned()`），
+        不归一的话 `Object.keys` 会把这个数组变成 `["0","1"]` 那种下标。 */
+    forge: Forge.toMap(smods && (smods as { forge?: unknown }).forge),
+    fmods: fmods,
+    /** 回收比例 = 底价 0.5 + 图纸「废料回收」+ 工坊「回收炉」。
+        开局折一次；工坊建/拆时由 market.recalcCampFx 重算（营地是"买了就重折"的东西） */
+    /* 回收比例：底价 0.5 + 图纸「废料回收」。**道具代价 salvage 在 market.salvageOf 里乘** ——
+     它随道具变化（买了/卖了就变），而这里只在开局折一次。 */
+  salvageRate: Math.min(0.9, Weapons.salvageRate + (fmods.salvageBonus || 0)),
+    /** 本局累积的合金（回收产出；结算时入账，局内不能花） */
+    alloy: 0,
+    /** 本局滚过几批词条（词条随机流的计数器；**不进存档** —— 见 SessionCore 的说明） */
+    affixN: 0,
+    /** 这一波已经用过的产线（每波重置：经营那一侧的"回合"） */
+    craftUsed: [],
+    /** 本局造了几件（结算展示用；进存档） */
+    craftCount: 0,
+    /** 局内营地：`{ 设施id: 等级 }` + 折叠好的效果（买的时候重算一次） */
+    camp: {},
+    /** 营地的**建造顺序**（相邻组合靠它判定；升级不挪位置） */
+    campRow: [],
+    /** 营地的**建材**（与废料分开的局内货币，每波到账；结算清零） */
+    campPoints: 0,
+    campFx: Camp.effects({}),
+    /* 两份**派生**的联动结果（每次 recalcStats 重算；界面直接读，不自己算）：
+       武器那一份按四条轴折，道具那一份按套装折 —— 分开存是因为界面上是两块。 */
+    synergy: null,
+    itemSets: null,
+    /* 道具**机制类**效果的折叠（`{ special: 件数 }`）。与上面两份同理：折一次、只读结果。
+       以前是每帧 `for (items) if (def.special === 'turret')` 的两处裸扫描 ——
+       一件写着 special 却没被任何一行 if 认领的道具，等于**什么也不做**。 */
+    itemFx: Items.foldSpecials([]),
+    /* 道具**代价**的折叠（`{ mul, add }`；缺省恒等）。理由同上：
+       读点（废料 / 商店价 / 敌人 / 受伤）只读结果，不每帧遍历道具。 */
+    itemCost: Items.foldCosts([]),
+    freeRerolls: 0,
+    /* ---- 地牢（G 批）：地图由种子长出来，只有**进度**进存档 ---- */
+    floor: 1,
+    map: null,
+    roomId: '',
+    /** 破过的墙：`Dungeon.wallKey(层号, a, b)` → true（无向；**键里带层号**） */
+    walls: Object.create(null),
+    /** 当前房间里还没打穿的暗门墙（每帧要检查的那一小份） */
+    wallsNow: [],
+    /** 钉住这一间不自动结束（测试/调试用；将来的"限时房/无尽房"也走这个口子） */
+    roomHold: false,
+    /** 这一间的房间效果（进门折一次：商店货架/折扣等） */
+    roomFx: {},
+    /** 打完这一间的奖励倍率（事件房可以改它：代价与好处并存） */
+    bonusMul: 1,
+    /** 这一局发现过几间密室（跨局发现记在档案里，见 profile） */
+    secretsFound: 0,
+    /** 这一局通关了吗（成绩码回放要用**事实**，不再是"波次 ≥ finalWave"这种推断） */
+    won: false,
+    /** 当前这一间的 Boss id（只有 Boss 房有；由**层**决定，不是每次随机） */
+    bossId: null,
+    /** 这一局打倒了哪些 Boss（剧情碎片的输入；按 id 记） */
+    bossesDown: Object.create(null),
+    /* 这一局打到的**核心材料**（Boss 掉落）：结算时才入档。
+       它是 `economy.ts` 里 `meta-rare` 那一档唯一的来源 —— 所以必须跟着存档走，
+       否则"读档再打一次 Boss"就能刷它（与 `paid` 那条套利是同一类洞）。 */
+    coreEarned: 0,
+    /** 这一局在事件房见过的遭遇 id（剧情碎片与图鉴的输入） */
+    runEvents: [],
+    /** 层间契约：已挑的那一条（id）与它折出来的三组修正 */
+    boon: '',
+    boonFold: null,
+    /** 还没挑的候选（打完 Boss 抽一组；挑完清空） */
+    pendingBoons: [],
+    /** 难度折叠结果 × 当前房间/层主题的结果（进房算一次） */
+    wmods: null,
+    charDef: charDef,
+    player: p,
+    stats: Stats.base(),
+    weapons: p.weapons,
+    enemies: [],
+    bullets: [],       // 玩家子弹
+    ebullets: [],      // 敌人子弹
+    pickups: [],
+    particles: [],
+    /* 飘字与"视觉粒子"是**两套池**（emit.ts 各有一套上限与游标）。它们以前是
+       `Emit.bind(S)` 懒创建的 —— 编译器接管 `S` 的类型之后立刻指出：这几个字段
+       在分组里声明成**必填**，字面量里却没有。声明与初值必须对齐（要么都必填并在这里给初值，
+       要么都写成可选）—— 现在是前者：出生即齐全，`Emit.bind` 里的 `if (!S.x)` 退化成防御。 */
+    textParticles: [],
+    freeParticles: [],
+    freeTextParticles: [],
+    visCursor: 0,
+    textCursor: 0,
+    decals: [],
+    decalSeq: 0,
+    decalCursor: 0,
+    stainBudget: 8,
+    packsOpened: 0,
+    packSpent: 0,
+    turrets: [],
+    spawnQueue: [],
+    spawnIdx: 0,
+    waveT: 0,
+    waveLeft: 0,
+    waveScrap: 0,
+    /** 这一间是不是已经在收尾 / 是不是被超时强制清掉（startWave 复位，两条都在用） */
+    waveEnding: false,
+    forceClear: false,
+    /* 这一行曾经是 `shop: null` —— 一个**没人读**的会话字段（.shop 全仓零命中，
+       真正的商店状态在 offers/levelCards 里）。是"72 个字段的平铺大对象"里最典型的那种：
+       加的时候顺手写了一个，之后谁也没删。字段分组守卫（test/persist.mjs [2b]）把它抓了出来。 */
+    offers: [],
+    levelCards: [],
+    /** 本局合成过几次（结算展示用；进存档，所以要在 newSession 里就有初值，
+        不能等到第一次合成才懒创建 —— persist 的字段分组守卫查的就是这个） */
+    combineCount: 0,
+    stats_total: { kills: 0, scrap: 0, dmg: 0, taken: 0, healed: 0, waves: 0 },
+    grid: { cell: 68, map: Object.create(null) },
+    nextId: 1
+  };
+
+  Game.wave = 1;
+  Game.speed = 1;
+
+  // 把粒子发生器绑定到本局（粒子池随会话创建/清理）
+  Emit.bind(S);
+
+  // 起始武器
+  for (k = 0; k < charDef.startWeapons.length; k++) addWeapon(charDef.startWeapons[k]);
+  // 天赋带来的额外武器 / 道具 / 废料（同样是开局条件，一起在建会话时给完）
+  applyOpeningExtras(p, S.opening);
+  /* 图纸「备料」那条**没了**：它以前把开局第一把武器免费抬到 T2/T3 ——
+     那是"养成直接给战斗数值"，正是要拆的耦合。现在图纸给的是**能造什么**
+     （`craftTier`），强度由玩家自己在工坊里造出来。 */
+  // 据点"仓库"给的起始废料（也是开局条件，只是来源不同）
+  if (S.kmods.startMaterials > 0) {
+    p.scrap = (p.scrap || 0) + S.kmods.startMaterials;
+  }
+
+  recalcStats();
+  p.hp = p.base.maxHp;
+  recalcStats();
+  // 高难度的"开局不满血"（startHpFrac）：夹在 1 以上，绝不让它开成 0 血
+  p.hp = Math.max(1, Math.round(S.stats.maxHp * S.dmods.startHpFrac));
+
+  // 地牢：先长出一层、落进入口房，再开第 1 波（入口房不刷怪，等于"安全开局"）
+  enterFloor(1, { silent: true });
+  startWave(1);
+  applyRoomEntry();
+  /* 难度的"开局不满血"最后再夹一次。
+    入口间会回 15% 血，而它是**房间内容**（每个入口间都给）——
+     如果按老顺序在进门前夹血，高难度那 15% 就被入口间当场补满了
+     （实测：难度 9 的 startHpFrac=0.85，开局血量 20/20，"不满血"这条修正是假的）。
+     所以顺序改成"先给房间内容、后夹难度"，两条规则都成立。 */
+  p.hp = Math.max(1, Math.min(p.hp, Math.round(S.stats.maxHp * S.dmods.startHpFrac)));
+  return S;
+}
+
+/**
+ * 进一间房的**内容**：查表、跑一次性效果、把这一间的商店参数折好。
+ * 放在 `startWave` 之后：房间效果里给的废料/回血不该被 startWave 的重置吃掉。
+ */
+function applyRoomEntry() {
+  var room = currentRoom();
+  S.roomFx = {};
+  if (!room) return null;
+  var fx: RoomFxDef = ROOM_FX[room.type] || ({} as RoomFxDef);
+  S.roomFx = {
+    shopSlots: fx.shopSlots || 0, shopDiscount: fx.shopDiscount || 0,
+    // 限时房把"速清/超时"两档也改了：按时打完翻倍、超时几乎什么都没有
+    fastMul: fx.fastMul || 0, slowMul: fx.slowMul || 0
+  };
+  var msg = null;
+  if (fx.enter) msg = fx.enter(S.player, room);
+  Game.events.emit('roomEnter', {
+    room: room.id, type: room.type, floor: S.floor, wave: Game.wave,
+    name: (Dungeon.TYPE_BY_ID[room.type] || {}).name || room.type, msg: msg
+  });
+  return msg;
+}
+
+/* =========================================================
+   属性重算
+   ========================================================= */
+/** 当前这套武器的**定义**数组（联动只需要 def，不需要实例） */
+function weaponDefs(p) {
+  var out = [];
+  if (!p || !p.weapons) return out;
+  for (var i = 0; i < p.weapons.length; i++) if (p.weapons[i] && p.weapons[i].def) out.push(p.weapons[i].def);
+  return out;
+}
+
+/** 当前这套道具的定义数组（道具套装那一条联动要它） */
+function itemDefs(p) {
+  var out = [];
+  if (!p || !p.items) return out;
+  for (var i = 0; i < p.items.length; i++) if (p.items[i] && p.items[i].def) out.push(p.items[i].def);
+  return out;
+}
+
+function recalcStats() {
+  if (!S) return;
+  var p = S.player;
+  var s = Stats.base();
+  var k, i;
+
+  for (k in p.base) if (Object.prototype.hasOwnProperty.call(p.base, k)) s[k] = p.base[k];
+  for (k in p.upgrades) if (Object.prototype.hasOwnProperty.call(p.upgrades, k)) s[k] += p.upgrades[k];
+  for (i = 0; i < p.items.length; i++) {
+    var st = p.items[i].def.stats;
+    if (!st) continue;
+    for (k in st) if (Object.prototype.hasOwnProperty.call(st, k)) s[k] += st[k];
+  }
+  /* 层间契约的属性那一条（`stats` 组）：与道具走同一条路 ——
+     它同样是"本局的选择"，所以同样不进 upgrades。
+     注意工坊**不在这里**：它的效果全部只作用于制造（见 camp.ts），
+     这条读点在解耦时被删掉了 —— 那是"经营给战斗加数值"的最后一根线。 */
+  var bst = S.boonFold && S.boonFold.stats ? S.boonFold.stats : null;
+  if (bst) {
+    for (k in bst) if (Object.prototype.hasOwnProperty.call(bst, k)) s[k] += bst[k];
+  }
+
+  /* 武器联动（synergy.ts）：由**当前这套武器**折出来的增量。
+     它是**派生值**（不存状态、不掷骰子），所以每次重算属性都重新折一遍；
+     一件武器都没联动时返回空对象 → 这里是恒等（行为指纹靠这个）。
+     折出来的结果顺手存进 S.synergy，界面直接读，不用自己再算一次。 */
+  var syn = Synergy.of(weaponDefs(p));
+  /* 道具套装（同一份表、同一套折叠）：把**道具**折成第二份增量。
+     两份分开存 —— 界面画"我的武器"与"我的道具"是两块，合起来就分不开了。 */
+  var iset = Synergy.ofItems(itemDefs(p));
+  S.synergy = syn;
+  S.itemSets = iset;
+  /* 道具的机制那一份（炮塔数 / 额外弹丸）也在这里折一次。
+     与属性分开：属性进 stats，机制进 itemFx —— 两类效果的读点完全不同。 */
+  S.itemFx = Items.foldSpecials(p.items);
+  /* 道具的**代价**那一份（经济 / 敌人 / 规则三类）：同样折一次、只读结果。
+     它是**乘性**的（废料 / 商店价 / 敌人 / 受伤），缺省恒等 1 —— 所以
+     "一件带代价的道具都没有"时这里是空对象，行为逐位不变。
+     属性型的代价不在这里 —— 它是 stats 里的负值，走上面那条累加。
+     （这一段以前**写了两遍**：第一行与紧接着的第二行是同一句，
+     是两次改动各自"顺手补一句"叠出来的。折两次结果一样，
+     但它掩盖了"这里是不是唯一折叠点"这个问题 —— 留一份。） */
+  S.itemCost = Items.foldCosts(p.items);
+  for (k in syn.stats) if (Object.prototype.hasOwnProperty.call(syn.stats, k)) s[k] += syn.stats[k];
+  for (k in iset.stats) if (Object.prototype.hasOwnProperty.call(iset.stats, k)) s[k] += iset.stats[k];
+
+  /* 词条（affixes.ts）：**唯一**的折叠点。
+     两类效果在这里**分流**，因为它们之后的读点完全不同：
+       · 属性类（`stats`）就地并进属性表 —— 与道具 / 契约 / 升级走同一条路，
+         于是"词条加的那 2 点护甲"享受与别处完全一样的公式与夹取；
+       · 武器本地类（`wmods`）写回**每一把武器自己**（伤害倍率 / 冷却倍率）——
+         它只作用于这一把，进全局属性表就错了（6 把枪会各吃一遍）。
+     武器与道具的词条分开折：`wmods` 必须落在实例上，不能只存一份。
+     一套词条都没有时 `fold` 返回空对象 + 恒等倍率 → 这里是恒等（行为指纹靠这个）。 */
+  for (i = 0; i < p.weapons.length; i++) {
+    var fw = Affixes.fold(p.weapons[i].affixes);
+    p.weapons[i].wmods = fw.wmods;
+    for (k in fw.stats) if (Object.prototype.hasOwnProperty.call(fw.stats, k)) s[k] += fw.stats[k];
+  }
+  for (i = 0; i < p.items.length; i++) {
+    Affixes.applyStats(p.items[i].affixes, s);
+  }
+
+  /* 角色的专属机制：**唯一**的读点（`chars.ts` 的 `SPECIALS` 声明了它是什么）。
+     改造前这里是裸比字符串 `p.charDef.special === 'rage'`，另外还有两处
+     （移速、受伤）各裸比一次 —— 于是"改个机制名"或"加一种机制"要改三处，
+     而漏掉任何一处都**不报错**，只是那个角色悄悄变成白板。
+     现在机制名只在声明表里出现，三处读点都问 `Chars.specialOf`。 */
+  if (Chars.specialOf(p.charDef.id, 'rage') && s.maxHp > 0) {
+    var missing = 1 - U.clamp(p.hp / s.maxHp, 0, 1);
+    p.rage = U.clamp(missing * 1.25, 0, 1);
+    s.damage += p.rage * 0.30;
+    s.attackSpeed += p.rage * 0.25;
+  } else {
+    p.rage = 0;
+  }
+
+  s.maxHp = Math.max(4, Math.round(s.maxHp));
+  S.stats = s;
+  /* **生命上限变了，当前生命就跟着夹一次** —— 这是 maxHp 唯一的安全出口。
+     为什么必须在这里而不是在各调用点：`maxHp` 会被**买到的道具**改小
+     （`rations` / `treadmill` 都是 `stats: { maxHp: -3 }`，这是"有得有失"的"失"）。
+     以前只有商店买 / 制造 / 升级选卡三条路各自记得夹一次（`Math.min(p.hp, S.stats.maxHp)`），
+     而 `pickBoon` 与**加道具的另一条路**没有 —— 于是血量可以停在一个已经不存在的身位：
+     实测（探针 24 局）collector 第 4 波买下 `rations` 后 `hp=24 / maxHp=21`，
+     一直持续到这一波结束（`takeLevelCard` 那一次夹血才把它拉回来）。
+     放在这里等于"重算属性"与"生命不超上限"变成同一件事：任何新增的改属性路径
+     都不可能再漏掉它 —— 与"废料只有一个扣点"是同一个原则。
+     注意 `rage`（受虐狂）读的是**夹之前**的 p.hp，所以先算 rage 再夹，顺序不能换。 */
+  if (p.hp > s.maxHp) p.hp = s.maxHp;
+  p.xpNeed = Stats.xpNeeded(p.level);
+}
+
+/* =========================================================
+   武器管理
+   ========================================================= */
+/**
+ * 这一局能带几把武器（**唯一的读点**：装配 / 购买 / 界面三处都走它）。
+ * 现在没有任何图纸能改它：武器挂在骨架的 6 个挂点上（bronana.ts 的 SEATS），
+ * 要 +1 槽得先在骨架上加挂点 —— 那是渲染层 / 装配层的事，不是一个数字能解决的。
+ * 所以工坊里"多带装备"那一条走的是**货架**（每次多两件可选），而不是硬塞第 7 把武器
+ * （那样第 7 把没有挂点，画出来会叠在第 1 把上或者变成 NaN）。
+ */
+function maxWeapons() {
+  return Game.cfg.maxWeapons;
+}
+
+/** 给玩家一把武器。`paid` = 为它付过多少废料（回收价的上限，见 data_weapons.ts）
+ *  `set` = 已经定好的词条（货架上那一件 / 存档里那一份）。不给就现滚一套。 */
+function addWeapon(id, tier?, paid?, set?) {
+  if (!S) return null;
+  if (S.player.weapons.length >= maxWeapons()) return null;
+  var w = Weapons.instantiate(id, tier, paid);
+  if (!w) return null;
+  w.index = S.player.weapons.length;
+  /* 词条在**唯一**的入口生成（不是每个调用点各滚一次）：
+     开局携带 / 天赋 / 商店 / 制造 / 调试全都走这里，于是"有没有词条"
+     不取决于它是怎么来的。读档时会用存档里的那一份**覆盖**它（见 importRun）。
+     随机走**词条自己的流**（`Affixes.rollStream`：由主状态派生）——
+     于是"这件装备有几条词条"不会扰动商店卖什么、刷什么怪、升级卡是哪四张。 */
+  w.affixes = set || Affixes.roll('weapon', w.def, Weapons.tierOf(w), affixRnd());
+  S.player.weapons.push(w);
+  return w;
+}
+
+/**
+ * 取一个"本批词条"的随机流：主随机流的状态 + 本局第几批。
+ * **只读主状态、不推进它** —— 这是词条与主序列解耦的全部机制（见 affixes.ts 的 rollStream）。
+ */
+function affixRnd() {
+  var n = S.affixN = (S.affixN || 0) + 1;
+  return Affixes.rollStream(S.rnd && S.rnd.state ? S.rnd.state() : undefined, n);
+}
+
+/**
+ * 给玩家一件道具。**道具唯一的入口**（与 `addWeapon` 对称）——
+ * 制造 / 宝箱 / 开局携带 / 商店买 / 弹窗奖励全都走它，于是"词条在生成时滚一次"
+ * 这件事只有一处实现，不会出现"某个入口忘了滚词条"。
+ * @param def 道具定义（调用方一般已经从 `Items.BY_ID` 取好）
+ */
+function addItem(def, set?) {
+  if (!S || !def) return null;
+  var it = Comp.spawn('item', { def: def });
+  it.affixes = set || Affixes.roll('item', def, def.tier || 1, affixRnd());
+  S.player.items.push(it);
+  return it;
+}
+
+/**
+ * 买武器时的**唯一**落位规则（brotato 的两条原作细节）。
+ *
+ * 空槽位就装上去；**槽位满了**才考虑合成：找一个同名同档的伙伴，把这一把并进去
+ * （结果抬一档，不占新格子）。合不了就明确拒绝 —— 以前这里只说"武器槽已满"，
+ * 玩家没法知道"那我买两把一样的会怎样"。
+ *
+ * 分开的原因：`addWeapon` 是"给我一把"（开局携带 / 天赋 / 调试），
+ * 本函数是"这一把**买**进来之后该变成什么" —— 后者要回答"装不下怎么办"。
+ * @returns { ok, why, combined, tier, weapon }
+ */
+function addWeaponOrCombine(id, tier?, paid?, set?) {
+  if (!S) return { ok: false, why: '还没有开局', combined: false, tier: 0, weapon: null };
+  var p = S.player;
+  var t = tier === undefined || tier === null ? 0 : tier;
+  if (p.weapons.length < maxWeapons()) {
+    var w = addWeapon(id, t || undefined, paid, set);
+    if (!w) return { ok: false, why: '没有这把武器', combined: false, tier: 0, weapon: null };
+    return { ok: true, why: '', combined: false, tier: Weapons.tierOf(w), weapon: w };
+  }
+  // 槽位满了：找一个同名同档（开了「异档熔接」就放宽到同名的任意档）的伙伴
+  var def = Weapons.BY_ID[id];
+  if (!def) return { ok: false, why: '没有这把武器', combined: false, tier: 0, weapon: null };
+  var want = Weapons.clampTier(t || def.tier);
+  var diff = fuseDiff();
+  var j = -1, bestLow = -1, bestLowTier = 99;
+  for (var i = 0; i < p.weapons.length; i++) {
+    var q = p.weapons[i];
+    if (q.id !== id) continue;
+    var qt = Weapons.tierOf(q);
+    if (qt === want) { j = i; break; }
+    // 异档熔接：宁可挑**最低档**的那一把当燃料（别把攒出来的 T3 当柴烧）
+    if (diff && qt < Weapons.TIER_MAX && qt < bestLowTier) { bestLow = i; bestLowTier = qt; }
+  }
+  if (j < 0 && diff && bestLow >= 0 && want < Weapons.TIER_MAX) j = bestLow;
+  if (j < 0 || (want >= Weapons.TIER_MAX && Weapons.tierOf(p.weapons[j]) >= Weapons.TIER_MAX)) {
+    return {
+      ok: false, combined: false, tier: 0, weapon: null,
+      why: want >= Weapons.TIER_MAX ? '同名武器已经是 T' + want + '（满档）'
+        : '武器槽已满（上限 ' + maxWeapons() + '）：要合并得先有同名同档的另一把'
+    };
+  }
+  var to2 = fusedTier(Weapons.tierOf(p.weapons[j]), want);
+  if (to2 <= Weapons.tierOf(p.weapons[j])) {
+    return { ok: false, combined: false, tier: 0, weapon: null, why: topTierLocked() };
+  }
+  /* 这一把"买进来的"在并档失败前**还没有实例**（只是货架上的一件），
+     所以它的词条要在这里定下来 —— `set` 是货架上那一件的（买的就是它），
+     没给就现滚一套（与 `addWeapon` 用的是**同一个** `Affixes.roll`）。
+     定下来的那套会并进留下的那一把（见 `upTier`）：于是"并档不丢词条"，
+     而且"哪一把当燃料"这件事有了意义（好词条那一把更该留下）。
+     `paid` 一起带着走：回收价的上限必须把并进去这一把的成本算上。 */
+  var incSet = set || Affixes.roll('weapon', def, want, affixRnd());
+  var up = upTier(j, to2, incSet);
+  /* 并进去的那一把也是**花了钱**的：把它的成本累加到留下来的那一把上 ——
+     否则"买两把 → 合并 → 回收"就能把两笔成本洗成一笔（价值却翻了倍）。 */
+  if (up && paid > 0) up.paid = (Math.floor(Number(up.paid) || 0)) + Math.floor(Number(paid) || 0);
+  return { ok: true, why: '', combined: true, tier: up ? Weapons.tierOf(up) : 0, weapon: up };
+}
+
+/** 把第 i 格抬到 tier（**只由合成调用**）：同一个实例升级，槽位不动 */
+function upTier(i, tier, incomingSet?) {
+  var w = S.player.weapons[i];
+  if (!w) return null;
+  var before = Weapons.tierOf(w);
+  w.tier = Weapons.clampTier(tier);
+  /* 合成同时**合并词条**：并进来的那一把（`incomingSet` = 它现滚的那一套）
+     身上的好词条不会白瞎。规则是"同名各取更好的那一条，上限取两边更宽的那一个"
+     （`Affixes.merge`）。为什么不是"重滚一套"：那等于把"这把攒出来的好词条"
+     重新赌一次，玩家没法规划自己的装备；而"合并"让"拿哪一把当燃料"成为一个真决定。
+     上限**不跟着新档位**走（T2 并到 T3 仍是 2 条）：上限是"这件装备滚出来时
+     有几条"，抬档不该凭空长出新词条 —— 那是 T4 起步靠**造出来 / 打出来**的待遇。 */
+  w.affixes = Affixes.merge(w.affixes, incomingSet || null,
+    Math.max((w.affixes && w.affixes.max) || 0, (incomingSet && incomingSet.max) || 0));
+  S.combineCount = (S.combineCount || 0) + 1;
+  /* 合金**不再从合成来**（这一步改的）：合成是把已有装备加工一下，不产新东西；
+     合金的唯一稳定来源是**回收**（把不要的装备拆了）—— 见 market.sellWeapon。
+     这样"探索捡到/造出多余装备 → 回收成合金 → 解锁图纸"是一条完整的链。 */
+  Game.events.emit('combine', { name: w.def.name, tier: w.tier, index: i, from: before, alloy: 0 });
+  return w;
+}
+
+/* =========================================================
+   合成（战斗 × 经营的交点）
+   ---------------------------------------------------------
+   规则全在 data_weapons.ts 里（纯数据：谁能合、合完多强、值多少钱）；
+   这里只负责**改动会话状态**这一件事，所以它对存档 / 回放都是确定的：
+   `combine(i, j)` 是纯函数式的（同样的 i/j 在同样的状态下结果相同），
+   于是它和 buyOffer 一样可以进录像带（record.ts 的 COMMANDS）。
+   ========================================================= */
+/** 工坊「异档熔接」：同名但不同档也能合（T1+T3 → T4） */
+function fuseDiff() { return !!(S && S.fmods && S.fmods.fuseDiff); }
+/** 合成结果的档位：取两把里更高的那一把 +1。
+    （以前这里还加过一个 `bonusTier`（图纸「大师锻造」让结果再 +1 档）——
+     那张图纸改成"解锁 T4 制造"之后就删了，但这个读点留了下来：
+     `S.fmods.bonusTier` 已经不存在，永远读到 undefined → 恒 0。
+     它不改变行为（0 就是没有加成），但它是一句**读起来像有加成的假话**，
+     而这种假话最贵 —— 下一次有人加回这个键，会以为这里早就在生效。
+     顺手记一笔：这行能被 tsc 放过去，是因为 `var S = null`（见文件头的那条说明）。 */
+/** 合成能到哪一档：**顶档要图纸**（与制造那一侧同一条纪律，见 craft.ts 的 resultTier）。
+    顶档之下照旧免费 —— 合成是战斗那一侧的能力，不该被养成整体否决；
+    但最后一档如果谁都能靠 16 把同名硬攒出来，那么"图纸"在这条链上就没有位置了。
+    （实测：3 条产线盯着一把刀造 + 实测废料收入，第 6 波 8 把 = T4、第 11 波 16 把 = T5 ——
+     也就是说顶档离一局的寿命并不远，不设门槛就等于没有门槛。） */
+function combineCap() {
+  var max = Weapons.TIER_MAX;
+  if (S && S.fmods && (S.fmods.craftTier || 0) >= max) return max;
+  return Math.max(1, max - 1);
+}
+/** 顶档锁着时给人看的理由（界面/提示用同一句） */
+function topTierLocked() {
+  return '顶档（T' + Weapons.TIER_MAX + ' ' + Tiers.nameOf(Weapons.TIER_MAX) +
+    '）要先解锁「神话图纸」：图纸树点到第 4 阶';
+}
+
+function fusedTier(ta, tb) {
+  return Math.min(combineCap(), Weapons.clampTier(Math.max(ta, tb) + 1));
+}
+
+/** 第 i 格能不能合、跟谁合（界面拿它决定要不要画"合并"按钮） */
+function combinePlan(i) {
+  if (!S) return null;
+  var list = S.player.weapons;
+  var w = list[i];
+  if (!w || !Weapons.canCombine(w)) return null;
+  var j = Weapons.partnerOf(list, w, i, fuseDiff());
+  if (j < 0) return null;
+  var ta = Weapons.tierOf(w), tb = Weapons.tierOf(list[j]);
+  var to = fusedTier(ta, tb);
+  if (to <= ta) {
+    /* 两条完全不同的"合不了"要分开说：
+       ① 已经是顶档（没路了）→ 不画按钮；
+       ② 顶档**锁着**（要先点「神话图纸」）→ 画一个禁用的按钮 + 理由。
+       少了②，"合并按钮不见了"就成了一条玩家看不见的规则 —— 而它恰好是
+       养成那一侧在战斗里唯一能被感觉到的地方。 */
+    var need = Math.min(Weapons.TIER_MAX, Math.max(ta, tb) + 1);
+    if (combineCap() < Weapons.TIER_MAX && need > combineCap()) {
+      return {
+        i: i, j: j, id: w.id, name: w.def.name,
+        from: ta, to: to, partnerTier: tb, dmgMul: 1, locked: true, why: topTierLocked()
+      };
+    }
+    return null;
+  }
+  return {
+    i: i, j: j, id: w.id, name: w.def.name,
+    from: ta, to: to, partnerTier: tb,
+    dmgMul: Weapons.mulFor(w.def, to, 'dmg') / Weapons.mulFor(w.def, ta, 'dmg')
+  };
+}
+
+/** 所有可合成的格子（界面按它渲染按钮；顺序即槽位顺序） */
+function combinePlans() {
+  var out = [];
+  if (!S) return out;
+  for (var i = 0; i < S.player.weapons.length; i++) {
+    var p = combinePlan(i);
+    if (p) out.push(p);
+  }
+  return out;
+}
+
+/**
+ * 合成：同名同档的两把 → 一把高一档的同名武器，落在**靠前**的那个槽位。
+ * 为什么结果落在靠前的格子：玩家的槽位顺序是他自己排的（`index` 也是挂点），
+ * 让结果跳到最后会把他排好的阵型打乱 —— 合成应该是"变强"，不是"重新摆一遍"。
+ */
+function combine(i, j) {
+  if (!S) return false;
+  var list = S.player.weapons;
+  /* 每一条失败都要**说出理由**：这里是唯一知道理由的地方，
+     外面（market.combine / 界面）只能把这句话转给玩家。 */
+  if (i === j) return deny('不能和自己合成');
+  var a = list[i], b = list[j];
+  if (!a || !b) return deny('没有这把武器');
+  if (a.id !== b.id) return deny('只能合成**同名**武器（两把一样的）');
+  if (!Weapons.canCombine(a) || !Weapons.canCombine(b)) return deny('这把武器已经到顶了');
+  var ta = Weapons.tierOf(a), tb = Weapons.tierOf(b);
+  if (ta !== tb && !fuseDiff()) {
+    return deny('要**同名同档**（T' + ta + ' 与 T' + tb + ' 合不了；工坊「异档熔接」可以放宽）');
+  }
+  var lo = Math.min(i, j), hi = Math.max(i, j);
+  var tier = fusedTier(ta, tb);
+  /* 到顶了就**拒绝**，而不是把两把 T4 变成一把 T4 —— 那种"合完没变化"的静默失败
+     比拒绝更糟（玩家会以为自己点错了）。 */
+  if (tier <= Math.max(ta, tb)) return deny(topTierLocked());
+  list.splice(hi, 1);
+  list.splice(lo, 1);
+  /* 两把的成本合并到结果上：回收价的上限跟着走，所以"买两把合一把再拆"不产钱 */
+  var w = Weapons.instantiate(a.id, tier, (Math.floor(Number(a.paid) || 0)) + (Math.floor(Number(b.paid) || 0)));
+  if (!w) return false;
+  /* 词条跟着一起合（与 `upTier` 那条路同一套规则）：两把各取更好的那一条，
+     上限取两把里更宽的那一个 —— 于是"拿哪一把当燃料"是一个真决定。
+     注意这里是**手工合成**那一支（两把都已经是实例），所以两边都有词条可合。 */
+  w.affixes = Affixes.merge(a.affixes, b.affixes,
+    Math.max((a.affixes && a.affixes.max) || 0, (b.affixes && b.affixes.max) || 0));
+  list.splice(lo, 0, w);
+  for (var k = 0; k < list.length; k++) list[k].index = k;
+  S.combineCount = (S.combineCount || 0) + 1;
+  Game.events.emit('combine', { name: w.def.name, tier: tier, index: lo, from: Math.max(ta, tb), alloy: 0 });
+  return true;
+}
+
+/* =========================================================
+   制造（经营那一根柱子的出口）
+   ---------------------------------------------------------
+   **一次制造 = 一条产线的一波**。规则与费用全在 craft.ts / camp.ts / forge.ts，
+   这里只负责改会话状态：扣废料、把产物放进装备栏、记账、发事件。
+   为什么"占产线的一波"这件事必须在模拟层：它是经营**自己的稀缺**
+   （位子只有 3 个、每波每条只出一件），也是"这一波投产线还是投自己"这个
+   取舍的真正来源 —— 放在界面里就只是冷却计数了。
+   ========================================================= */
+/** 这一局有几条产线（已建设施 + 图纸给的名额） */
+function craftLineCount() {
+  if (!S) return 0;
+  return Craft.linesOf(Camp.usedSlots(S.camp), S.fmods);
+}
+/** 现在还空着的产线号（界面按它画按钮；空数组 = 这一波的产线都用完了） */
+function craftFreeLines() {
+  var out = [];
+  var n = craftLineCount();
+  for (var i = 0; i < n; i++) if (Craft.lineFree(S.craftUsed, i)) out.push(i);
+  return out;
+}
+/** 能造的配方 + 费用 + 能不能造（界面铺一屏用它；**不写任何规则**） */
+function craftOptions() {
+  var out = [];
+  if (!S) return out;
+  var list = Craft.LIST;
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    var chk = Craft.canMake(r, S.fmods);
+    out.push({
+      id: r.id, kind: r.kind, refId: r.refId, name: r.name, tier: r.tier,
+      cost: Craft.costOf(r, S.fmods, S.campFx),
+      ok: chk.ok, reason: chk.reason,
+      affordable: (S.player.scrap || 0) >= Craft.costOf(r, S.fmods, S.campFx)
+    });
+  }
+  return out;
+}
+/**
+ * 造一件。
+ * @param line 用哪条产线（这一波还没用过的那条）
+ * @param id   配方 id（`weapon:knife` / `item:coffee`）
+ * 失败一律**不动任何状态**（钱、废料、产线都不扣）—— 与买装备同一条纪律。
+ */
+function craft(line, id) {
+  if (!S) return false;
+  /* 与买 / 卖 / 建同一道门：制造只能在**商店或工坊**里做。
+     以前这里没有状态校验 —— 接口上"战斗中也能造一件"，界面虽然不画那个按钮，
+     但一个不一致的调用点（或未来的机器人 / 新界面）就能在枪林弹雨里凭空变出装备。 */
+  if (!requireStateIn(['shop', 'camp'], 'craft')) return false;
+  var r = Craft.BY_ID[id];
+  if (!r) return deny('没有这个配方');
+  var n = craftLineCount();
+  if (n <= 0) return deny('还没有产线 —— 先到工坊盖一座设施');
+  if (!(line >= 0 && line < n)) return deny('没有这条产线');
+  if (!Craft.lineFree(S.craftUsed, line)) return deny('这条产线这一波已经造过了');
+  var chk = Craft.canMake(r, S.fmods);
+  if (!chk.ok) return deny(chk.reason);
+  var cost = Craft.costOf(r, S.fmods, S.campFx);
+  var p = S.player;
+  if ((p.scrap || 0) < cost) return deny('废料不够（需要 ' + cost + '）');
+  /* **先掷出来是"哪一档"，再按它探路**。
+     顺序不能反：营地的「锻台 / 检验台」与图纸「淬火」会把结果抬一档，
+     如果按配方自己的档位去探"放得下吗"，就会出现"探的是 T2、造出来是 T3"——
+     槽满时 T3 可能没有同名同档可以并，于是废料花了、产线也用掉了，什么都没拿到。
+     （这一支是极端情况，但它是**静默**的，所以两件事一起做：先按真实档位探路，
+     万一落位还是失败，就把废料与产线**退回去**，绝不吞。） */
+  var res = Craft.resultTier(r, S.fmods, S.campFx, S.rnd);
+  if (r.kind === 'weapon' && p.weapons.length >= maxWeapons()) {
+    var def = Weapons.BY_ID[r.refId];
+    var probe = { id: r.refId, def: def, cd: 0, swing: 0, tier: res.tier };
+    if (Weapons.partnerOf(p.weapons, probe, -1, fuseDiff()) < 0) {
+      return deny('武器槽满了，而且没有同名同档可以并 —— 先回收一件');
+    }
+  }
+  p.scrap = (p.scrap || 0) - cost;
+  S.craftUsed.push(line);
+  var got = r.name;
+  if (r.kind === 'weapon') {
+    /* `cost` 作为 `paid` 一起交给落位：回收价的上限就是它（+1 的净亏），
+       所以"造了立刻拆"不会变成印钞机 —— 哪怕质量触发把回收价抬了一倍 */
+    var placed = addWeaponOrCombine(r.refId, res.tier, cost);
+    if (!placed.ok) {                                  // 理论上到不了；真到了就把账退回去
+      p.scrap = (p.scrap || 0) + cost;
+      S.craftUsed.pop();
+      return deny(placed.why);
+    }
+  } else {
+    addItem(Items.BY_ID[r.refId]);
+    if (res.double) addItem(Items.BY_ID[r.refId]);
+  }
+  recalcStats();
+  p.hp = Math.min(p.hp, S.stats.maxHp);
+  S.craftCount = (S.craftCount || 0) + 1;
+  Game.events.emit('craft', {
+    id: r.id, name: got, kind: r.kind, tier: res.tier, lucky: res.lucky,
+    double: res.double, cost: cost, line: line
+  });
+  return true;
+}
+
+/* 三处读武器数值的地方都要过**品级台阶**（Weapons.mul），
+   并且都要过**这一把自己的词条**（`w.wmods`，由 recalcStats 折一次写好）。
+   以前这里直接读 def.*，于是"合成出来的 T4 匕首"和 T1 匕首一模一样 ——
+   数值必须从同一个出口出去，否则"变强了"只是界面上写着的一句话。
+   `wmods` 缺省 = `{ weaponDmgPct: 1, weaponCdPct: 1 }`，乘上去恒等 ——
+   老存档 / 手工造的对象（测试、调试、演示）没有它也一样跑。 */
+function weaponMul(w, key) {
+  var m = w && w.wmods;
+  var v = m ? Number(m[key]) : 1;
+  return isFinite(v) && v > 0 ? v : 1;
+}
+
+function weaponDamage(w) {
+  var s = S.stats;
+  var def = w.def;
+  var base = def.dmg * Weapons.mul(w, 'dmg') * weaponMul(w, 'weaponDmgPct') * Stats.damageMul(s, def);
+  if (def.type === 'melee') base += s.meleeDmg * 0.55;
+  else base += s.rangedDmg * 0.55;
+  if (def.elemental) base += s.elementalDmg * 0.4;
+  if (def.engineering) base += s.engineering * 0.5;
+  return Math.max(1, base);
+}
+
+function weaponReach(w) {
+  return w.def.reach * Weapons.mul(w, 'reach') * Stats.rangeMul(S.stats);
+}
+
+function weaponCd(w) {
+  return Math.max(0.05, w.def.cd * Weapons.mul(w, 'cd') * weaponMul(w, 'weaponCdPct') * Stats.cooldownMul(S.stats));
+}
+
+/* =========================================================
+   开局条件（天赋的唯一出口）
+   ---------------------------------------------------------
+   `opening` 是一份纯数据：{ stats, weapons, items, scrap }。
+   它由 talents.ts 折出来，由 **接线层** 传进来 ——
+   模拟层不认识"天赋""角色养成"这些词，只看到一份起始状态。
+   这是"养成只能改开局条件"这条约束的落地方式：
+   要越界就得先往这个对象里加字段，而它只覆盖起始属性/起始携带/起始废料。
+   ========================================================= */
+function sanitizeOpening(opening) {
+  var o = opening && typeof opening === 'object' ? opening : {};
+  var stats: Record<string, number> = {};
+  var src = (o.stats && typeof o.stats === 'object') ? o.stats : {};
+  for (var i = 0; i < Stats.KEYS.length; i++) {
+    var k = Stats.KEYS[i];
+    var v = Number(src[k]);
+    if (isFinite(v) && v !== 0) stats[k] = v;
+  }
+  function ids(list) {
+    var out = [];
+    if (!list || !list.length) return out;
+    for (var j = 0; j < list.length; j++) if (typeof list[j] === 'string' && list[j]) out.push(list[j]);
+    return out;
+  }
+  /* 经济修正（天赋"经营扇区"的产物）。
+     只认 ECON 的这几个键 —— **键名与据点/营地一致，没有改名层**，
+     所以"声明了却没人读"能被静态检查直接抓出来。
+     上限与据点/营地同一套：折扣 ≤0.6、复利倍率 ≤0.5、每波废料 ≤60
+     （test/talents.mjs 会拿 Talent.ECON_CAP 逐个对照这里的行为，防两份数值漂移）。
+     全 0（空开局）= 恒等，这是行为指纹不受影响的前提。 */
+  var ECON_CAPS: Record<string, number> = {
+    shopDiscount: 0.6, campDiscount: 0.6, rerollDiscount: 0.6, sporeMul: 0.85, waveIncome: 60
+  };
+  var econ: OpeningEcon = { shopDiscount: 0, campDiscount: 0, rerollDiscount: 0, sporeMul: 0, waveIncome: 0 };
+  var econSrc = (o.econ && typeof o.econ === 'object') ? o.econ : {};
+  for (var ek in econ) {
+    if (!Object.prototype.hasOwnProperty.call(econSrc, ek)) continue;
+    var ev = Number(econSrc[ek]);
+    if (!isFinite(ev) || ev <= 0) continue;
+    econ[ek] = Math.min(ECON_CAPS[ek], ev);
+  }
+  return {
+    stats: stats,
+    weapons: ids(o.weapons),
+    items: ids(o.items),
+    scrap: Math.max(0, Math.round(Number(o.scrap) || 0)),
+    econ: econ
+  };
+}
+
+/** 起始属性：并进 p.base（与角色固有属性同一套单位） */
+function applyOpening(p, opening) {
+  var o = sanitizeOpening(opening);
+  for (var k in o.stats) {
+    if (Object.prototype.hasOwnProperty.call(o.stats, k)) p.base[k] += o.stats[k];
+  }
+}
+
+/** 起始携带：额外武器 / 额外道具 / 起始废料 */
+function applyOpeningExtras(p, opening) {
+  var o = sanitizeOpening(opening);
+  var i;
+  for (i = 0; i < o.weapons.length; i++) addWeapon(o.weapons[i]);
+  for (i = 0; i < o.items.length; i++) {
+    var def = Items.BY_ID[o.items[i]];
+    if (def) addItem(def);
+  }
+  if (o.scrap) p.scrap = (p.scrap || 0) + o.scrap;
+}
+
+/** 只留数字的映射（据点设施等级那种） */
+function cloneNumMap(src) {
+  var out: Record<string, number> = {};
+  for (var k in (src || {})) {
+    if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+    var v = Number(src[k]);
+    if (isFinite(v) && v > 0) out[k] = Math.floor(v);
+  }
+  return out;
+}
+
+/* =========================================================
+   地牢：房间内容（地图层 → 玩法层的接缝）
+   ---------------------------------------------------------
+   每一种房型"进门就发生什么"写在下面这张表里，模拟层只按 id 查表 ——
+   所以加一种房型 = dungeon.ts 加一行 + 这里加一行内容，不用在 step/endWave 里
+   再塞一个 if。覆盖检查在 test/rooms.mjs：**房型没有内容** = 玩家走进去
+   什么都不发生（那正是"浅尝辄止"的样子）。
+
+   表里的数字（货架 +2、九折、+3 建材…）就是这一间的全部份量，
+   它们都写在表里而不是散在函数里：想调"商店房到底多给多少"，只改这一处。
+   ========================================================= */
+interface RoomFxDef {
+  note: string;
+  /** 进门时的一次性效果；返回给人看的一句（没有就返回 null） */
+  enter?: (p: Player, room: DungeonRoom) => string | null;
+  /** 在**这一间**里开的商店：多几件货 / 打几折 */
+  shopSlots?: number;
+  shopDiscount?: number;
+  /** 这一间把"速清/超时"两档奖励换成什么（限时房用；0 = 用全局配置） */
+  fastMul?: number;
+  slowMul?: number;
+}
+
+/** 事件房的遭遇表：每一个都是"代价与好处并存"，挑一个由 S.rnd 决定（可复现） */
+var ROOM_EVENTS: RoomEventDef[] = [
+  {
+    id: 'cache', name: '补给箱', note: '白给一批废料（没有代价）',
+    apply: function () {
+      var m = 30 + Game.wave * 6;
+      S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
+      return '补给箱：+' + m + ' 废料';
+    }
+  },
+  {
+    id: 'shrine', name: '孢子神龛', note: '生命上限 +4，但要把建材全捐出去',
+    apply: function () {
+      var p = S.player;
+      var spent = S.campPoints;
+      S.campPoints = 0;
+      p.upgrades.maxHp += 4;
+      recalcStats();
+      p.hp = Math.min(S.stats.maxHp, p.hp + 8);
+      return '孢子神龛：生命上限 +4（捐掉 ' + spent + ' 建材）';
+    }
+  },
+  {
+    id: 'forge', name: '废弃锻造台', note: '免费刷新 ×4，代价是这一间的废料奖励减半',
+    apply: function () {
+      S.freeRerolls += 4;
+      S.bonusMul = 0.5;
+      return '废弃锻造台：刷新 ×4（这一间奖励减半）';
+    }
+  },
+  {
+    id: 'pact', name: '血契', note: '立刻损失当前生命的 15%，换一大笔废料',
+    apply: function () {
+      var p = S.player;
+      var cost = Math.max(1, Math.round(p.hp * 0.15));
+      p.hp = Math.max(1, p.hp - cost);
+      var m = 40 + Game.wave * 8;
+      p.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
+      return '血契：-' + cost + ' 生命，+' + m + ' 废料';
+    }
+  }
+];
+
+var ROOM_EVENT_BY_ID: Record<string, RoomEventDef> = Object.create(null);
+for (var rei = 0; rei < ROOM_EVENTS.length; rei++) ROOM_EVENT_BY_ID[ROOM_EVENTS[rei].id] = ROOM_EVENTS[rei];
+
+var ROOM_FX: Record<string, RoomFxDef> = {
+  start: {
+    note: '入口间：安全，进门回一点血',
+    enter: function () {
+      var h = Math.round(S.stats.maxHp * 0.15);
+      settleHeal(h);
+      return '入口间 · 回血 ' + h;
+    }
+  },
+  fight: { note: '普通遭遇：按当前层与波次刷一批怪' },
+  elite: {
+    /* 精英房 = **废料的收集点**。
+       改造前它是笔亏账：整批精英化（更硬更疼）却和普通房拿一样的东西 ——
+       所以玩家没有理由进去，房型表上那一行等于不存在。
+       现在它给一笔明显的废料（按波次放大），于是"要不要拿命换这一笔"才是决定。 */
+    note: '精英房：整批精英化（更硬更疼），但打完有一大笔废料',
+    enter: function () {
+      var m = 30 + Game.wave * 8;
+      S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
+      S.campPoints += 2;
+      return '精英：+' + m + ' 废料 · +2 建材';
+    }
+  },
+  treasure: {
+    /* 宝箱房 = **装备的收集点**（改造前它只是"又一笔废料"，与战斗房没有区别）。
+       给的是已有的 24 把武器 / 29 件道具里的一件 —— **不新造任何东西**。
+       武器放不下时退成道具（道具没有上限），所以"进宝箱"永远不会白进。 */
+    note: '宝箱房：白给一件装备（武器或道具）',
+    enter: function () {
+      var wantWeapon = S.rnd() < 0.5;
+      var got = '';
+      /* 档位上限来自**品级表**（`Items.maxTierFor` → `Tiers.capFor`）：只从"这一波
+         买得到的档位"里挑，宝箱不该直接给通关级的货。这句阶梯以前在这一段里
+         内联写了两遍 —— 加一档时它会**静默地**不给新档。 */
+      var cap = Items.maxTierFor(Game.wave);
+      if (wantWeapon) {
+        var pool = Weapons.LIST.filter(function (w) { return (w.tier || 1) <= cap; });
+        var pick = pool[Math.floor(S.rnd() * pool.length)] || Weapons.LIST[0];
+        var res = addWeaponOrCombine(pick.id, 0);
+        if (res.ok) got = pick.name + '（' + (res.combined ? 'T' + res.tier + '，与第 1 格同名并档' : 'T' + res.tier) + '）';
+      }
+      if (!got) {
+        var ipool = Items.LIST.filter(function (d) { return (d.tier || 1) <= cap; });
+        var ipick = ipool[Math.floor(S.rnd() * ipool.length)] || Items.LIST[0];
+        addItem(ipick);
+        recalcStats();
+        got = ipick.name + '（道具）';
+      }
+      S.campPoints += 3;
+      return '宝箱：' + got + ' · +3 建材';
+    }
+  },
+  shop: {
+    note: '商店房：货架多两件，这一间里买东西打九折',
+    shopSlots: 2, shopDiscount: 0.10,
+    enter: function () { return '商店房：货架 +2 · 本间九折'; }
+  },
+  camp: {
+    /* 补给房 = **建材的收集点**（建材是工坊的本钱，建产线全靠它） */
+    note: '补给房：进门回血、建材翻倍，可以就地开工',
+    enter: function () {
+      var h = Math.round(S.stats.maxHp * 0.25);
+      settleHeal(h);
+      var pts = Camp.POINTS_PER_WAVE * 3;
+      S.campPoints += pts;
+      return '补给房：回血 ' + h + ' · 建材 +' + pts;
+    }
+  },
+  event: {
+    note: '事件房：随机一次遭遇，代价与好处并存',
+    enter: function (p, room) { return rollRoomEvent(p, room); }
+  },
+  boss: { note: '关底：这一层的 Boss 守在这里（打完就下一层）' },
+  rush: {
+    note: '限时房：时限砍半，按时打完奖励翻倍、超时几乎什么都没有',
+    fastMul: 1.8, slowMul: 0.45,
+    enter: function () { return '限时房：时限砍半 —— 抢时间'; }
+  },
+  secret: {
+    /* 密室 = **合金的收集点**（合金是图纸树唯一的稳定来源；平时只能靠回收装备换）。
+       它已经在"进门要付点东西"那一档里（先找到裂纹、花时间砸开墙），
+       所以给它独占产出是合理的：这是全游戏唯一一处"代价换独占"的地方。 */
+    note: '密室：藏起来的东西 —— 要先打穿那道有裂纹的墙；里面是合金与一笔废料',
+    enter: function () {
+      var m = 60 + Game.wave * 10;
+      S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
+      S.campPoints += 6;
+      var alloy = 2 + Math.floor(Game.wave / 6);
+      S.alloy = (S.alloy || 0) + alloy;
+      S.secretsFound = (S.secretsFound || 0) + 1;
+      Game.events.emit('secretFound', { room: S.roomId, floor: S.floor, count: S.secretsFound, alloy: alloy });
+      return '密室：+' + m + ' 废料 · +6 建材 · 合金 +' + alloy;
+    }
+  }
+};
+
+function rollRoomEvent(p, room) {
+  var idx = Math.floor(S.rnd() * ROOM_EVENTS.length);
+  if (idx >= ROOM_EVENTS.length) idx = ROOM_EVENTS.length - 1;
+  var ev = ROOM_EVENTS[idx];
+  var msg = ev.apply(p, room);
+  // 记下"这一局见过这条遭遇"：剧情碎片与图鉴都要用（模拟层只记 id）
+  if (S.runEvents.indexOf(ev.id) < 0) S.runEvents.push(ev.id);
+  Game.events.emit('roomEvent', { id: ev.id, name: ev.name, note: ev.note, msg: msg });
+  return '事件 · ' + ev.name + '：' + msg;
+}
+
+/** 给人看的一行（界面用；**不要**在 ui.ts 里硬编码房型文案） */
+Game.roomFxNote = function (type) {
+  var fx = ROOM_FX[type];
+  return fx ? fx.note : '';
+};
+Game.ROOM_FX = ROOM_FX;
+Game.ROOM_EVENTS = ROOM_EVENTS;
+
+/* ---------------- 地图状态：当前层 / 当前房 / 破过的墙 ---------------- */
+function currentRoom() {
+  if (!S || !S.map) return null;
+  return Dungeon.roomById(S.map, S.roomId);
+}
+
+/**
+ * 深度的回报：越深的层，**每次收集拿得越多**（浅层 ×1 → 深井 ×2 上下）。
+ *
+ * 为什么它必须存在：能不能翻层是**玩家自己选时机**的 —— 打 Boss 就结束这一层，
+ * 没打的房间连同它们的东西全丢。可如果"走光这一层"永远最优，那个"时机"就
+ * 不是选择，只是顺序（清光 → 关底 → 下一层，唯一解）。
+ * 有了它，两条路各自成立：
+ *   · 走光这一层 = 次数多（每一间都是一次收集 + 一次买卖 + 一个制造回合）
+ *   · 早打关底   = 单次更肥（更高的层倍率叠在后面的每一间上）
+ *
+ * 用的是**已有的东西**，一个新元素都没有：
+ *   · 层号（已有）
+ *   · 层主题的 `hpMul`（已有，它本来就写着"敌人更硬"；难点就该更肥 ——
+ *     主题的文案 "菌毯洞窟：敌人更硬，孢子更多" 一直这么写，只是数值上没兑现）
+ *   · `S.bonusMul`（已有的"这一间的奖励倍率"，事件房也用它）
+ *
+ * **一层之内也有深浅**（这一步加的）：房间的 `depth`（离入口几步）以前只用来排序，
+ * 不进任何收益公式 —— 于是"往深走"只有"那里放了特殊房"这一个理由。
+ *
+ * 关键取舍：这一项**以本层的平均深度为基准**（`rel = depth − 平均`），不是"每深一步 +7%"。
+ * 后者是一份**全局通胀**（每间房平均 +20% 废料），而用户这一轮的抱怨恰好包含"成型过快" ——
+ * 加通胀会让它更快。以均值为基准之后：浅房略少、深房略多，**整层总量不变**；
+ * 于是"一路冲关底"（跳过深处的支线）真的会少拿，而"绕进去清干净"才吃到那份加成。
+ * 这才是"让绕路有第二个理由"，而不是把经济整体抬高。
+ * 入口（depth 0）在浅层是略负的 —— 但入口不刷怪、不发波次奖励，所以游戏里没有实际影响。
+ */
+function depthBonus(floor, depth) {
+  var t = S && S.map ? Dungeon.THEME_BY_ID[S.map.theme] : null;
+  var hard = t && t.hpMul ? t.hpMul : 1;
+  var f = Math.max(1, Math.floor(Number(floor) || 1));
+  var d = Math.max(0, Math.floor(Number(depth) || 0));
+  var rel = d - floorMeanDepth();
+  var mul = (1 + (f - 1) * 0.30 + rel * 0.10) * hard;
+  return Math.max(0.5, Math.round(mul * 100) / 100);
+}
+
+/** 这一层所有房间的平均深度（`rel` 的基准；没有地图时按 0 算 = 恒等） */
+function floorMeanDepth() {
+  if (!S || !S.map || !S.map.rooms.length) return 0;
+  var sum = 0;
+  for (var i = 0; i < S.map.rooms.length; i++) sum += Math.max(0, S.map.rooms[i].depth || 0);
+  return sum / S.map.rooms.length;
+}
+
+/** 生成一层并落到入口房（存档只存进度，地图**每次由种子重新长**） */
+function enterFloor(f, opt?) {
+  opt = opt || {};
+  S.floor = Math.max(1, Math.min(Dungeon.FLOORS, Math.floor(Number(f) || 1)));
+  S.map = Dungeon.genFloor(S.seed, S.floor);
+  S.roomId = S.map.start;
+  seeRoom(S.roomId);          // 入口 + 它那一圈（迷雾的第一个圈）
+  recalcWalls();
+  if (!opt.silent) {
+    Game.events.emit('floorEnter', {
+      floor: S.floor, theme: S.map.theme,
+      name: Dungeon.THEME_BY_ID[S.map.theme].name
+    });
+  }
+}
+
+/** 发现一间房（隐藏房"被发现"的唯一入口是进门或打穿它的墙）
+ *
+ *  **迷雾的定义在这里**（`Dungeon.visible` 只画 `seen` 的房间）：
+ *  进门 = 这一间看见，**它的非密室邻房也一并看见** ——
+ *  于是小地图是"见过的 + 紧挨着的一圈"，玩家仍然能规划下一步（门牌上也写着邻房是什么），
+ *  但看不到远处那一层有什么。密室**不参与**这一圈：看见它等于泄露隐藏要素。 */
+function seeRoom(id) {
+  var r = Dungeon.roomById(S.map, id);
+  if (!r) return null;
+  r.seen = true;
+  var ns = Dungeon.neighbours(S.map, r);
+  for (var i = 0; i < ns.length; i++) {
+    if (ns[i].type === Dungeon.SECRET_TYPE) continue;
+    ns[i].seen = true;
+  }
+  return r;
+}
+
+/** 门在战场上的像素位置（归一化几何 × 战场尺寸） */
+function doorPoint(dir) {
+  var f = Dungeon.doorFrac(dir);
+  return {
+    x: U.clamp(f.fx * Arena.W, Arena.PAD, Arena.W - Arena.PAD),
+    y: U.clamp(f.fy * Arena.H, Arena.PAD, Arena.H - Arena.PAD)
+  };
+}
+
+/** a → b 是哪一面（没有相邻就 -1） */
+function dirTo(a, b) {
+  var D = Dungeon.DIRS;
+  for (var d = 0; d < 4; d++) if (b.x === a.x + D[d][0] && b.y === a.y + D[d][1]) return d;
+  return -1;
+}
+
+/**
+ * 玩家贴着哪一扇门？（贴到门口就换房，不用按键 —— 以撒那一套）
+ * 只在这一间**清干净之后**才判定：战斗中门是锁着的。
+ * @returns 方向 0..3，或 -1
+ */
+function doorNearby() {
+  var cur = currentRoom();
+  if (!cur || !cur.cleared) return -1;
+  var p = S.player;
+  var half = Dungeon.DOOR_HALF * Math.min(Arena.W, Arena.H);
+  var reach = p.r + 18;
+  for (var d = 0; d < 4; d++) {
+    if (!cur.doors[d]) continue;
+    var pt = doorPoint(d);
+    var near = (d === 0 || d === 2)
+      ? Math.abs(p.x - pt.x) <= half && Math.abs(p.y - pt.y) <= reach
+      : Math.abs(p.y - pt.y) <= half && Math.abs(p.x - pt.x) <= reach;
+    if (!near) continue;
+    var to = roomAtDir(cur, d);
+    if (!to) continue;
+    var lk = Dungeon.link(S.map, cur, to);
+    if (!lk || !lk.door) continue;
+    if (lk.hidden && !Dungeon.wallOpen(S.walls, S.floor, cur.id, to.id)) continue;   // 暗门要先打穿
+    return d;
+  }
+  return -1;
+}
+
+/**
+ * 当前房间里"还没打穿的暗门墙"。
+ * 只在**进房 / 破墙**时重算一次：模拟里每帧检查的是这一小份（最多 4 面）。
+ */
+function recalcWalls() {
+  S.wallsNow.length = 0;
+  var cur = currentRoom();
+  if (!cur) return;
+  var ns = Dungeon.neighbours(S.map, cur);
+  for (var i = 0; i < ns.length; i++) {
+    var n = ns[i];
+    var lk = Dungeon.link(S.map, cur, n);
+    if (!lk || !lk.door || !lk.hidden) continue;
+    if (Dungeon.wallOpen(S.walls, S.floor, cur.id, n.id)) continue;
+    var dir = dirTo(cur, n);
+    if (dir < 0) continue;
+    var pt = doorPoint(dir);
+    S.wallsNow.push({
+      from: cur.id, to: n.id, dir: dir, x: pt.x, y: pt.y,
+      hp: Dungeon.WALL_HP, maxHp: Dungeon.WALL_HP
+    });
+  }
+}
+
+/**
+ * 打墙：子弹/近战/爆炸都能打。打穿了就**发现**那间密室（它在小地图上才出现）。
+ * @returns 是否打到了墙（打到了的子弹不再穿透）
+ */
+function hitWalls(x0, y0, x1, y1, r, dmg) {
+  if (!S || !S.wallsNow.length || !(dmg > 0)) return false;
+  var half = Dungeon.DOOR_HALF * Math.min(Arena.W, Arena.H);
+  for (var i = 0; i < S.wallsNow.length; i++) {
+    var wall = S.wallsNow[i];
+    var t = Col.segCircle(x0, y0, x1, y1, wall.x, wall.y, r + half);
+    if (t < 0) continue;
+    wall.hp -= dmg;
+    wall.flash = 0.12;              // 渲染层据此画"刚被打中"的一下
+    if (wall.hp <= 0) breakWall(wall.from, wall.to, wall.x, wall.y);
+    else Emit.wallHit(x1, y1, 2);
+    return true;
+  }
+  return false;
+}
+
+/** 打穿一面墙（内部动作：子弹/近战打中触发，所以**不**单独录制） */
+function breakWall(from, to, x, y) {
+  if (!S) return false;
+  var already = Dungeon.wallOpen(S.walls, S.floor, from, to);
+  S.walls[Dungeon.wallKey(S.floor, from, to)] = true;
+  seeRoom(to);                    // 打穿 = 发现（密室这时才出现在小地图上）
+  recalcWalls();
+  var sec = Dungeon.roomById(S.map, to);
+  var isSecret = !!(sec && sec.type === 'secret');
+  if (!already) {
+    if (x !== undefined) Emit.wallBreak(x, y);
+    sfx('explode');
+  }
+  Game.events.emit('wallBreak', { from: from, to: to, secret: isSecret });
+  return true;
+}
+
+/**
+ * 把一组"与 danger 同键名"的修正折进目标对象。
+ *
+ * 折法取自 `Danger.FOLD`（唯一来源），所以不会出现"两处各写一套怎么折"；
+ * 而且**只认目标里已经有的键** —— 契约若声明了一个 wmods 里没有的键，
+ * 这里会静默跳过（不凭空塞键），测试负责把这种"声明了没人读"抓出来。
+ */
+function foldInto(target, mods) {
+  if (!target || !mods) return target;
+  for (var k in mods) {
+    if (!Object.prototype.hasOwnProperty.call(mods, k)) continue;
+    if (!(k in target)) continue;
+    var how = Danger.FOLD[k] || 'add';
+    if (how === 'mul') target[k] = target[k] * mods[k];
+    else if (how === 'add') target[k] = target[k] + mods[k];
+    else if (how === 'min') target[k] = Math.min(target[k], mods[k]);
+    else target[k] = mods[k];
+  }
+  return target;
+}
+
+/* =========================================================
+   波次
+   ========================================================= */
+function startWave(n) {
+  Game.wave = n;
+  S.waveT = 0;
+  S.waveScrap = 0;
+  S.waveEnding = false;
+  S.forceClear = false;
+  /* 这一间的奖励倍率：**深度的回报**先铺上（层号 + 这一间在层里有多深，见 depthBonus），
+     事件房之类的"代价与好处并存"再在它上面乘（applyRoomEntry 里的 roomFx/事件）。 */
+  var curRoom = currentRoom();
+  S.bonusMul = depthBonus(S.floor, curRoom ? curRoom.depth : 0);
+  S.time = 0;
+  // 难度修正整份交给 buildWave（键名与 danger.ts 一致，不做映射层）；
+  // 地牢（房型 + 层主题）再折一层进来 —— 仍然是**开局/进房算一次，模拟里不回表**
+  S.wmods = Dungeon.foldMods(S.dmods, S.map, S.roomId);
+  /* 层间契约的**敌人那一组**也折进同一份（同一套键名与折法）——
+     于是 buildWave / spawnEnemy 一行都不用改，"契约说这层敌人更虚"必然生效。
+     折法取自 `Danger.FOLD`（唯一来源），所以不会出现"两处各写一套怎么折"。 */
+  if (S.boonFold) foldInto(S.wmods, S.boonFold.enemy);
+  // 时限：难度/房型/契约三处都折在 wmods.waveTime 上（它本来就在 danger 的键集里）
+  S.waveLeft = Game.cfg.waveTime(n) * (S.wmods.waveTime || 1);
+  /* Boss 由**层**决定（不是这里随机挑）：同一层永远是同一只，
+     地图、Boss、剧情碎片三者才不会各说各话。非 Boss 房传 null。 */
+  var room = currentRoom();
+  var bossId = (room && room.type === Dungeon.BOSS_TYPE) ? Enemies.bossFor(S.seed, S.floor) : null;
+  S.bossId = bossId;
+  S.spawnQueue = Enemies.buildWave(n, S.rnd, S.wmods, bossId);
+  S.spawnIdx = 0;
+  S.arena = Arena.build(n, S.map ? S.map.theme : null);
+  S.decals.length = 0;
+  S.decalSeq = 0;
+  S.decalCursor = 0;
+  S.stainBudget = Game.cfg.stainBurst;
+  S.enemies.length = 0;
+  S.bullets.length = 0;
+  S.ebullets.length = 0;
+  S.pickups.length = 0;
+  Emit.clear();          // 粒子回收到自由链表，而不是直接丢数组
+  S.turrets.length = 0;
+  S.grid.map = Object.create(null);
+
+  var p = S.player;
+  p.x = Arena.W / 2; p.y = Arena.H / 2;
+  p.px = p.x; p.py = p.y;      // 插值基准同帧对齐：换房时不会拉出一条横穿战场的残影
+  p.invuln = 1.2;
+
+  // 工程学炮塔（件数来自 recalcStats 折好的 `S.itemFx`，不再每波扫一遍道具）
+  var turrets = (S.itemFx && S.itemFx.turret) || 0;
+  /* 工坊**不给炮塔、不给回血、不给刷新了**（这一步解耦的核心）：
+     它以前是"给战斗挂被动"的面板，现在是制造车间 —— 它的产物是装备与道具，
+     由玩家在工坊里自己造（Game.craft）。战斗数值的唯一来源回到：
+     属性加点 / 道具 / 武器 / 层间契约。 */
+  for (var t = 0; t < turrets; t++) {
+    var ang = (t / Math.max(1, turrets)) * U.TAU;
+    S.turrets.push(Comp.spawn('turret', {
+      x: p.x + Math.cos(ang) * 90, y: p.y + Math.sin(ang) * 90,
+      hp: 40 + S.stats.engineering * 3, maxHp: 40 + S.stats.engineering * 3,
+      r: 18
+    }));
+  }
+
+  // 据点钟楼：每波白送的刷新次数
+  S.freeRerolls = (S.kmods && S.kmods.freeRerolls) || 0;
+
+  /* 生产线**每波重置一次**：这是经营那一侧的"回合"。
+     每条产线每波只能造一件 —— 于是"这一波造什么、造不造"是真决定，
+     而空着的产线就是浪费（它自己的失败状态，不需要额外的惩罚机制）。 */
+  S.craftUsed = [];
+
+  // 建材：出击带回来的那一份（每波固定 + 宝箱/密室/营地房的收获）
+  S.campPoints += Camp.POINTS_PER_WAVE;
+
+  /* 天赋"经营"扇区：每波到账的废料。
+     与击杀**脱钩**是刻意的 —— 废料几乎全部来自击杀时，
+     "更能打"本身就是最好的经济，经济流会被战力流完全支配（这是实测出来的）。
+     Brotato 的 Harvesting 就是每波结算的，这里照抄那一点。
+     它同时进"累计收集"，所以也会通过 scrap/40 折算成孢子。 */
+  /* 两个来源相加：天赋经济扇区 + 道具套装的档位（同一套键名 `waveIncome`，
+     所以这里只多一项相加，不需要第二条读点）。 */
+  var waveIncome = Math.round(
+    ((S.omods && S.omods.waveIncome) || 0) +
+    ((S.itemSets && S.itemSets.econ && S.itemSets.econ.waveIncome) || 0));
+  if (waveIncome > 0) {
+    p.scrap = (p.scrap || 0) + waveIncome;
+    S.stats_total.scrap += waveIncome;
+    S.waveScrap += waveIncome;
+  }
+
+  Game.events.emit('waveStart', n);
+}
+
+function endWave() {
+  if (S.waveEnding) return;
+  S.waveEnding = true;
+  /* 超时那一档要在**清掉标记之前**读：forceClear 是"这一间超时了"的唯一事实，
+     而 endWave 一开头就会把它复位（startWave 才是它该被复位的地方）。 */
+  var overran = S.forceClear;
+  S.forceClear = false;
+  /* 波次奖励 = 基础 × 收获 × 事件房倍率 × 速清/超时 × **契约的经济那一组**。
+     速清/超时两档可以被**房型**改写（限时房：按时打完翻倍、超时几乎什么都没有），
+     所以这里先问 roomFx，再退回全局配置。 */
+  var rfx = S.roomFx || {};
+  var speedMul = overran
+    ? (rfx.slowMul || Game.cfg.overrunBonus)
+    : (rfx.fastMul || Game.cfg.clearBonus);
+  var bonus = Math.round((8 + Game.wave * 3) * harvestMul() * (S.bonusMul || 1) * speedMul * econMul('bonusMul') * itemCostMul('matMul'));
+  S.stats_total.scrap += bonus;
+  S.player.scrap = (S.player.scrap || 0) + bonus;
+  S.stats_total.waves++;
+
+  var room = currentRoom();
+  if (room) { room.cleared = true; room.seen = true; }
+  Game.events.emit('waveClear', {
+    wave: Game.wave, bonus: bonus,
+    room: room ? room.id : null, type: room ? room.type : null
+  });
+
+  /* 关底：打完**最后一层**的 Boss 房 = 通关。
+     改造前的通关条件是"撑到第 finalWave 波并清场"，有了楼层之后那个条件是错的：
+     一局的长度现在由**地图**决定（三层的房间数），波次只是全局进度计数。
+     硬留 finalWave 会造成"地图还没走完就强制结算"—— 实测过一版，第 20 波把玩家
+     从第二层中间踢进结算画面。 */
+  if (room && room.type === 'boss') {
+    if (S.floor >= Dungeon.FLOORS) { winRun(); return; }
+    enterFloor(S.floor + 1);
+    // 新一层的入口间是**安全房**：不打一波、直接算已清（否则玩家会卡在"门锁着"）
+    var nr = currentRoom();
+    if (nr) { nr.cleared = true; nr.seen = true; }
+    applyRoomEntry();
+    /* 层间契约：打完 Boss 给下一层挑一条规矩。
+       候选由 `S.rnd` 抽（同种子同一组），**抽签只决定给哪几条、不改数值**；
+       挑不挑由玩家定，所以这一屏不是"必选"（跳过就等于放弃这次机会）。 */
+    if (!S.pendingBoons.length) {
+      S.pendingBoons = Boons.roll(Game.cfg.boonChoices, S.rnd);
+      Game.events.emit('boonOffer', { floor: S.floor, choices: S.pendingBoons.slice() });
+    }
+  }
+
+  market.openShop(bonus);
+}
+
+/** 通关：写死一个**事实**（S.won），而不是让下游从波次去推断 */
+function winRun() {
+  S.won = true;
+  Game.events.emit('runWin', { wave: Game.wave, danger: S.danger, floor: S.floor });
+  Game.setState('end');
+  Game.events.emit('gameOver', buildSummary(true));
+}
+
+/* =========================================================
+   升级 / 商店
+   ========================================================= */
+/* =========================================================
+   升级池：**幅度与权重都是等级的曲线**（不是平表）
+   ---------------------------------------------------------
+   改造前这是一张固定幅度 + 固定权重的平表：第 1 级和第 40 级抽到的卡
+   强度一模一样。于是"玩家每级长多少"是一条**平线**，而怪的生命是指数
+   （第 39 间 ×27）—— 两边对不上，成长感全靠"多抽几张卡"。
+   现在两样都随等级走，各自有**数据表里的曲线**：
+     · `player.cardAmt`  —— 卡的**幅度**倍率（1.0 → 3.4）
+     · `player.cardPool` —— 池的**权重**：等级越高越偏向"站得住"
+   两处都在 `curves.ts`（唯一出处），而这里只声明"哪些属性在池里、
+   谁是防御向"。改数值去改曲线，改池子才改这张表。
+   ========================================================= */
+var UPGRADE_POOL: UpgradeEntryDef[] = [
+  { key: 'maxHp', amt: 3, w: 10, guard: true },
+  { key: 'maxHp', amt: 6, w: 4, guard: true },
+  { key: 'hpRegen', amt: 1, w: 5, guard: true },
+  { key: 'damage', amt: 0.05, w: 12 },
+  { key: 'damage', amt: 0.10, w: 4 },
+  { key: 'meleeDmg', amt: 3, w: 8 },
+  { key: 'rangedDmg', amt: 3, w: 8 },
+  { key: 'elementalDmg', amt: 3, w: 6 },
+  { key: 'attackSpeed', amt: 0.08, w: 10 },
+  { key: 'attackSpeed', amt: 0.16, w: 3 },
+  { key: 'critChance', amt: 0.04, w: 8 },
+  { key: 'armor', amt: 2, w: 8, guard: true },
+  { key: 'dodge', amt: 0.03, w: 6, guard: true },
+  { key: 'speed', amt: 0.06, w: 8 },
+  { key: 'luck', amt: 4, w: 6 },
+  { key: 'harvesting', amt: 4, w: 6 },
+  { key: 'pickupRange', amt: 6, w: 6 },
+  { key: 'range', amt: 0.06, w: 6 },
+  { key: 'lifesteal', amt: 0.03, w: 5, guard: true },
+  { key: 'engineering', amt: 4, w: 5 }
+];
+
+/** 一张升级卡在**当前等级**下的实际幅度（唯一读法；界面与模拟都走它） */
+function cardAmtAt(entry, level) {
+  var mul = Curves.at('player.cardAmt', level);
+  return entry.amt * mul;
+}
+
+/** 一张升级卡在**当前等级**下的抽中权重（防御向的随等级抬） */
+function cardWeightAt(entry, level) {
+  return entry.guard ? entry.w * Curves.at('player.cardPool', level) : entry.w;
+}
+
+/**
+ * 抽 `LEVELUP_CARDS` 张互不重复的升级卡。
+ * 卡上带着**这一刻算好的 `amt`**：界面与 `takeLevelCard` 都读它，
+ * 于是"看到的幅度"与"选中的幅度"是同一个数（两处各算一次就会漂）。
+ */
+function rollLevelCards() {
+  S.levelCards = [];
+  var lvl = S.player.level;
+  var used = {};
+  var guard = 0;
+  while (S.levelCards.length < LEVELUP_CARDS && guard++ < 200) {
+    var entry = U.pickWeighted(UPGRADE_POOL.map(function (e) {
+      return { w: cardWeightAt(e, lvl), e: e };
+    }), S.rnd).e;
+    var key = entry.key + ':' + entry.amt;
+    if (used[key]) continue;
+    used[key] = true;
+    S.levelCards.push({
+      key: entry.key, amt: cardAmtAt(entry, lvl), base: entry.amt,
+      level: lvl, guard: !!entry.guard
+    });
+  }
+  // 升级卡换了就通知界面重画（连续升级时状态不变，不会触发 stateChange）
+  Game.events.emit('levelCards', S.levelCards);
+}
+
+function checkLevelUp() {
+  var p = S.player;
+  var guard = 0;
+  while (p.xp >= p.xpNeed && guard++ < 60) {
+    p.xp -= p.xpNeed;
+    p.level++;
+    p.pendingLevels++;
+    p.xpNeed = Stats.xpNeeded(p.level);
+  }
+  // 极端情况下（一次性吃到海量经验）限制单次待选卡数量，避免连点几十屏
+  if (p.pendingLevels > 6) p.pendingLevels = 6;
+  if (p.pendingLevels > 0 && Game.state === 'playing') {
+    rollLevelCards();
+    Game.setState('levelup');
+    Game.events.emit('levelup', { level: p.level });
+  }
+}
+
+function takeLevelCard(i) {
+  if (!requireState('levelup', 'chooseLevelCard')) return false;
+  var card = S.levelCards[i];
+  if (!card) return false;
+  S.player.upgrades[card.key] += card.amt;
+  S.player.pendingLevels--;
+  recalcStats();
+  S.player.hp = Math.min(S.player.hp, S.stats.maxHp);
+  Game.events.emit('levelupChosen', card);
+  if (S.player.pendingLevels > 0) {
+    rollLevelCards();
+    Game.setState('levelup');
+  } else {
+    S.levelCards = [];
+    Game.setState('playing');
+    Game.events.emit('resume');
+  }
+  return true;
+}
+
+/** 天赋（养成）折出来的经济修正。没点就是全 0 —— 乘上去必须还是原值（指纹靠这个） */
+/* =========================================================
+   局内经济（商店 / 道具包 / 营地）搬到了 market.ts
+   ---------------------------------------------------------
+   这里只留**注入**：把 game.ts 的内部能力（会话、波次、事件、重算属性…）交给它，
+   以及几个保持公开 API 不变的转发（`Game.buyOffer` 等）。
+   为什么切出去：那十几件事是"由界面驱动、只在 shop/camp 发生"的**子系统**，
+   而本文件剩下的部分是每帧都在跑的模拟内核；混在一起时两边都读不懂。
+   ========================================================= */
+/* 回收价：底价 × 2^抬升档数 × **这一局的回收比例**（工坊「回收炉」+ 图纸「废料回收」）。
+   写成一个函数而不是各处自己乘：市场卖、界面显示价格、提示语都要同一个数。 */
+function salvageOf(w) {
+  return Weapons.salvageOf(w, S ? S.salvageRate : undefined);
+}
+
+/**
+ * 回收一件装备顺带产出的**合金**（图纸树的唯一稳定来源）。
+ * 为什么是"回收"而不是"合成"：合成只是把已有装备加工一下，不产生新东西；
+ * 而回收是**把不要的装备换成图纸进度** —— 这正是"探索收集 → 解锁 → 造更好的"那条链。
+ * 越值钱的装备拆出越多（用它自己的价值算），所以"把 T4 拆了"不算白拆。
+ */
+function salvageAlloy(w) {
+  if (!S || !w) return 0;
+  var base = 1 + Math.floor(Weapons.valueOf(w) / 40);
+  var bonus = (S.fmods && S.fmods.alloyPerSalvage) || 0;
+  return Math.max(1, Math.round(base + bonus));
+}
+
+var market = Market.make({
+  S: function () { return S; },
+  wave: function () { return Game.wave; },
+  cfg: function () { return Game.cfg; },
+  events: function () { return Game.events; },
+  setState: function (to) { return Game.setState(to); },
+  recalcStats: recalcStats,
+  requireState: requireState,
+  requireStateIn: requireStateIn,
+  addWeaponOrCombine: addWeaponOrCombine,
+  addItem: addItem,
+  affixRnd: affixRnd,
+  combine: combine,
+  salvageOf: salvageOf,
+  itemCostMul: itemCostMul,
+  itemCostFlag: itemCostFlag,
+  salvageAlloy: salvageAlloy
+});
+function omod(key) { return market.omod(key); }
+function econMul(key) { return (S.boonFold && S.boonFold.econ && S.boonFold.econ[key]) || 1; }
+function econAdd(key) { return market.econAdd(key); }
+
+/* =========================================================
+   地牢：走门（房间之间怎么移动）
+   ========================================================= */
+function deny(msg) { Game.events.emit('deny', msg); return false; }
+
+/** 音效意图：模拟层**只广播**，放什么音由表现层决定（main.ts 把 audio.ts 接到这条事件上）。
+ *
+ *  改造前这里直接写 `if (Sfx) Sfx.kill()`，共 **9 处** —— 那是"模拟 → 造型"的依赖边：
+ *  模拟内核因此认识了 AudioContext 那一层，而声音对一局的走向没有任何影响。
+ *  事件总线上本来就有同样的先例（`buy` / `deny` 都是界面监听之后再响），所以这不是新机制。
+ *  契约：`name` 必须是 main.ts 的 `SFX_BY_INTENT` 里登记过的意图（守卫会对齐两边）。 */
+function sfx(name, arg?) { Game.events.emit('sfx', { name: name, arg: arg }); }
+
+/**
+ * 挑一条层间契约（在商店里挑，不受"必须站着不动"之类的约束）。
+ * 挑完立刻重算属性（`stats` 组）并广播事件；**不可撤销** —— 这就是它的份量。
+ * @returns 是否挑成功
+ */
+function pickBoon(id) {
+  if (!S) return false;
+  if (S.pendingBoons.indexOf(id) < 0) return deny('这一条不在候选里');
+  S.boon = id;
+  S.boonFold = Boons.fold(id);
+  S.pendingBoons = [];
+  recalcStats();                 // stats 组要立刻生效（enemy/econ 组在下一次 startWave 折）
+  var def = Boons.BY_ID[id];
+  Game.events.emit('boonPick', { id: id, name: def ? def.name : id });
+  return true;
+}
+
+/** 方向 d 上是哪一间房（没有就 null） */
+function roomAtDir(cur, d) {
+  var D = Dungeon.DIRS;
+  if (!(d >= 0 && d < 4)) return null;
+  return Dungeon.at(S.map, cur.x + D[d][0], cur.y + D[d][1]);
+}
+
+/**
+ * 进一间房。**唯一**换房间的入口（玩家走门、点小地图、自动探索都走它）。
+ *
+ * 三道校验，每一道都对应一个真实的设计决定：
+ *   · 那一面得有门（`doors[d]`）
+ *   · 这一间得清干净（战斗中门是锁的 —— 否则"边打边跑"能一直躲）
+ *   · 暗门要先**打穿**（`hidden` + 没破过的墙 = 进不去，这就是"隐藏要素"）
+ * 从商店/营地也能走（先回 playing）：玩家在商店里点小地图上的门就该走。
+ */
+/**
+ * 这一间现在有哪些门、通向哪、现在能不能走。
+ *
+ * **这是"玩家自己选房间"这条设计的唯一数据来源**（Hades / 以撒那种：
+ * 打完一间自己挑下一间，而不是被系统推着走）。规则全在这里：
+ * 有没有门、门锁着没有、暗门破没破 —— 界面只负责把这份数据画成可点的按钮，
+ * 既不重复判断，也不按房型 id 分支（房型名与图标都来自 dungeon.ts 的房型表）。
+ *
+ * @returns [{ dir, roomId, type, name, icon, hidden, open, why }]
+ *          `open:false` 的门也返回：界面据此显示"先把它打穿 / 先清干净"，
+ *          而不是把一个走不了的门藏起来（藏起来玩家会以为地图画错了）。
+ *          **暗门例外**：没打穿之前，密室的身份不给出去（见下面那段）。
+ */
+Game.doors = function () {
+  var out = [];
+  if (!S || !S.map) return out;
+  var cur = currentRoom();
+  if (!cur) return out;
+  for (var d = 0; d < 4; d++) {
+    if (!cur.doors[d]) continue;                      // 这一面根本没有门
+    var to = roomAtDir(cur, d);
+    if (!to) continue;
+    var lk = Dungeon.link(S.map, cur, to);
+    if (!lk || !lk.door) continue;
+    var td = Dungeon.TYPE_BY_ID ? Dungeon.TYPE_BY_ID[to.type] : null;
+    var open = true, why = '';
+    var hidden = !!(lk.hidden && !Dungeon.wallOpen(S.walls, S.floor, cur.id, to.id));
+    if (!cur.cleared) { open = false; why = '先把这一间清干净'; }
+    else if (hidden) { open = false; why = '墙上只有一道裂纹 —— 打穿它'; }
+    /* **暗门不报身份**：以前这里照样回 `type/name/icon`，于是门牌上直接写着
+       "✳ 密室 —— 墙上只有一道裂纹"，玩家一眼就知道墙后面是什么、在哪一面 ——
+       而 dungeon.ts 的设计是"密室不显示在地图上、seen 为假时根本不知道它存在"。
+       线索只保留一处（HUD 的"⚠ 右 墙上有裂纹 —— 打穿它"由 `S.wallsNow` 给），
+       门牌只说"这里有一面可疑的墙"：知道**有一处东西**，不知道**是什么**。 */
+    out.push({
+      dir: d, roomId: to.id, hidden: hidden,
+      type: hidden ? '?' : to.type,
+      name: hidden ? '裂纹的墙' : (td ? td.name : to.type),
+      icon: hidden ? '?' : (td ? td.icon : '·'),
+      open: open, why: why
+    });
+  }
+  return out;
+};
+
+/* =========================================================
+   进一间房（玩家走门、点小地图、自动探索都走它）
+   ---------------------------------------------------------
+   **顺序即正确性**：以前第一件事就是"从商店/营地切回 playing"，
+   然后才检查门、锁、暗门 —— 于是任何一次**失败的**走门都会把玩家
+   从商店里拽回战斗状态：`buyOffer` 从此开始全是"当前不在商店界面"，
+   而玩家看到的是"我明明还在商店里，怎么买不了了"。
+   实测（`tools/fun-audit.mjs`）：一局试买 4 次、成功 **0** 次，
+   全部倒在 `enterRoom(9)` 这个越界参数上 —— 它是无头 bot 的越界测试，
+   但**玩家也会踩到**（点小地图边缘、手柄方向键的边界值）。
+
+   现在：所有校验先过，**状态切换放到最后**（真的要走才切）。
+   于是"失败的无副作用"这条纪律对状态机也成立 —— 与"废料不足时
+   一分钱不扣"是同一条。
+   ========================================================= */
+function enterRoom(dir) {
+  if (!S) return false;
+  if (Game.state !== 'playing' && Game.state !== 'shop' && Game.state !== 'camp') return false;
+  var cur = currentRoom();
+  if (!cur) return false;
+  var d = Math.floor(Number(dir));
+  if (!(d >= 0 && d < 4) || !cur.doors[d]) return deny('那一面没有门');
+  if (!cur.cleared) return deny('门锁着 —— 先把这一间清干净');
+  var to = roomAtDir(cur, d);
+  if (!to) return deny('那边没有房间');
+  var lk = Dungeon.link(S.map, cur, to);
+  if (!lk || !lk.door) return deny('那一面没有门');
+  if (lk.hidden && !Dungeon.wallOpen(S.walls, S.floor, cur.id, to.id)) {
+    return deny('墙上只有一道裂纹……先把它打穿');
+  }
+  /* 到这里才允许离开商店 / 营地 */
+  if (Game.state !== 'playing') Game.setState('playing');
+  return goRoom(to.id);
+}
+
+/** 换到某一间房并开这一间的遭遇 */
+function goRoom(id) {
+  var room = Dungeon.roomById(S.map, id);
+  /* **走进一间已经清过的房 = 走过走廊**，不是打一波。
+     以前这里无条件 `startWave(wave+1)`，于是走进已清房间会：
+       · 波次计数 +1（难度与奖励都跟着涨）
+       · 白拿一份"每波到账"（建材 / 天赋废料 / 营火回血 / 免费刷新）
+       · 在一间地图上标着"已清"的房里刷出一整波怪
+     连起来就是一个可反复刷的循环（两间已清房间来回走），也是"点下一关像跳关"的来源。
+     现在：已清的房只挪位置，不开波、不进店、不触发进门效果（那些是一次性的）。 */
+  S.roomId = id;
+  seeRoom(id);
+  recalcWalls();
+  S.rerolls = 0;
+  S.offers = [];
+  S.shopLocked = false;
+  if (room && room.cleared) return true;      // 走廊：只挪位置
+  startWave(Game.wave + 1);
+  applyRoomEntry();
+  return true;
+}
+
+/**
+ * 自动选下一间：给"下一波"按钮与无头跑局用的默认路径。
+ *   ① 最近的、**还没打过**的可达房间（暗门不算通 —— 密室不会被自动走进去）
+ *   ② 同样近就先挑特殊房（宝箱/商店/营地/精英），再挑深的
+ *   ③ 关底**最后**才去：只要还有别的房间可走，就不进关底
+ * 选路是**确定性的**（同一个种子 + 同一份进度 → 同一条路），所以回放与成绩码成立。
+ */
+function autoExplore() {
+  var cur = currentRoom();
+  if (!cur) return false;
+  if (!cur.cleared) return deny('门锁着 —— 先把这一间清干净');
+  /* "下一波"的选路看**整层**，不是"玩家看见的那一份"：
+     迷雾只决定小地图画什么，不决定按钮能不能找到下一间
+     （否则探图的任务会落到"下一波"按钮上，而那是一个便利功能）。 */
+  var rooms = S.map.rooms.filter(function (r) { return r.type !== Dungeon.SECRET_TYPE; });
+  /* 关底分两轮找 —— 这是一个真 bug 的修法：
+     关底房的 type 也算"特殊房"，所以它以前和宝箱/商店一起参与比较，
+     于是**距离一样时它会被优先选中**。表现就是玩家点"下一波"被直接送进关底，
+     打完 Boss 触发翻层，这一层剩下的房间全没了（"点下一关就跳关"就是这个）。
+     先只看非关底，实在没有别的可走才去关底。 */
+  var picked = pickNextRoom(cur, rooms, false) || pickNextRoom(cur, rooms, true);
+  if (!picked) return deny('这一层的房间都走过了');
+  /* **一路走到那一间**，而不是只走一步。
+     只走一步的话，目标是三格外的房间时玩家会停在中间某间**已经清过**的空房里：
+     地图上没怪、商店没开、"下一波"也不在那儿了 —— 玩家的感受就是"点一下跳关了"。
+     中间的已清房间由 goRoom 当走廊处理（不刷怪、不算一波），所以走多远都不吃亏。 */
+  var target = picked.room.id;
+  for (var hop = 0; hop < 16; hop++) {
+    var path = Dungeon.path(S.map, cur.id, target, S.walls);
+    if (path.length < 2) break;
+    var nxt = Dungeon.roomById(S.map, path[1]);
+    var d = dirTo(cur, nxt);
+    if (d < 0) return deny('走不过去');
+    if (!enterRoom(d)) return false;
+    cur = currentRoom();
+    if (cur && !cur.cleared) return true;             // 到了要打的那一间
+  }
+  return deny('走不过去');
+}
+
+/**
+ * 在候选里挑一间：`bossOnly=false` 只看非关底房，`true` 只看关底房。
+ * 排序规则见 `autoExplore` 的①②；返回 `{ room, path }`（没得挑返回 null）。
+ */
+function pickNextRoom(cur, rooms, bossOnly) {
+  var best = null, bestPath = null, bestSpecial = false;
+  for (var i = 0; i < rooms.length; i++) {
+    var r = rooms[i];
+    if (r.id === cur.id || r.cleared) continue;
+    if ((r.type === Dungeon.BOSS_TYPE) !== bossOnly) continue;
+    var path = Dungeon.path(S.map, cur.id, r.id, S.walls);
+    if (!path.length) continue;                       // 走不到（例如没破墙的密室）
+    var special = isSpecialRoom(r);
+    var better = !bestPath ||
+      path.length < bestPath.length ||
+      (path.length === bestPath.length && special && !bestSpecial) ||
+      (path.length === bestPath.length && special === bestSpecial && r.depth > best.depth);
+    if (better) { best = r; bestPath = path; bestSpecial = special; }
+  }
+  return bestPath ? { room: best, path: bestPath } : null;
+}
+
+/** 特殊房（有内容值得绕路的那些）：除了入口与普通战斗房都算 */
+function isSpecialRoom(r) {
+  return r.type !== 'fight' && r.type !== 'start';
+}
+
+function nextWave() {
+  /* 正常从商店/营地出发；**另外允许"站在已清房间里"继续走** ——
+     手动走回一间清过的房时（那是合法的），按钮不该变成死的。 */
+  if (!requireStateIn(['shop', 'camp'], 'nextWave')) {
+    var here = currentRoom();
+    if (Game.state !== 'playing' || !here || !here.cleared) return false;
+  }
+  S.rerolls = 0;
+  S.offers = [];
+  Game.setState('playing');
+  return autoExplore();
+}
+
+/* =========================================================
+   空间网格（子弹/近战范围查询）
+   ========================================================= */
+function gridKey(cx, cy) { return cx + ',' + cy; }
+
+function rebuildGrid() {
+  var g = S.grid, cell = g.cell, map = g.map, k;
+  for (k in map) map[k].length = 0;   // 复用单元格数组，避免每帧重建上百个小数组
+  for (var i = 0; i < S.enemies.length; i++) {
+    var e = S.enemies[i];
+    if (e.dead) continue;
+    k = gridKey(Math.floor(e.x / cell), Math.floor(e.y / cell));
+    var arr = map[k];
+    if (!arr) arr = map[k] = [];
+    arr.push(e);
+  }
+}
+
+function queryCircle(x, y, r, out?) {
+  out = out || [];
+  out.length = 0;
+  var g = S.grid, cell = g.cell;
+  var x0 = Math.floor((x - r) / cell), x1 = Math.floor((x + r) / cell);
+  var y0 = Math.floor((y - r) / cell), y1 = Math.floor((y + r) / cell);
+  for (var cx = x0; cx <= x1; cx++) {
+    for (var cy = y0; cy <= y1; cy++) {
+      var arr = g.map[gridKey(cx, cy)];
+      if (!arr) continue;
+      for (var i = 0; i < arr.length; i++) {
+        var e = arr[i];
+        if (e.dead) continue;
+        var rr = r + e.r;
+        if (U.dist2(x, y, e.x, e.y) <= rr * rr) out.push(e);
+      }
+    }
+  }
+  return out;
+}
+
+/* =========================================================
+   伤害
+   特效一律走 Emit（见 emit.ts）：配方集中在那边，本文件只描述"发生了什么"
+   ========================================================= */
+
+/* =========================================================
+   血迹贴花
+   旧实现：`if (S.decals.length < 90) push(...)` —— 满了就永久停止添加，
+   实测一波 391 次击杀里 **77% 完全没有血迹**，而且三个圆的偏移写死，
+   每个血迹形状一模一样（seed 存了却从没被用过）。
+   现在：
+     · 环形缓冲：满了覆盖最旧的一个 → 每一次击杀都留痕，血迹永远反映最近的战斗
+     · 生成时随机形状（角度/距离/半径系数），每帧零计算
+     · 命中溅血受每秒预算限制（否则每秒上百次命中会把地面铺满）
+     · 玩家自己受伤也留血
+   ========================================================= */
+function addStain(x, y, r, color) {
+  var cap = Game.cfg.decalCap;
+  var d;
+  if (S.decals.length < cap) {
+    d = Comp.spawn('decal');
+    S.decals.push(d);
+  } else {
+    d = S.decals[S.decalCursor];
+    S.decalCursor++;
+    if (S.decalCursor >= cap) S.decalCursor = 0;
+  }
+  d.x = x; d.y = y; d.r = r; d.color = color;
+  d.seq = ++S.decalSeq;
+  // 形状只在生成时随机一次：每个血迹略有不同，但渲染时不需要任何随机数
+  var rnd = S.rnd;
+  d.a1 = rnd() * U.TAU;
+  d.a2 = rnd() * U.TAU;
+  d.d1 = 0.42 + rnd() * 0.42;
+  d.d2 = 0.42 + rnd() * 0.52;
+  d.s1 = 0.44 + rnd() * 0.30;
+  d.s2 = 0.24 + rnd() * 0.26;
+  return d;
+}
+
+/** 命中溅血：受预算限制，超预算就跳过（击杀不受限） */
+function tryHitStain(e) {
+  if (S.stainBudget < 1) return;
+  if (S.rnd() > 0.3) return;
+  S.stainBudget -= 1;
+  addStain(e.x + (S.rnd() - 0.5) * e.r, e.y + e.r * 0.25, e.r * (0.22 + S.rnd() * 0.16), e.def.dark);
+}
+
+/**
+ * 请求屏幕抖动：模拟层只声明"冲击有多大"（0~1），
+ * 具体怎么抖、抖多久由 render.ts 决定 —— 模拟层不依赖任何渲染实现。
+ */
+function requestShake(amount) {
+  Game.events.emit('shake', amount);
+}
+
+function damageEnemy(e, amount, opt) {
+  if (e.dead) return 0;
+  /* 钻地中：**完全免伤**（连暴击判定都不掷）。
+     这里必须挡在随机数之前 —— 否则"打不到"会变成"打得到但没伤害"，
+     而且随机序列会因为玩家对着土堆开火而变化（回放会分叉）。 */
+  if (e.burrowed) return 0;
+  opt = opt || {};
+  var s = S.stats;
+  var dmg = amount;
+  var crit = false;
+  if (!opt.noCrit && S.rnd() < Stats.critChance(s)) {
+    crit = true;
+    dmg *= Stats.critMul();
+  }
+  if (e.armorFlat) dmg = Math.max(1, dmg - e.armorFlat);
+
+  e.hp -= dmg;
+  e.hitFlash = 0.16;
+  S.stats_total.dmg += dmg;
+
+  if (opt.showText !== false) {
+    Emit.damage(e.x + (S.rnd() - 0.5) * 10, e.y - e.r - 6, dmg, crit);
+  }
+
+  // 生命窃取
+  if (s.lifesteal > 0) {
+    var heal = dmg * s.lifesteal;
+    if (heal > 0.4) healPlayer(heal, false);
+  }
+
+  // 元素附加：**机制名来自元素表**（见 data_elems.ts）
+  applyElement(e, opt.element, dmg, opt.depth || 0);
+
+  // 击退（统一换算成速度冲量并封顶，避免多段命中把怪物打飞出地图）
+  if (opt.knock) {
+    var kb = Math.min(420, opt.knock * (1 + (s.knockbackBonus || 0)) * 0.30);
+    var a = opt.knockAngle === undefined ? Math.atan2(e.y - opt.fromY, e.x - opt.fromX) : opt.knockAngle;
+    e.kx += Math.cos(a) * kb;
+    e.ky += Math.sin(a) * kb;
+    var klen = Math.sqrt(e.kx * e.kx + e.ky * e.ky);
+    if (klen > 520) { e.kx = e.kx / klen * 520; e.ky = e.ky / klen * 520; }
+  }
+
+  if (e.hp <= 0) killEnemy(e, opt);
+  else tryHitStain(e);        // 未致死的命中留下小片溅血（受预算限制）
+  return dmg;
+}
+
+/**
+ * 元素的**附带效果**：唯一的认领处。
+ *
+ * 改造前这里是两句按元素名比较的裸 if（`opt.element === 'fire'` / `'shock'`），
+ * 而"元素有哪些名字、谁带效果"没有任何一处声明 —— `data_items.ts` 的 SPECIALS
+ * 就是被同一个坑逼出来的（一件道具写着 special 却没人认领 = 它彻底没用）。
+ * 现在元素表声明 `effect`（`burn` / `chain`），这里只按**机制名**分派：
+ * 元素改名字、加元素都不碰这一行；声明了却没人认领的机制由 `test/elems.mjs` 抓。
+ *
+ * 系数（灼烧 0.35 / 电弧 0.5）留在这里而不是表里：它们是**公式的一部分**
+ * （和暴击倍率、击退换算同一个位置），不是"每种元素各自的参数"。
+ */
+function applyElement(e, element, dmg, depth) {
+  switch (Elems.effectOf(element)) {
+    case 'burn': applyBurn(e, dmg * 0.35); return;
+    case 'chain': shockChain(e, dmg * 0.5, depth); return;
+    default: return;                       // 没有附带效果（含认不出的元素名）
+  }
+}
+
+function applyBurn(e, dps) {
+  e.burn = Math.max(e.burn || 0, 2.2);
+  e.burnDps = Math.max(e.burnDps || 0, dps);
+}
+
+function shockChain(e, dmg, depth) {
+  if (depth > 2) return;
+  var near = queryCircle(e.x, e.y, 96);
+  var hits = 0;
+  for (var i = 0; i < near.length && hits < 2; i++) {
+    var o = near[i];
+    if (o === e || o.dead || o._shockTag === S.time) continue;
+    o._shockTag = S.time;
+    Emit.shockRing(o.x, o.y);
+    damageEnemy(o, dmg, { noCrit: true, showText: depth < 1, element: 'shock', depth: depth + 1, fromX: e.x, fromY: e.y, knock: 20 });
+    hits++;
+  }
+}
+
+/**
+ * "白给的回血"（进门间 15% / 补给房 25%）—— 与生命窃取**分开**走这一道门。
+ *
+ * 为什么必须分开：道具代价 `noHeal`（异星护符）要取消的是**这一档**，
+ * 而不是"一切回血"。那件道具同时给 lifesteal，如果把 `healPlayer` 整个关掉，
+ * "吸血换不回复"就自相矛盾了 —— 实测那样配会让这件道具纯亏，
+ * 而"纯亏的选项"正是这一轮要消灭的东西（没有决策 = 不选它）。
+ */
+function settleHeal(amount) {
+  if (itemCostFlag('noHeal')) return 0;
+  healPlayer(amount, true);
+  return amount;
+}
+function healPlayer(amount, silent?) {
+  var p = S.player;
+  var before = p.hp;
+  p.hp = Math.min(S.stats.maxHp, p.hp + amount);
+  var got = p.hp - before;
+  if (got > 0) {
+    S.stats_total.healed += got;
+    // 生命窃取每帧都在回血，弹字会刷屏 —— silent 用来抑制（调用方本来就传了 false）
+    if (!silent) Emit.heal(p.x, p.y - 34, got);
+  }
+}
+
+function killEnemy(e, opt?) {
+  if (e.dead) return;
+  e.dead = true;
+  S.stats_total.kills++;
+
+  // 血液贴花（平涂色块，留在战场地面，换波时清空）
+  // 环形缓冲保证"每一次击杀都留痕"，而不是前 90 次之后就没了
+  addStain(e.x, e.y, e.r * 0.72, e.def.dark);
+
+  // 死亡碎片
+  Emit.deathSparks(e);
+  if (e.def.boss) {
+    requestShake(0.9);      // Boss 倒下：一次明显的冲击
+    /* 记下"这一局打倒了哪一只 Boss" —— 剧情碎片（按 `boss:<id>` 认来源）读它。
+       模拟层只记事实，不解释它通向哪一段剧情（那是接线层的活）。 */
+    S.bossesDown[e.def.id] = true;
+    /* **核心材料只有 Boss 掉**（`economy.ts` 里那笔 `meta-rare`）。
+       它不进局内经济、不落在地上 —— 直接记进这一局的账，结算时才入档。
+       为什么不做成地上的掉落物：那是"局内的钱"，而这笔钱的定义就是**局外的**。
+       做成掉落会让"捡不捡得到"取决于走位，而它该取决于"你打没打倒 Boss"。 */
+    S.coreEarned = (S.coreEarned || 0) + CORE_PER_BOSS;
+    Game.events.emit('bossDown', { id: e.def.id, name: e.def.name, floor: S.floor, core: CORE_PER_BOSS });
+  }
+
+  // 掉落废料
+  var count = 1 + Math.floor(S.rnd() * 2) + (e.elite ? 2 : 0) + (e.def.boss ? 14 : 0);
+  for (var c = 0; c < count; c++) {
+    var ang = S.rnd() * U.TAU, sp = 40 + S.rnd() * 70;
+    S.pickups.push(Comp.spawn('pickup', {
+      kind: 'mat', x: e.x, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp,
+      seed: S.rnd() * 10, value: 1 + (e.elite ? 1 : 0)
+    }));
+  }
+  // 小概率回血
+  if (S.rnd() < (e.def.boss ? 1 : 0.035 + S.stats.luck * 0.002)) {
+    S.pickups.push(Comp.spawn('pickup', { kind: 'heal', x: e.x, y: e.y, seed: S.rnd() * 10, value: 2 + Math.round(S.stats.maxHp * 0.06) }));
+  }
+
+  // 死亡爆炸（爆裂菌）
+  if (e.def.explodeOnDeath) {
+    var ex = e.def.explodeOnDeath;
+    Emit.deathExplosion(e.x, e.y, ex.radius);
+    requestShake(0.30);
+    if (U.dist(S.player.x, S.player.y, e.x, e.y) < ex.radius + S.player.r) {
+      hurtPlayer(ex.dmg * Enemies.dmgScale(Game.wave));
+    }
+  }
+
+  // 分裂
+  if (e.def.splitInto) {
+    var sp2 = e.def.splitInto;
+    var def = Enemies.BY_ID[sp2.id];
+    if (def) {
+      for (var j = 0; j < sp2.count; j++) {
+        var a2 = (j / sp2.count) * U.TAU + S.rnd();
+        spawnEnemy(def, e.x + Math.cos(a2) * 18, e.y + Math.sin(a2) * 18, {
+          hpMul: 0.5, elite: false, noBoss: true
+        });
+      }
+    }
+  }
+
+  sfx('kill');
+}
+
+function hurtPlayer(raw) {
+  var p = S.player;
+  if (p.invuln > 0) return;
+  var s = S.stats;
+  if (S.rnd() < U.clamp(s.dodge, 0, 0.75)) {
+    Emit.dodge(p.x, p.y - 36);
+    p.invuln = 0.25;
+    return;
+  }
+  /* 道具的 `fragile` 代价：挨打更疼。乘在护甲减伤**之后** ——
+     于是它与"你堆了多少护甲"是两个独立的问题（护甲不会把这条代价吃掉）。 */
+  var dmg = Stats.damageTaken(s, raw) * itemCostMul('fragile');
+  p.hp -= dmg;
+  p.invuln = 0.42;
+  p.hurtFlash = 0.3;
+  requestShake(0.50);          // 玩家受击：明显但不夸张
+  S.stats_total.taken += dmg;
+  Emit.playerHurt(p.x, p.y - 38, dmg);
+  Emit.blood(p.x, p.y, 3);
+  addStain(p.x + (S.rnd() - 0.5) * 10, p.y + 6, 9 + S.rnd() * 4, PAL.BLOOD);
+  sfx('hurt');
+  recalcStats();
+  if (p.hp <= 0) {
+    p.hp = 0;
+    Game.setState('end');
+    Game.events.emit('gameOver', buildSummary(false));
+  }
+}
+
+/* =========================================================
+   刷怪
+   ========================================================= */
+function pickSpawnPoint() {
+  var p = S.player;
+  var best = null, bestD = -1;
+  for (var i = 0; i < 8; i++) {
+    var edge = Math.floor(S.rnd() * 4);
+    var x, y, pad = Arena.PAD + 40;
+    if (edge === 0) { x = pad + S.rnd() * (Arena.W - pad * 2); y = pad; }
+    else if (edge === 1) { x = Arena.W - pad; y = pad + S.rnd() * (Arena.H - pad * 2); }
+    else if (edge === 2) { x = pad + S.rnd() * (Arena.W - pad * 2); y = Arena.H - pad; }
+    else { x = pad; y = pad + S.rnd() * (Arena.H - pad * 2); }
+    var d = U.dist2(x, y, p.x, p.y);
+    if (d > bestD) { bestD = d; best = { x: x, y: y }; }
+  }
+  return best;
+}
+
+/**
+ * 道具**代价**的读法（**唯一**的一处）。
+ *
+ * `S.itemCost` 由 `recalcStats` 折一次（`Items.foldCosts`），这里只读结果 ——
+ * 与 `econMul` / `econAdd`（契约那条经济线）同一个套路。
+ *
+ * `mul` 类的代价语义**随键名而分**，这一点必须写清楚，否则一定会写反：
+ *   · 大多数键是"**越小越糟**"（`matMul 0.8` = 废料少两成）→ 值直接乘；
+ *   · `enemyHp / enemyDmg / enemySpeed / fragile` 是"**越大越糟**"
+ *     （`enemyHp 1.10` = 敌人更硬）→ 值也直接乘，因为它在乘法里本来就把结果推大。
+ * 两种读法恰好都是"值直接乘进去"，所以这里只有一个函数；
+ * 真正要小心的是**写数据的人**：`matMul: 1.2` 的意思是"废料变多"，
+ * 那是增益不是代价 —— 方向由 `test/items.mjs` 的语义守卫逐个键钉住。
+ * @param key 代价键（`matMul` / `enemyHp` / …）
+ * @returns 倍率（没有这件道具就是 **1**，即恒等）
+ */
+function itemCostMul(key) {
+  var m = S && S.itemCost && S.itemCost.mul;
+  var v = m ? Number(m[key]) : 1;
+  return isFinite(v) && v > 0 ? v : 1;
+}
+/** 规则型代价的布尔读法（`noHeal` / `noFreeReroll`：值 ≥1 即生效） */
+function itemCostFlag(key) {
+  var a = S && S.itemCost && S.itemCost.add;
+  return !!(a && Number(a[key]) >= 1);
+}
+
+function spawnEnemy(def, x, y, opt) {
+  opt = opt || {};
+  if (!def) return null;
+  // 上限与"满了怎么办"由容器总账执行（enemies 的策略是 reclaim-farthest、Boss 免回收）
+
+  var wave = Game.wave;
+  // 敌人属性读的是**这一间的折叠结果**（难度 × 房型 × 层主题），不是裸的 dmods
+  var dm = S.wmods || S.dmods;
+  /* 道具的**敌人型代价**（Brotato 的 Curse 那一层）：让敌人更强，换更强的自己。
+     它乘在难度修正之后 —— 于是"这一件值不值"与"你选了多难的局"是两个独立的问题。 */
+  var hpMul = Enemies.hpScale(wave) * (opt.hpMul || 1) * dm.enemyHp * itemCostMul('enemyHp');
+  var dmgMul = Enemies.dmgScale(wave) * dm.enemyDmg * itemCostMul('enemyDmg');
+  var spMul = Enemies.speedScale(wave) * dm.enemySpeed * itemCostMul('enemySpeed');
+  var elite = !!opt.elite;
+
+  var e = Comp.spawn('enemy', {
+    id: S.nextId++,
+    def: def,
+    x: x, y: y,
+    vx: 0, vy: 0, kx: 0, ky: 0,
+    r: 22 * (def.scale || 1),
+    maxHp: def.hp0 * hpMul * (elite ? ELITE_HP : 1),
+    dmg: def.dmg0 * dmgMul * (elite ? ELITE_DMG : 1),
+    speed: def.speed * spMul * (elite ? ELITE_SPEED : 1),
+    elite: elite,
+    hp: 0, dead: false,
+    hitFlash: 0, burn: 0, burnDps: 0,
+    atkCd: (def.atkCd || 0) * (0.5 + S.rnd() * 0.8),
+    windup: 0, shootCd: 0.6 + S.rnd() * 1.2,
+    phase: S.rnd() * 10,
+    spawnT: 0.35,
+    // AI 的两个计时器（钻地上浮/下潜、召唤节拍、扫射相位）—— 声明在 AI 组件里
+    t1: 0, t2: 1,
+    // 钻地中的 Boss 打不到也不打人（渲染层据此画"土堆"）
+    burrowed: 0,
+    _shockTag: -1
+  });
+  e.hp = e.maxHp;
+  // 满了由容器策略决定（回收最远的非 Boss）；被拒绝时返回 null，调用方不生成
+  return Containers.add(S, 'enemies', e) ? e : null;
+}
+
+function updateSpawns(dt) {
+  if (S.forceClear) return;        // 超时之后不再补怪（"这一间已经没有援军了"）
+  var q = S.spawnQueue;
+  while (S.spawnIdx < q.length && q[S.spawnIdx].at <= S.waveT) {
+    var item = q[S.spawnIdx++];
+    var def = Enemies.BY_ID[item.id];
+    if (!def) continue;
+    var pos = pickSpawnPoint();
+    spawnEnemy(def, pos.x, pos.y, { elite: item.elite });
+  }
+}
+
+/* =========================================================
+   主更新
+   ========================================================= */
+/* =========================================================
+   帧模型：一次 step = 一个固定时长的"逻辑帧"，物理（积分 + 碰撞）在同一个
+   帧内按固定顺序跑完。表现层可能跑得更快（144Hz 显示器），所以每帧开头先把
+   位置存进 px/py，渲染层用 alpha 在两次逻辑帧之间插值 —— 逻辑帧与显示帧
+   因此互相独立：逻辑帧永远是 1/60 且顺序确定（可复现、可测），显示帧想多快都行。
+   ========================================================= */
+function snapPrev(list) {
+  for (var i = 0; i < list.length; i++) {
+    var o = list[i];
+    o.px = o.x; o.py = o.y;
+  }
+}
+
+function recordPrev() {
+  var p = S.player;
+  p.px = p.x; p.py = p.y;
+  snapPrev(S.enemies);
+  snapPrev(S.bullets);
+  snapPrev(S.ebullets);
+  snapPrev(S.pickups);
+  snapPrev(S.turrets);
+}
+
+function step(dt, input) {
+  Game.time += dt;
+  if (Game.state !== 'playing') return;
+  if (!S) return;              // 防御：没有会话时绝不推进（避免访问 null 崩溃）
+  S.time = (S.time || 0) + dt;
+
+  S.waveT += dt;
+  S.waveLeft = Math.max(0, S.waveLeft - dt);
+  // 命中溅血预算按时间回充（避免每秒上百次命中把地面铺满）
+  S.stainBudget = Math.min(Game.cfg.stainBurst, S.stainBudget + Game.cfg.stainPerSec * dt);
+
+  recordPrev();                // 插值基准：本帧积分前的位置
+
+  updateSpawns(dt);
+  rebuildGrid();
+
+  updatePlayer(dt, input || { x: 0, y: 0 });
+  updateWeapons(dt);
+  updateTurrets(dt);
+  updateEnemies(dt);
+  updateBullets(dt);
+  updateEnemyBullets(dt);
+  updatePickups(dt);
+  updateParticles(dt);
+  cleanup();
+
+  /* ---------------- 这一间什么时候算打完 ----------------
+     房间制：**刷完 + 场上清空 = 过**（不用干等计时器）。计时器因此从
+     "要撑多久"变成"多久内打完"：时限内清完 = 速清奖励，超时 = 剩下的怪狂暴
+     并且**停止再刷**（`forceClear`）。这个改动是刻意的，也是行为指纹变化的原因之一。
+     `S.roomHold` 是"这一间不自动结束"的口子（测试/调试用）。
+     注意 `drained` 要把 forceClear 算进去：超时之后剩下的怪是被**丢掉**的，
+     `spawnIdx` 永远不会追平队列长度，不算进去这一间就永远结束不了。 */
+  if (!S.roomHold) {
+    var drained = S.forceClear || S.spawnIdx >= S.spawnQueue.length;
+    if (drained && S.enemies.length === 0) endWave();
+    else if (S.waveLeft <= 0) overrun();
+  }
+}
+
+/**
+ * 超时：还没清完的怪**狂暴**（一次性），同时停止刷新的怪。
+ * 这是时限存在的意义 —— 否则"清空即过"会让 waveTime 变成没人读的数字。
+ */
+function overrun() {
+  if (S.forceClear) return;
+  S.forceClear = true;
+  var mul = Game.cfg.overrun;
+  for (var i = 0; i < S.enemies.length; i++) {
+    var e = S.enemies[i];
+    if (e.def && e.def.boss) continue;         // Boss 本来就够狠，不再叠
+    e.speed *= mul.speed;
+    e.dmg *= mul.dmg;
+    e.enraged = true;
+  }
+  Game.events.emit('overrun', { wave: Game.wave, left: S.enemies.length });
+}
+
+/* ---------------- 玩家 ---------------- */
+function updatePlayer(dt, input) {
+  var p = S.player;
+  var s = S.stats;
+  var mv = Stats.moveSpeed(s);
+  /* 慢走由**输入载荷**带来（`Input.moveVec()` 的 `slow`），模拟层不 import 输入层。
+     改造前这里是 `if (Input && Input.isSlow && Input.isSlow())` —— 全项目唯一一条
+     "模拟 → 界面"的依赖边：一帧的行为不再只由 (状态, dt, 输入载荷) 决定，
+     而是取决于输入单例此刻的字段。载荷缺 `slow` 时按"不慢走"算（与改造前一致）。 */
+  if (input.slow) mv *= 0.55;
+  // 受虐狂：低血加速
+  if (Chars.specialOf(p.charDef.id, 'rage')) mv *= 1 + p.rage * 0.18;
+
+  var ix = input.x || 0, iy = input.y || 0;
+  var il = Math.sqrt(ix * ix + iy * iy);
+  if (il > 1) { ix /= il; iy /= il; }
+
+  var targetVx = ix * mv, targetVy = iy * mv;
+  var accel = 12;
+  p.vx = U.approach(p.vx, targetVx, mv * accel * dt);
+  p.vy = U.approach(p.vy, targetVy, mv * accel * dt);
+
+  p.x += p.vx * dt;
+  p.y += p.vy * dt;
+  var cl = Arena.clampPos(p.x, p.y, p.r);
+  if (cl.x !== p.x) p.vx = 0;
+  if (cl.y !== p.y) p.vy = 0;
+  p.x = cl.x; p.y = cl.y;
+
+  /* 走到门口就过去（以撒那一套：不用按键，走进门就换房）。
+     只有**这一间清干净**之后才判定 —— 战斗中门是锁着的。 */
+  if (S.waveEnding && !S.roomHold) {
+    var dd = doorNearby();
+    if (dd >= 0 && enterRoom(dd)) return;
+  }
+
+  /* ---------------- 角色律动状态（曲线在渲染层求） ----------------
+     旧实现直接在模拟层切两套公式：
+       bob = moving ? |sin(step)|*-3.2 : sin(step*0.5)*-1.2
+     幅度与相位在松手那一帧同时跳变（实测 bob 瞬时跳 1.19px、手臂从 -0.64 硬切到 0），
+     而且待机只有上下平移、没有挤压，看起来是"漂浮"不是"呼吸"。
+     现在模拟层只提供两个连续量：
+       moveBlend  走路权重，平滑过渡（约 0.13 秒）
+       animT      统一相位，永不重置 → 不存在相位跳变
+     具体 bob / 挤压 / 摆臂由 render.ts 的 R.playerAnim 求值。 */
+  var moving = il > 0.01;
+  p.moving = moving;
+  p.moveBlend = U.approach(p.moveBlend === undefined ? (moving ? 1 : 0) : p.moveBlend,
+    moving ? 1 : 0, dt * 8);
+  p.animT += dt * (1 + 0.55 * p.moveBlend);   // 走路时律动加快
+
+  if (p.invuln > 0) p.invuln -= dt;
+  if (p.hitFlash > 0) p.hitFlash -= dt;
+  if (p.hurtFlash > 0) p.hurtFlash -= dt;
+
+  // 生命回复
+  if (s.hpRegen > 0 && p.hp < s.maxHp) {
+    p._regenAcc = (p._regenAcc || 0) + s.hpRegen * dt;
+    if (p._regenAcc >= 1) {
+      var whole = Math.floor(p._regenAcc);
+      p._regenAcc -= whole;
+      p.hp = Math.min(s.maxHp, p.hp + whole);
+    }
+  }
+  if (Chars.specialOf(p.charDef.id, 'rage')) recalcStats();
+}
+
+/* ---------------- 武器 ---------------- */
+function nearestEnemy(x, y, maxDist, exclude?) {
+  var list = queryCircle(x, y, maxDist);
+  var best = null, bestD = Infinity;
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    // 钻地中的 Boss 不是目标（否则武器会对着一个打不到的土堆一直开火）
+    if (e === exclude || e.dead || e.burrowed) continue;
+    var d = U.dist2(x, y, e.x, e.y);
+    if (d < bestD) { bestD = d; best = e; }
+  }
+  return best;
+}
+
+function updateWeapons(dt) {
+  var p = S.player;
+  for (var i = 0; i < p.weapons.length; i++) {
+    var w = p.weapons[i];
+    w.cd -= dt;
+    if (w.swing > 0) w.swing = Math.max(0, w.swing - dt * 5.5);
+    if (w.cd > 0) continue;
+
+    var reach = weaponReach(w);
+    var target = nearestEnemy(p.x, p.y, reach + 60);
+    if (!target) continue;
+    fire(w, target);
+    w.cd = weaponCd(w);
+  }
+}
+
+function fire(w, target) {
+  var p = S.player;
+  var def = w.def;
+  var s = S.stats;
+  var ang = U.angle(p.x, p.y, target.x, target.y);
+  p.aim = ang;
+
+  // 武器位置：由骨架的武器挂点算（render.ts 用的是同一根骨头、同一份公式）
+  var bone = Bronana.seat(p.rig, w.index, ang, p.r, p.x, p.y);
+  Bronana.seatPoint(p.rig, bone, _seat);
+
+  var dmg = weaponDamage(w);
+  var crit = S.rnd() < Stats.critChance(s);
+  S.shots = (S.shots || 0) + 1;
+
+  if (def.type === 'melee') {
+    w.swing = 1;
+    var arc = Bronana.meleeArc(def);
+    var half = arc / 2;
+    var hit = queryCircle(p.x + Math.cos(ang) * weaponReach(w) * 0.45,
+      p.y + Math.sin(ang) * weaponReach(w) * 0.45, weaponReach(w) * 0.72);
+    var n = 0;
+    for (var i = 0; i < hit.length; i++) {
+      var e = hit[i];
+      var ea = U.angle(p.x, p.y, e.x, e.y);
+      var diff = Math.abs(((ea - ang + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      if (diff > half) continue;
+      damageEnemy(e, dmg, { fromX: p.x, fromY: p.y, knock: def.knock ? def.knock * Weapons.mul(w, 'knock') : def.knock, element: def.element, isMelee: true });
+      n++;
+    }
+    Emit.slash(p.x, p.y, weaponReach(w) * 0.82, ang, arc);
+    // 近战也能砸墙（只用枪的 build 与只用刀的 build 都该能开密室）
+    if (S.wallsNow.length) {
+      var wp = { x: p.x + Math.cos(ang) * weaponReach(w), y: p.y + Math.sin(ang) * weaponReach(w) };
+      hitWalls(p.x, p.y, wp.x, wp.y, weaponReach(w) * 0.5, dmg);
+    }
+    sfx('melee');
+  } else {
+    /* 同名武器多打一发的旧规则（`w.dup`）已删除：那个位置现在归**合成**。
+       理由：两把同型号的枪，"再打一发"是最弱的一种解释（数值上几乎看不见），
+       而"合成一把更高品级的"是 brotato 那条被验证过的、玩家真会去规划的路。
+       于是同名武器仍然有用 —— 只是它的用途从"多一发"变成了"燃料"。 */
+    var shots = def.shots || 1;
+    var pierceBonus = Weapons.pierceBonus(w);
+    /* 「克隆装置」这一类"改机制"的道具：件数由 recalcStats 折进 `S.itemFx` */
+    var extra = (S.itemFx && S.itemFx.extraProjectile) ? 1 : 0;
+    shots += extra;
+
+    var spread = (def.spread || 0) * Math.PI / 180;
+    Bronana.aheadPoint(p.rig, bone, Bronana.BULLET_AHEAD, _seat);
+    var bx = _seat.x, by = _seat.y;
+    for (var k = 0; k < shots; k++) {
+      var a = ang;
+      if (shots > 1) a += (k - (shots - 1) / 2) * (spread / Math.max(1, shots - 1)) * 2;
+      if (!def.spread && shots > 1) a += (k - (shots - 1) / 2) * 0.12;
+      var spd = (def.speed || 600) * (0.94 + S.rnd() * 0.12);
+      var b = Comp.spawn('bullet', {
+        x: bx, y: by,
+        vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+        r: def.kind === 'orb' ? 9 : (def.kind === 'rocket' ? 8 : 5),
+        dmg: dmg, pierce: (def.pierce || 0) + pierceBonus, hitSet: null,
+        life: def.life || 1.6, lifeMax: def.life || 1.6,
+        color: (def.tints && def.tints[0]) || PAL.STEEL,
+        dark: (def.tints && def.tints[1]) || PAL.DARK,
+        kind: bulletKind(def),
+        element: def.element,
+        knock: (def.kb || 30) * Weapons.mul(w, 'knock'),
+        blast: def.blast || 0,
+        crit: crit, bigCrit: crit,
+        fromX: p.x, fromY: p.y
+      });
+      if (b.pierce > 0) b.hitSet = [];
+      S.bullets.push(b);
+    }
+    Bronana.aheadPoint(p.rig, bone, Bronana.MUZZLE_AHEAD, _seat);
+    Emit.muzzle(_seat.x, _seat.y, ang, def.kind === 'shotgun');
+    sfx('shoot', def.kind);
+  }
+}
+
+function bulletKind(def) {
+  switch (def.kind) {
+    case 'rocket': return 'rocket';
+    case 'flame': return 'flame';
+    case 'orb': return 'orb';
+    case 'laser': case 'railgun': return 'laser';
+    case 'crossbow': case 'sniper': return 'bolt';
+    case 'sling': return 'ball';
+    default: return 'shot';
+  }
+}
+
+/* ---------------- 炮塔 ---------------- */
+function updateTurrets(dt) {
+  for (var i = 0; i < S.turrets.length; i++) {
+    var t = S.turrets[i];
+    if (t.muzzle > 0) t.muzzle -= dt;
+    t.cd -= dt;
+    var target = nearestEnemy(t.x, t.y, 300);
+    if (!target) continue;
+    t.aim = U.angle(t.x, t.y, target.x, target.y);
+    if (t.cd > 0) continue;
+    t.cd = Math.max(0.08, 0.55 * Stats.cooldownMul(S.stats));
+    t.muzzle = 0.07;
+    var dmg = (4 + S.stats.engineering * 0.6 + S.stats.rangedDmg * 0.5) * (1 + S.stats.damage);
+    var spd = 680;
+    S.bullets.push(Comp.spawn('bullet', {
+      x: t.x, y: t.y, vx: Math.cos(t.aim) * spd, vy: Math.sin(t.aim) * spd,
+      r: 5, dmg: dmg, life: 1.2, lifeMax: 1.2,
+      color: PAL.STEEL, dark: PAL.DARK, kind: 'shot', knock: 26,
+      fromX: t.x, fromY: t.y
+    }));
+    sfx('shoot', 'pistol');
+  }
+}
+
+/* ---------------- 怪物 ----------------
+   行为与弹幕模式本身在 ai.ts 里（注册表驱动，未知名字当场抛错）。
+   这里只做**适配**：AI 不认识 Game / Session，它要的是下面这几个能力。
+   ctx 复用同一个对象，每帧零分配。 */
+/* AI 能用的音效只有"开枪"这一件，所以注入的是**一个只有 shoot 的能力对象**，
+   而不是整个 Sfx —— 注入面越小，AI 层能碰到的东西越少（它连 Sfx 这个名字都不认识）。 */
+var _aiSfx = { shoot: function (kind) { sfx('shoot', kind); } };
+var _aiCtx: AiCtx = {
+  dt: 0, player: null, d: 0, nx: 0, ny: 0, sfx: null,
+  query: function (x, y, r) { return queryCircle(x, y, r); },
+  hurt: function (dmg) { hurtPlayer(dmg); },
+  kill: function (e) { killEnemy(e); },
+  shoot: function (e, a, big) { pushEnemyBullet(e, a, big); },
+  clamp: function (x, y, r) { return Arena.clampPos(x, y, r); },
+  rnd: function () { return S.rnd(); },
+  // 母巢召唤：走的是同一条刷怪路径（所以召唤物也受上限/回收策略管）
+  spawn: function (id, x, y) { return spawnEnemy(Enemies.BY_ID[id], x, y, {}); },
+  shake: function (a) { requestShake(a); }
+};
+
+function updateEnemies(dt) {
+  var p = S.player;
+  var list = S.enemies;
+  _aiCtx.dt = dt; _aiCtx.player = p; _aiCtx.sfx = _aiSfx;
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i];
+    if (e.dead) continue;
+    if (e.spawnT > 0) { e.spawnT -= dt; continue; }
+
+    if (e.hitFlash > 0) e.hitFlash -= dt;
+    if (e.burn > 0) {
+      e.burn -= dt;
+      e.hp -= e.burnDps * dt;
+      if (S.rnd() < dt * 8) {
+        Emit.ember(e);
+      }
+      if (e.hp <= 0) { killEnemy(e); continue; }
+    }
+
+    AI.step(e, _aiCtx);
+  }
+}
+
+function pushEnemyBullet(e, a, boss?) {
+  var def = e.def;
+  var spd = def.projSpeed || 220;
+  S.ebullets.push(Comp.spawn('ebullet', {
+    x: e.x + Math.cos(a) * (e.r + 4),
+    y: e.y + Math.sin(a) * (e.r + 4),
+    vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+    r: e.def.boss ? 10 : 7,
+    dmg: (def.projDmg || 3) * Enemies.dmgScale(Game.wave) * (e.elite ? ELITE_DMG : 1),
+    color: def.projColor || PAL.E2,
+    life: 3.2, kind: boss ? 'bossball' : 'ball'
+  }));
+}
+
+/* ---------------- 子弹 ----------------
+   命中判定是"扫掠"的：把这一步的位移当成线段去撞怪的圆。
+   老实现只看落点，快速弹擦边时会整发穿过去（实测 railgun 有 5.6~9.1px 宽的穿透带）。
+   判定半径仍保留原来的 +6 余量（这是刻意的手感宽容度，不是误差补偿），
+   所以扫掠只会**多**命中那一圈擦边，不会让原本能打中的变少。
+   候选按接触点的 t 升序结算，穿透（pierce）打到的第一只就是最近的那只。 */
+var _cand = [];      // 复用的候选缓冲（按 t 升序）
+var _candT = [];
+var _candRaw = [];   // 网格查询结果（复用，避免每发子弹分配一个数组）
+var _segQ = { x: 0, y: 0, r: 0 };
+
+function updateBullets(dt) {
+  for (var i = 0; i < S.bullets.length; i++) {
+    var b = S.bullets[i];
+    b.life -= dt;
+    if (b.kind === 'rocket') { b.vx *= 1 - dt * 0.05; b.vy *= 1 - dt * 0.05; }
+    var x0 = b.x, y0 = b.y;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    if (b.kind === 'flame') {
+      b.r = 10 + (1 - b.life / b.lifeMax) * 16;
+    }
+
+    // 命中判定：这一步扫过的线段 × 怪
+    var rad = b.r + 6;
+    // 暗门墙先判：打中墙的子弹就停在墙上（"对着可疑的墙打两枪"是真实动作）
+    if (S.wallsNow.length && hitWalls(x0, y0, b.x, b.y, rad, b.dmg)) {
+      Emit.deathExplosion(b.x, b.y, 12);
+      b.life = -1;
+      continue;
+    }
+    var box = Col.segBounds(x0, y0, b.x, b.y, rad, _segQ);
+    var cand = queryCircle(box.x, box.y, box.r, _candRaw);
+    var n = 0;
+    for (var j = 0; j < cand.length; j++) {
+      var e = cand[j];
+      if (e.burrowed) continue;              // 钻地中的 Boss 连"命中"都不算（子弹穿过去）
+      if (b.hitSet && b.hitSet.indexOf(e) >= 0) continue;
+      var t = Col.segCircle(x0, y0, b.x, b.y, e.x, e.y, rad + e.r);
+      if (t < 0) continue;
+      var ins = n++;                       // 插入排序（候选通常 0~3 个）
+      while (ins > 0 && _candT[ins - 1] > t) {
+        _candT[ins] = _candT[ins - 1]; _cand[ins] = _cand[ins - 1];
+        ins--;
+      }
+      _candT[ins] = t; _cand[ins] = e;
+    }
+
+    for (var h = 0; h < n; h++) {
+      var hit = _cand[h];
+      b.hitSet && b.hitSet.push(hit);
+
+      damageEnemy(hit, b.dmg, {
+        fromX: b.fromX, fromY: b.fromY,
+        knock: b.knock, element: b.element,
+        knockAngle: Math.atan2(b.vy, b.vx)
+      });
+
+      if (b.blast > 0) {
+        explode(b);
+        b.life = -1;
+        break;
+      }
+      if (b.pierce > 0) { b.pierce--; }
+      else { b.life = -1; if (b.kind === 'flame') b.life = 0; break; }
+    }
+
+    if (b.life > 0 && !Arena.inside(b.x, b.y, 40)) b.life = -1;
+  }
+  // 出界的已经 life<=0，回收统一由 Containers.reapAll 做（不再每步重建数组）
+}
+
+function explode(b) {
+  Emit.bulletExplosion(b.x, b.y, b.blast, b.crit);
+  requestShake(b.crit ? 0.34 : 0.20);   // 火箭/元素弹爆炸；暴击稍强
+  var hits = queryCircle(b.x, b.y, b.blast);
+  for (var i = 0; i < hits.length; i++) {
+    var e = hits[i];
+    damageEnemy(e, b.dmg * 0.75, {
+      noCrit: true, fromX: b.x, fromY: b.y, knock: 90, element: b.element, showText: i < 6
+    });
+  }
+  // 爆炸同样炸墙（火箭/手雷是"开墙"的自然工具）
+  if (S.wallsNow.length) hitWalls(b.x, b.y, b.x, b.y, b.blast * 0.6, b.dmg);
+  sfx('explode');
+}
+
+function updateEnemyBullets(dt) {
+  var p = S.player;
+  for (var i = 0; i < S.ebullets.length; i++) {
+    var b = S.ebullets[i];
+    b.life -= dt;
+    var x0 = b.x, y0 = b.y;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    // 同样走扫掠：敌弹现在还慢（单步 5px 上下），但改了速度就不会突然漏判
+    var rr = b.r + p.r - 4;
+    if (Col.segCircle(x0, y0, b.x, b.y, p.x, p.y, rr) >= 0) {
+      hurtPlayer(b.dmg);
+      b.life = -1;
+    }
+    if (!Arena.inside(b.x, b.y, 30)) b.life = -1;
+  }
+}
+
+/* ---------------- 掉落物 ---------------- */
+function updatePickups(dt) {
+  var p = S.player;
+  var radius = Stats.pickupRadius(S.stats);
+  for (var i = 0; i < S.pickups.length; i++) {
+    var it = S.pickups[i];
+    var dx = p.x - it.x, dy = p.y - it.y;
+    var d = Math.sqrt(dx * dx + dy * dy) || 1;
+    var pullDist = it.kind === 'heal' ? radius * 0.85 : radius;
+    if (d < pullDist) {
+      var pull = (1 - d / pullDist) * 620 + 120;
+      it.vx += (dx / d) * pull * dt * 6;
+      it.vy += (dy / d) * pull * dt * 6;
+    }
+    it.x += it.vx * dt; it.y += it.vy * dt;
+    it.vx *= Math.max(0, 1 - dt * 5);
+    it.vy *= Math.max(0, 1 - dt * 5);
+
+    if (d < p.r + 10) {
+      collect(it);
+      it.dead = true;          // 被捡走 = 该回收（由容器总账统一交换删除）
+    }
+  }
+}
+
+/** 收获加成（平方根递减，防止道具堆叠导致废料爆炸） */
+function harvestMul() {
+  return 1 + Math.min(2.0, Math.sqrt(Math.max(0, S.stats.harvesting)) * 0.085);
+}
+
+function collect(it) {
+  var p = S.player;
+  if (it.kind === 'heal') {
+    healPlayer(it.value);
+    sfx('pickup');
+    return;
+  }
+  // 废料收集也吃契约的"废料收集"那一条（矿脉/贪食）。**经验跟着废料走**，
+  // 所以它就是"经济契约也顺带养得更快"——这条关系是刻意的，写在注释里免得以后被当成 bug。
+  var gain = (it.value || 1) * harvestMul() * econMul('materialMul') * itemCostMul('matMul');
+  p.scrap = (p.scrap || 0) + gain;
+  p.xp += gain;
+  S.stats_total.scrap += gain;
+  S.waveScrap += gain;
+  sfx('pickup');
+  checkLevelUp();
+}
+
+/* ---------------- 粒子（生命周期与回收交给 emit.ts） ---------------- */
+function updateParticles(dt) {
+  Emit.update(dt);
+  // 抖动衰减不在这里：它属于表现层，由 render.ts 按渲染时间衰减
+}
+
+function cleanup() {
+  // 回收 + 上限兜底交给容器总账（containers.ts）：就地交换删除，零分配。
+  // 老实现对怪是"新建数组 + 逐个 push 存活者"，对子弹/敌弹/掉落物则**一直是**那个写法 ——
+  // 每步都分配一个新数组并全量拷贝，即使这一帧一个对象都没死。
+  Containers.reapAll(S);
+  Containers.enforceAll(S);
+}
+
+/* =========================================================
+   容器声明（对象管理是"一套系统"：每个容器在一处说清装什么、多大、满了怎么办、怎么回收）
+   ========================================================= */
+Containers.declare('enemies', {
+  list: 'enemies', note: '场上怪物', cap: Game.cfg.enemyCap, onFull: 'reclaim-farthest',
+  keep: function (e) { return !!e.def.boss; }        // Boss 不参与"回收最远的"
+});
+Containers.declare('bullets', {
+  list: 'bullets', note: '玩家子弹', cap: 1500, onFull: 'drop-oldest',
+  dead: function (b) { return !(b.life > 0); }
+});
+Containers.declare('ebullets', {
+  list: 'ebullets', note: '敌弹（怪物发射的弹幕）', cap: 800, onFull: 'drop-oldest',
+  dead: function (b) { return !(b.life > 0); }
+});
+Containers.declare('pickups', {
+  list: 'pickups', note: '掉落物（废料 / 回血）', cap: 500, onFull: 'drop-oldest'
+});
+Containers.declare('turrets', {
+  list: 'turrets', note: '工程炮塔', cap: 24, onFull: 'reject'
+});
+Containers.declare('particles', {
+  list: 'particles', note: '视觉粒子（池化，回收在 emit.ts）', cap: Emit.VIS_CAP, policy: 'external'
+});
+Containers.declare('textParticles', {
+  list: 'textParticles', note: '伤害飘字（池化，回收在 emit.ts）', cap: Emit.TEXT_CAP, policy: 'external'
+});
+Containers.declare('decals', {
+  list: 'decals', note: '血迹环形缓冲（写满覆盖最旧，越旧越淡）', cap: Game.cfg.decalCap,
+  policy: 'ring', onFull: 'never'
+});
+Containers.declare('freeParticles', {
+  list: 'freeParticles', note: '粒子空闲池（复用，不参与上限）', cap: Emit.VIS_CAP, policy: 'external'
+});
+Containers.declare('freeTextParticles', {
+  list: 'freeTextParticles', note: '飘字空闲池', cap: Emit.TEXT_CAP, policy: 'external'
+});
+// 玩家身上的两个容器（路径带点号）：由 UI 卖出与开局重置管理，不参与每步回收
+Containers.declare('weapons', {
+  list: 'player.weapons', note: '玩家武器（上限就是武器槽数）',
+  cap: Game.cfg.maxWeapons, onFull: 'reject', policy: 'external'
+});
+Containers.declare('items', {
+  list: 'player.items', note: '玩家道具（可叠加，不设上限：受废料经济限制）',
+  cap: Infinity, onFull: 'never', policy: 'external'
+});
+Containers.declare('offers', {
+  /* 货架件数 = `4 + 难度 + 据点货架 + 这一间房（商店房 +2）+ 契约`，
+     然后武器与道具**各** n 件 —— 所以件数会随进度长（实测到过 16 件）。
+     `cap: 12` 是照着早期数值写的，于是"货架变多"这条正当的成长
+     会被容器不变量报成"上限被绕过"（假报警）。真正的约束在 `market.ts`
+     的 `n` 那一行：它由经济与房间决定，不在这里重复一遍。 */
+  list: 'offers', note: '商店货架（每次进商店重掷；件数由经济与房间给，不设上限）',
+  cap: Infinity, onFull: 'never', policy: 'external'
+});
+
+/* =========================================================
+   结算
+   ========================================================= */
+function buildSummary(win) {
+  var p = S.player;
+  // 除了给人看的 name，也带上 id：挑战里的"用某角色"与图鉴的点亮都靠 id
+  // （名字是显示用的，可能改；id 才是身份）
+  var wIds = [], iIds = [], wTop = [], iTop = [];
+  for (var i = 0; i < p.weapons.length; i++) {
+    wIds.push(p.weapons[i].def.id);
+    if (p.weapons[i].def.tier >= 4) wTop.push(p.weapons[i].def.id);
+  }
+  for (i = 0; i < p.items.length; i++) {
+    iIds.push(p.items[i].def.id);
+    if (p.items[i].def.tier >= 4) iTop.push(p.items[i].def.id);
+  }
+  return {
+    win: !!win,
+    wave: Game.wave,
+    level: p.level,
+    kills: S.stats_total.kills,
+    scrap: Math.round(S.stats_total.scrap),
+    /* **带出去的废料**（`economy.ts` 的 bridge 那一档）：就是 `stats_total.scrap`
+       本身 —— 它是"这一局一共打出来多少"，而不是"结束时手里剩多少"。
+       `scrap` 那一项（上面一行）保留原义：它给战绩屏看"这一局留下了多少"，
+       两者在结算里读的是**不同的问题**，所以两个字段都要有。 */
+    earned: Math.round(S.stats_total.scrap),
+    damage: Math.round(S.stats_total.dmg),
+    taken: Math.round(S.stats_total.taken),
+    healed: Math.round(S.stats_total.healed),
+    charName: S.charDef.name,
+    char: S.charDef.id,
+    danger: S.danger,
+    packs: S.packsOpened || 0,
+    packSpent: S.packSpent || 0,
+    weapons: p.weapons.map(function (w) { return w.def.name; }),
+    items: p.items.map(function (it) { return it.def.name; }),
+    weaponIds: wIds, itemIds: iIds,
+    masteredWeaponIds: wTop, masteredItemIds: iTop,
+    /* ---- 剧情/档案要的"这一局碰到了什么来源" ----
+       模拟层只报事实：打到第几层、打赢了哪几只 Boss、发现了几间密室、见过哪些事件。
+       "这些来源对应哪一片记录、哪一句台词"属于接线层，模拟层不认识那一套。 */
+    floor: S.floor,
+    bossesDown: Object.keys(S.bossesDown || {}),
+    coreEarned: Math.max(0, Math.round(S.coreEarned || 0)),
+    secrets: S.secretsFound || 0,
+    events: (S.runEvents || []).slice(),
+    stats: S.stats
+  };
+}
+
+/* =========================================================
+   对外 API
+   ========================================================= */
+Game.newRun = function (charId, seed, danger, opening, smods) {
+  var def = Chars.BY_ID[charId] || Chars.LIST[0];
+  var s = newSession(def, seed, danger, opening, smods);
+  Game.setState('playing', true);   // 从选人界面进入新一局
+  Game.events.emit('runStart', def);
+  return s;
+};
+
+/* =========================================================
+   存档：一局怎么序列化由玩法层自己决定
+   只存"进度"，不存场上实体（怪/子弹/粒子/贴花）：那些是派生状态，
+   恢复时由 startWave 重新铺开即可。代价是**随机数流不会接着原来的走** ——
+   恢复的是进度，不是"同一局的未来"（那需要整局重放）。
+   ========================================================= */
+Game.exportRun = function () {
+  if (!S || !S.player) return null;
+  var p = S.player;
+  return {
+    char: S.charDef.id,
+    seed: S.seed,
+    danger: S.danger,          // 续玩必须带着难度，否则读档会静默降级成第 0 级
+    opening: S.opening,        // 天赋产物同理：不带着它，读档就把养成静默丢了
+    wave: Game.wave,
+    speed: Game.speed,
+    level: p.level,
+    xp: p.xp,
+    hp: Math.max(1, Math.round(p.hp)),
+    scrap: Math.round(p.scrap || 0),
+    upgrades: U.cloneObj(p.upgrades),
+    /* `p` = 为这一把付过多少废料（回收价的上限，见 data_weapons.ts 的 salvageOf）。
+       它必须进存档：不进的话"买一把 → 存档 → 读档 → 回收"就能把成本洗掉，
+       套利换个入口又回来了。老存档没有这个字段 → 0（当作捡来的，不受限）。
+       `a` = 词条（`Affixes.toSave` 的 `[id, 档, 值]` 三元组）—— 它同样是**这一局的
+       随机产物**：不存的话，读档会让每件装备的词条重滚一遍（玩家看着的装备变了，
+       而且"读档刷词条"会变成一条稳定的刷法）。 */
+    weapons: p.weapons.map(function (w) {
+      return { id: w.id, t: Weapons.tierOf(w), p: Math.floor(Number(w.paid) || 0), a: Affixes.toSave(w.affixes) };
+    }),
+    items: p.items.map(function (it) { return { id: it.def.id, a: Affixes.toSave(it.affixes) }; }),
+    totals: {
+      kills: S.stats_total.kills, scrap: Math.round(S.stats_total.scrap),
+      dmg: Math.round(S.stats_total.dmg), taken: Math.round(S.stats_total.taken),
+      healed: Math.round(S.stats_total.healed), waves: S.stats_total.waves
+    },
+    // 局内营地是"本局永久"，所以要跟着存档走（否则读档就把营地静默丢了）
+    camp: S.camp,
+    // 建造顺序也要带着 —— 相邻组合靠它判定，丢了就等于把组合静默拆了
+    campRow: S.campRow,
+    // 建材：本局还剩多少（读档不该白送也不该吞掉）
+    campPoints: S.campPoints,
+    // 据点等级同理：它是开局修正的来源，不带着读档会静默降级成"没有据点"
+    keep: S.keep,
+    /** 图纸：同样是一局开局修正的来源（存的是**开局时**那一份，见 importRun） */
+    forge: Object.keys(S.forge || {}),    /* ---- 地牢进度 ----
+       地图**不进存档**（它由种子长出来，同一个种子必然同一张图），
+       存的是"走到哪了"：层号 / 当前房 / 打过的房 / 破过的墙 / 发现过几间密室。
+       这样存档小、且回放与成绩码仍然只需要种子。 */
+    floor: S.floor,
+    room: S.roomId,
+    roomsCleared: clearedIds(),
+    roomsSeen: seenIds(),
+    walls: Object.keys(S.walls),
+    secretSeen: S.secretsFound || 0,
+    /** 打倒过哪几只 Boss（剧情碎片按 id 认；坏档里认不出的会在读档时丢掉） */
+    bossesDown: Object.keys(S.bossesDown || {}),
+    coreEarned: Math.max(0, Math.round(S.coreEarned || 0)),
+    /** 层间契约：已挑的那条 + 还没挑的候选（都是本局状态） */
+    boon: S.boon,
+    pendingBoons: S.pendingBoons.slice(),
+    packsOpened: S.packsOpened || 0,
+    packSpent: S.packSpent || 0,
+    /* ---- 商店的"此刻"（存档点就在商店里，所以这些必须跟着走）----
+       以前这些都不进存档，读档时 `openShop` 会**重掷一次货架**：
+       你看着的货变了、刷新价跌回最低（可以反复存读刷便宜刷新）、锁定的商店自己解锁。 */
+    offers: S.offers.map(function (o) {
+      return { t: o.type, id: o.def.id, price: o.price, sold: !!o.sold, tier: o.tier || 0,
+        /* 货架上的词条也要存：不存的话读档会把这一屏货**重滚一遍** ——
+           玩家看着的那件带"锋锐 T2"的匕首变成了别的词条（与"读档换货"同一类问题，
+           而这一条更隐蔽：货名、价格、档位全都没变）。 */
+        a: Affixes.toSave(o.affixes || null) };
+    }),
+    /** 合成了几次（本局统计 / 结算展示；读档不该把它清零） */
+    combineCount: S.combineCount || 0,
+    /** 这一间的房间效果（折出来的那一份）：商店房的「货架 +2 / 九折」就是它。
+        为什么不重算而是存下来 —— 房间内容里带着**一次性**的进门效果（回血/给废料），
+        读档时再跑一遍等于白送（`applyRoomEntry` 只在真进门时调用）。 */
+    roomFx: {
+      shopSlots: (S.roomFx && S.roomFx.shopSlots) || 0,
+      shopDiscount: (S.roomFx && S.roomFx.shopDiscount) || 0,
+      fastMul: (S.roomFx && S.roomFx.fastMul) || 0,
+      slowMul: (S.roomFx && S.roomFx.slowMul) || 0
+    },
+    /** 造了几件（同上） */
+    craftCount: S.craftCount || 0,
+    /** 这一波用掉的产线（存档点在商店里，所以它必须跟着走 —— 否则读档可以把产线刷回来） */
+    craftUsed: (S.craftUsed || []).slice(),
+    /** 本局累积的合金（合成产出；结算入账，**读档不该丢**） */
+    alloy: S.alloy || 0,
+    rerolls: S.rerolls || 0,
+    rerollCost: S.rerollCost,
+    shopLocked: !!S.shopLocked,
+    shopBonus: S.shopBonus || 0,
+    freeRerolls: S.freeRerolls || 0,
+    /** 随机流的状态：不带着它，读档后所有掷骰从种子起点重来 */
+    rndState: (S.rnd && S.rnd.state) ? S.rnd.state() : undefined,
+    /** 还没选的升级（存档点若正好压着一次升级，丢了就是白丢一级） */
+    pendingLevels: p.pendingLevels || 0,
+    /** 这一局在事件房见过的遭遇（剧情碎片按它记账） */
+    runEvents: (S.runEvents || []).slice()
+  };
+};
+
+/** 这一层里已清 / 已发现的房间 id（存档用；地图本身由种子重建） */
+function clearedIds() {
+  var out = [];
+  if (!S.map) return out;
+  for (var i = 0; i < S.map.rooms.length; i++) if (S.map.rooms[i].cleared) out.push(S.map.rooms[i].id);
+  return out;
+}
+function seenIds() {
+  var out = [];
+  if (!S.map) return out;
+  for (var i = 0; i < S.map.rooms.length; i++) if (S.map.rooms[i].seen) out.push(S.map.rooms[i].id);
+  return out;
+}
+
+/**
+ * 存档里的数值统一夹取：**非有限数一律归 0**，有限数封在 ±`MAX_SAFE_INTEGER` 内。
+ *
+ * 为什么必须在**入口一次**做掉：`JSON.parse('1e999')` 是合法 JSON，解析出来就是
+ * `Infinity`；而每个字段各自只写了 `Math.max(0, …)` 这种**单侧**夹取，Infinity 一路穿过去，
+ * 然后 `JSON.stringify(Infinity)` 是 `null` —— 数值在**下一次存档时被悄悄吃掉**
+ * （废料 → null → 再读档变 0，静默丢进度）。更狠的是 `wave: 1e308`：它会进 `endWave`
+ * 的奖励公式 `(8 + wave*3) * …`，一次结算就把 scrap / campPoints / 总统计全变成
+ * Infinity（然后同样被存成 null）。写在一处而不是散在十几个 `Math.max` 旁边，
+ * 因为这是"外部输入"的边界，不是某个字段自己的语义。
+ *
+ * 就地改写调用方传进来的那份（都是刚解析出来的存档），不额外分配。
+ */
+function sanitizeSaveNumbers(v, depth) {
+  if (typeof v === 'number') {
+    if (!isFinite(v)) return 0;
+    return v > MAX_SAFE ? MAX_SAFE : (v < -MAX_SAFE ? -MAX_SAFE : v);
+  }
+  if (!v || typeof v !== 'object' || depth > 6) return v;
+  if (Array.isArray(v)) {
+    for (var i = 0; i < v.length; i++) v[i] = sanitizeSaveNumbers(v[i], depth + 1);
+    return v;
+  }
+  for (var k in v) {
+    if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+    v[k] = sanitizeSaveNumbers(v[k], depth + 1);
+  }
+  return v;
+}
+var MAX_SAFE = Number.MAX_SAFE_INTEGER;
+
+/** 只看不取：校验一份存档能不能用（给"继续上一局"按钮判断用） */
+Game.inspectRun = function (data) {
+  if (!data || typeof data !== 'object') return null;
+  var def = Chars.BY_ID[data.char];
+  if (!def) return null;
+  var wave = Math.floor(Number(data.wave));
+  if (!isFinite(wave) || wave < 1) return null;
+  /* 上界不是"平衡"而是**数值卫生**：波次进 `endWave` 的 `(8 + wave*3)` 与难度插值，
+     1e308 这种"合法 JSON 的巨数"会把废料打成 Infinity（见 sanitizeSaveNumbers）。 */
+  if (wave > 9999) wave = 9999;
+  var lvl = Math.floor(Number(data.level));
+  if (!isFinite(lvl) || lvl < 1) lvl = 1;
+  if (lvl > 9999) lvl = 9999;
+  return { char: def.id, charName: def.name, wave: wave, level: lvl };
+};
+
+/**
+ * 恢复一局。**能修的修，不能修的拒**：
+ *   · 未知角色 / 非法波次 → 直接失败（返回 null，调用方保留标题页）
+ *   · 未知武器 / 未知道具 → 丢掉那几条，其余照常恢复
+ * @returns Session 或 null
+ */
+Game.importRun = function (data) {
+  if (!data || typeof data !== 'object') return null;
+  // 外部输入的第一道（也是唯一一道）卫生检查：非有限数不许进会话
+  sanitizeSaveNumbers(data, 0);
+  var info = Game.inspectRun(data);
+  if (!info) return null;
+
+  /* 据点与图纸都是"开局修正的来源"，所以要跟着**这一局的存档**走
+     （与 `keep` 同一个理由：不带着它，读档就会把这些修正静默降级成"没有"）。
+     注意存的是**这一局开局时**的图纸集合，而不是"现在档案里的"：
+     中途解锁的新图纸不该回溯地改变一局已经开始的对局。 */
+  var smods = { owned: data.keep, forge: data.forge };
+
+  var sess = Game.newRun(info.char,
+    isFinite(Number(data.seed)) ? Number(data.seed) : undefined,
+    isFinite(Number(data.danger)) ? Number(data.danger) : 0,
+    data.opening,
+    smods);
+  var p = sess.player;
+
+  // 升级加点（逐项按 StatMap 的键拷，未知键丢弃）
+  var ups = data.upgrades;
+  if (ups && typeof ups === 'object') {
+    for (var k in p.upgrades) {
+      if (Object.prototype.hasOwnProperty.call(ups, k) && isFinite(Number(ups[k]))) {
+        p.upgrades[k] = Number(ups[k]);
+      }
+    }
+  }
+  p.level = info.level;
+  p.xp = Math.max(0, Number(data.xp) || 0);
+  p.scrap = Math.max(0, Number(data.scrap) || 0);
+  if (isFinite(Number(data.speed)) && Number(data.speed) >= 1) Game.speed = Number(data.speed) >= 2 ? 2 : 1;
+
+  /* 武器与道具：按 id 还原，未知 id 丢掉。
+     武器带**品级**：老存档里是字符串（那时没有合成），新存档是 { id, t } —— 两种都收，
+     认不出的档位就退回这把武器的出身档。
+     **词条**（`a`）走同一条纪律：能给就用存档里的那一份覆盖（`addWeapon` 已经按
+     当前随机流滚了一套，这里**覆盖**而不是"再滚一次" —— 读档不该改变玩家看着的装备）；
+     老存档没有 `a` → 保留刚滚出来的那一套（算是"这件装备第一次被看见"）。 */
+  p.weapons.length = 0;
+  var ids = Array.isArray(data.weapons) ? data.weapons : [];
+  for (var i = 0; i < ids.length; i++) {
+    var wi = ids[i];
+    if (typeof wi === 'string') { addWeapon(wi); continue; }
+    if (!wi || typeof wi !== 'object') continue;
+    var wd = Weapons.BY_ID[wi.id];
+    if (!wd) continue;
+    var wt = isFinite(Number(wi.t)) ? Math.floor(Number(wi.t)) : wd.tier;
+    if (wt < wd.tier) wt = wd.tier;
+    if (wt > Weapons.TIER_MAX) wt = Weapons.TIER_MAX;
+    /* `p` = 付过的钱（回收价上限）。老存档 / 字符串武器没有 → 0 = 当作捡来的 */
+    var wpaid = Math.max(0, Math.floor(Number(wi.p) || 0));
+    var wnew = addWeapon(wd.id, wt, wpaid);
+    if (wnew && wi.a) wnew.affixes = Affixes.fromSave(wi.a, 'weapon', wd);
+  }
+  /* **道具也要先清空**（武器那行 `p.weapons.length = 0` 的对称项）。
+     不清的后果是实测出来的：`Game.newRun(…, data.opening)` 刚刚把开局道具
+     （天赋「工程师」的炮塔、据点靶场的射程片…）发进 `p.items`，而 `data.items`
+     里**也**有它们（`exportRun` 写的就是 `p.items`）——于是每读一次档就多一件：
+     实测 items 1→2→3→4 件、攻速 0.10→0.26→0.42→0.60，`itemFx.turret` 1→2→3
+     （读两次档白拿两个炮塔）。武器没这个洞，就是因为它有这一行。 */
+  p.items.length = 0;
+  var iids = Array.isArray(data.items) ? data.items : [];
+  for (var j = 0; j < iids.length; j++) {
+    /* 道具也一样：新存档是 `{ id, a }`（带词条），老存档是裸 id 字符串 —— 两种都收。
+       裸 id 的那一支保留 `addItem` 刚滚出来的词条（"第一次被看见"）。 */
+    var raw = iids[j];
+    var iid = (typeof raw === 'string') ? raw : (raw && typeof raw === 'object' ? raw.id : null);
+    var idef = iid ? Items.BY_ID[iid] : null;
+    if (!idef) continue;
+    var iit = addItem(idef);
+    if (iit && raw && typeof raw === 'object' && raw.a) {
+      iit.affixes = Affixes.fromSave(raw.a, 'item', idef);
+    }
+  }
+  /* **一把武器都没有的存档不是"能玩的局"**（新版卖不出最后一把，所以这只会来自
+     老档 / 坏档 / 被改名后认不出的武器 id）。为什么必须修：这一间"打完"的条件是
+     **场上清空**（见 market.sellWeapon 那段注释），零武器 = 永远清不掉 = 商店永不再开。
+     按同一条"能修的修"的原则，把角色的起始武器还给他（认不出角色的档 inspectRun 已经拒了）。 */
+  if (p.weapons.length === 0 && sess.charDef && sess.charDef.startWeapons.length) {
+    addWeapon(sess.charDef.startWeapons[0]);
+  }
+
+  // 跳到存档所在波次，并把生命/成长重新算一遍
+  Game.wave = 1;
+  restoreFloor(data);
+  /* 这一间的房间效果要**从存档贴回来**（`restoreFloor` 只贴进度、不跑进门内容：
+     回血/给废料那类一次性效果不能在读档时再来一遍）。不贴的后果是实测的：
+     存档点在有折扣的商店房里（`shopSlots:2 / shopDiscount:0.10`），
+     读档后同一间房的货架从 12 件变 8 件、道具包从 6 涨到 7 —— 同一份进度两个价。 */
+  var rfx = data.roomFx;
+  S.roomFx = {
+    shopSlots: (rfx && isFinite(Number(rfx.shopSlots))) ? Math.max(0, Math.round(Number(rfx.shopSlots))) : 0,
+    shopDiscount: (rfx && isFinite(Number(rfx.shopDiscount))) ? U.clamp(Number(rfx.shopDiscount), 0, 0.9) : 0,
+    fastMul: (rfx && isFinite(Number(rfx.fastMul))) ? Math.max(0, Number(rfx.fastMul)) : 0,
+    slowMul: (rfx && isFinite(Number(rfx.slowMul))) ? Math.max(0, Number(rfx.slowMul)) : 0
+  };
+  var cur0 = currentRoom();
+  // 存档点是"清完这一间 → 进商店"，所以正常存档里当前房**是已清的**：
+  // 这时不该把刚打完的那一间重打一遍（老实现就是重打，等于白送一遍怪和经验）
+  var roomSettled = !!(cur0 && cur0.cleared);
+  if (roomSettled) {
+    Game.wave = Math.max(1, Math.floor(Number(info.wave) || 1));
+    S.waveEnding = true;            // 这一间已经结算过：再落一次 endWave 会白送一份奖励
+  } else {
+    startWave(Math.max(1, Math.floor(Number(info.wave) || 1)));
+  }
+  recalcStats();
+  p.hp = U.clamp(Number(data.hp) || sess.stats.maxHp, 1, S.stats.maxHp);
+  p.xpNeed = Stats.xpNeeded(p.level);
+
+  var t = data.totals;
+  if (t && typeof t === 'object') {
+    S.stats_total.kills = Math.max(0, Math.round(Number(t.kills) || 0));
+    S.stats_total.scrap = Math.max(0, Number(t.scrap) || 0);
+    S.stats_total.dmg = Math.max(0, Number(t.dmg) || 0);
+    S.stats_total.taken = Math.max(0, Number(t.taken) || 0);
+    S.stats_total.healed = Math.max(0, Number(t.healed) || 0);
+    S.stats_total.waves = Math.max(0, Math.round(Number(t.waves) || 0));
+  }
+  S.packsOpened = Math.max(0, Math.round(Number(data.packsOpened) || 0));
+  S.packSpent = Math.max(0, Math.round(Number(data.packSpent) || 0));
+  /* 商店的此刻：货架按存档还原（**不重掷**），刷新价 / 刷新次数 / 锁定 / 免费刷新也带回来。
+     认不出的武器与道具 id 直接丢（坏档防线与武器/道具一致）。 */
+  S.rerolls = Math.max(0, Math.round(Number(data.rerolls) || 0));
+  if (isFinite(Number(data.rerollCost))) S.rerollCost = Math.max(0, Math.round(Number(data.rerollCost)));
+  S.shopLocked = data.shopLocked === true;
+  S.shopBonus = Math.max(0, Number(data.shopBonus) || 0);
+  S.freeRerolls = Math.max(0, Math.round(Number(data.freeRerolls) || 0));
+  S.combineCount = Math.max(0, Math.round(Number(data.combineCount) || 0));
+  S.craftCount = Math.max(0, Math.round(Number(data.craftCount) || 0));
+  S.craftUsed = Array.isArray(data.craftUsed)
+    ? data.craftUsed.map(function (v) { return Math.max(0, Math.round(Number(v) || 0)); }).slice(0, 8)
+    : [];
+  S.alloy = Math.max(0, Math.round(Number(data.alloy) || 0));
+  S.runEvents = Array.isArray(data.runEvents)
+    ? data.runEvents.filter(function (e) { return typeof e === 'string'; }).slice(0, 32) : [];
+  p.pendingLevels = Math.max(0, Math.round(Number(data.pendingLevels) || 0));
+  var restoredOffers = false;
+  if (Array.isArray(data.offers) && data.offers.length) {
+    var offers: Offer[] = [];
+    for (var oi = 0; oi < data.offers.length; oi++) {
+      var od = data.offers[oi];
+      if (!od || typeof od !== 'object') continue;
+      var def = od.t === 'item' ? Items.BY_ID[od.id] : Weapons.BY_ID[od.id];
+      if (!def) continue;
+      var oKind = (od.t === 'item' ? 'item' : 'weapon') as 'item' | 'weapon';
+      var price = Math.max(1, Math.round(Number(od.price) || 1));
+      var inst = Comp.spawn('offer', { type: oKind, def: def, price: price });
+      inst.sold = od.sold === true;
+      inst.tier = (isFinite(Number(od.tier)) && Number(od.tier) >= 1) ? Weapons.clampTier(od.tier) : 0;
+      /* 货架上的词条：老存档没有 `a` → 现滚一套（"第一次被看见"），
+         与武器/道具那两处同一条纪律（能修的修，缺的按现在的规则补）。 */
+      inst.affixes = od.a
+        ? Affixes.fromSave(od.a, oKind, def)
+        : Affixes.roll(oKind, def,
+          oKind === 'item' ? ((def as ItemDef).tier || 1) : (inst.tier || (def as WeaponDef).tier || 1), affixRnd());
+      offers.push(inst);
+    }
+    if (offers.length) { S.offers = offers; restoredOffers = true; }
+  }
+  // 营地：逐项校验后恢复（未知设施 / 越界等级一律丢掉）
+  if (data.camp && typeof data.camp === 'object') {
+    for (var cid in data.camp) {
+      if (!Object.prototype.hasOwnProperty.call(data.camp, cid)) continue;
+      if (!Camp.BY_ID[cid]) continue;
+      var clv = Math.floor(Number(data.camp[cid]));
+      if (clv > 0) S.camp[cid] = Math.min(clv, Camp.maxLevel(cid));
+    }
+    // 建造顺序：只收"真的建了"的设施，并且**每项只收一次**（坏档防线）
+    var row = Array.isArray(data.campRow) ? data.campRow : [];
+    for (var ri = 0; ri < row.length; ri++) {
+      var rid = row[ri];
+      if (typeof rid !== 'string' || !S.camp[rid] || S.campRow.indexOf(rid) >= 0) continue;
+      S.campRow.push(rid);
+    }
+    // 老存档没有 campRow：按设施表顺序补一份，组合会重算而不是丢掉整座营地
+    for (var fid in S.camp) {
+      if (Object.prototype.hasOwnProperty.call(S.camp, fid) && S.campRow.indexOf(fid) < 0) S.campRow.push(fid);
+    }
+    market.recalcCampFx();
+  }
+  // 建材：坏档里可能是负数/NaN；老存档没有这个字段 → 按"已经打到第几波"补发，
+  // 而不是当成 0（否则读档会静默把经营进度吞掉）
+  var cp = Number(data.campPoints);
+  S.campPoints = isFinite(cp) && cp >= 0 ? Math.floor(cp) : Math.max(0, Game.wave * Camp.POINTS_PER_WAVE);
+
+  Game.setState('playing', true);
+  /* 随机流**放在最后**恢复：`restoreFloor` 里的 `enterFloor` 要重新长一遍地图，
+     那是会消耗随机数的 —— 早恢复会被它吃掉，等于没恢复（第一版就踩了这个）。
+     放在这里：旧存档走 openShop（它要 shopRoll）时也是从"存档那一刻的流"继续。 */
+  if (S.rnd && S.rnd.setState && isFinite(Number(data.rndState))) {
+    S.rnd.setState(Number(data.rndState));
+  }
+  /* 回到商店（存档就发生在这里）——而不是"回到场上对着已经清空的房间发呆"。
+     货架已经在上面按存档还原过了：这时**不能再 openShop**（它会 shopRoll 重掷一次，
+     把你看着的货换掉、刷新价跌回去）。老存档没有 offers 字段时仍旧走 openShop 兜底。 */
+  if (roomSettled) {
+    if (restoredOffers) {
+      Game.setState('shop');
+      Game.events.emit('shopOpen', { bonus: 0 });      // 不重复播报"波次奖励"
+    } else {
+      market.openShop(0);
+    }
+  }
+  Game.events.emit('runResumed', Game.inspectRun(data));
+  return sess;
+};
+
+/**
+ * 从存档恢复"走到哪了"。
+ * 地图本身由**种子重新长**（同一个种子必然同一张图），所以这里只把进度贴回去：
+ * 层号 / 当前房 / 清过的房 / 发现过的房 / 破过的墙。
+ * 坏档防线与武器/道具一致：**能修的修，不能修的拒** —— 认不出的房间 id、
+ * 越界的层号、格式不对的墙键一律忽略，绝不因为一条坏字段丢掉整份存档。
+ */
+function restoreFloor(data) {
+  var f = Math.floor(Number(data.floor));
+  if (!isFinite(f) || f < 1) f = 1;
+  if (f > Dungeon.FLOORS) f = Dungeon.FLOORS;
+  enterFloor(f, { silent: true });
+
+  var list = Array.isArray(data.roomsCleared) ? data.roomsCleared : [];
+  for (var i = 0; i < list.length; i++) {
+    var r = Dungeon.roomById(S.map, list[i]);
+    if (r) { r.cleared = true; r.seen = true; }
+  }
+  var seen = Array.isArray(data.roomsSeen) ? data.roomsSeen : [];
+  for (i = 0; i < seen.length; i++) {
+    var r2 = Dungeon.roomById(S.map, seen[i]);
+    if (r2) r2.seen = true;
+  }
+  /* 破过的墙：键的格式是 `层号|房A|房B`（`Dungeon.wallKey`）。
+     **由种子推导，不查地图** —— 房间 id 是 `r<层>_<x>_<y>`，从键本身就能
+     判断它属不属于这一局的层（`1..Dungeon.FLOORS`）。
+     老实现拿 `Dungeon.roomById(S.map, …)` 去校，而 `restoreFloor` 只重建
+     **当前这一层**的地图 —— 于是别的层的破墙记录全被当成"坏档"丢掉
+     （实测：三层跑到第 2 层读档，walls 从 2 条变 1 条；现在键里带层号，
+     这一条也一并修了）。 */
+  var walls = Array.isArray(data.walls) ? data.walls : [];
+  for (i = 0; i < walls.length; i++) {
+    if (typeof walls[i] !== 'string') continue;
+    var parts = walls[i].split('|');
+    if (parts.length !== 3) continue;
+    var wfl = Math.floor(Number(parts[0]) || 0);
+    if (!(wfl >= 1 && wfl <= Dungeon.FLOORS)) continue;      // 不存在的层：丢
+    if (!/^r\d+_-?\d+_-?\d+$/.test(parts[1]) || !/^r\d+_-?\d+_-?\d+$/.test(parts[2])) continue;
+    S.walls[Dungeon.wallKey(wfl, parts[1], parts[2])] = true;
+  }
+  var cur = Dungeon.roomById(S.map, data.room);
+  S.roomId = cur ? cur.id : S.map.start;
+  seeRoom(S.roomId);
+  S.secretsFound = Math.max(0, Math.round(Number(data.secretSeen) || 0));
+  // 打倒过的 Boss：只收怪物表里真有的 id（坏档防线与武器/道具一致）
+  S.coreEarned = Math.max(0, Math.round(Number(data.coreEarned) || 0));
+  var down = Array.isArray(data.bossesDown) ? data.bossesDown : [];
+  S.bossesDown = Object.create(null);
+  for (i = 0; i < down.length; i++) {
+    if (typeof down[i] === 'string' && Enemies.BY_ID[down[i]] && Enemies.BY_ID[down[i]].boss) {
+      S.bossesDown[down[i]] = true;
+    }
+  }
+  // 层间契约：只收契约表里真有的 id（坏档防线与武器/道具一致）
+  S.boon = (typeof data.boon === 'string' && Boons.BY_ID[data.boon]) ? data.boon : '';
+  S.boonFold = S.boon ? Boons.fold(S.boon) : null;
+  S.pendingBoons = [];
+  var pend = Array.isArray(data.pendingBoons) ? data.pendingBoons : [];
+  for (i = 0; i < pend.length; i++) {
+    if (typeof pend[i] === 'string' && Boons.BY_ID[pend[i]] && S.pendingBoons.indexOf(pend[i]) < 0) {
+      S.pendingBoons.push(pend[i]);
+    }
+  }
+  recalcWalls();
+}
+
+Game.step = step;
+
+Game.getSession = function () { return S; };
+
+Game.chooseLevelCard = takeLevelCard;
+Game.buyOffer = market.buyOffer;
+Game.buyPack = market.buyPack;
+Game.buildPrice = market.buildPrice;
+Game.buyBuild = market.buyBuild;
+Game.packPrice = market.packPrice;
+Game.packOdds = function (kind) {
+  return Items.packOddsText(Game.wave, S ? (S.stats.luck || 0) : 0, kind);
+};
+Game.sellWeapon = market.sellWeapon;
+Game.reroll = market.reroll;
+Game.toggleLock = market.toggleLock;
+Game.nextWave = nextWave;
+/** 走门（玩家点小地图 / 按方向键都走它）。这是**唯一**换房间的公开入口 */
+Game.enterRoom = function (dir) { return enterRoom(dir); };
+/** 挑一条层间契约（打完 Boss 之后在商店里挑；不可撤销） */
+Game.pickBoon = function (id) { return pickBoon(String(id || '')); };
+/** 当前还没挑的契约候选（界面用；空数组 = 没有可挑的） */
+Game.boonChoices = function () { return S ? S.pendingBoons.slice() : []; };
+/** 已挑的那一条（界面用） */
+Game.boonId = function () { return S ? S.boon : ''; };
+/** 自动探索（= "下一波"按钮在没有指定门时的默认路径），也留给"自动前进"用 */
+Game.autoExplore = function () { return autoExplore(); };
+Game.campBuy = market.campBuy;
+Game.campSell = market.campSell;
+/** 从商店进营地（可选去处；回商店是 camp → shop） */
+Game.openCamp = function () {
+  if (Game.state !== 'shop' && Game.state !== 'camp') return false;
+  return Game.setState('camp');
+};
+Game.addWeapon = addWeapon;
+Game.addWeaponOrCombine = addWeaponOrCombine;
+/** 词条的随机流（**只给演示舞台与测试**：正常路径由 `addWeapon` / `addItem` 自己取）。
+ *  公开它是因为 `demo.ts` 要按同一条规则给手工摆的道具补词条 ——
+ *  少一个出口，演示舞台上就会出现"唯一没有词条的那种道具"。 */
+Game.affixRnd = affixRnd;
+/** 给玩家一件道具（**唯一的入口**：词条在这里定下来）。
+ *  公开它是因为"造一件带词条的道具"在测试 / 实验台 / 将来的奖励发放里都要用到 ——
+ *  少一个入口就少一处"忘了滚词条"的机会。 */
+Game.addItem = addItem;
+Game.maxWeapons = maxWeapons;
+/* 制造（经营那一侧的主行动）：规则在 craft.ts，费用在 camp.ts / forge.ts，
+   这里只做状态变更与校验。 */
+Game.craft = function (line, id) { return craft(Math.floor(Number(line) || 0), String(id || '')); };
+Game.craftOptions = craftOptions;
+Game.craftLines = craftLineCount;
+Game.craftFreeLines = craftFreeLines;
+/** 回收价（界面显示与市场扣费共用一个算法：含品级与这一局的回收比例） */
+Game.salvageOf = function (w) { return salvageOf(w); };
+/** 这一局累积的合金（结算展示与界面提示读它） */
+Game.alloyEarned = function () { return (S && S.alloy) || 0; };
+Game.forgeMods = function () { return (S && S.fmods) || Forge.emptyMods(); };
+/* 合成：状态校验在 market.ts（和买 / 卖 / 刷新同一道门），模拟实现在上面 */
+Game.combine = market.combine;
+Game.combinePlans = combinePlans;
+Game.combinePlan = combinePlan;
+Game.recalcStats = recalcStats;
+Game.summary = function () { return buildSummary(true); };
+Game.healPlayer = healPlayer;
+Game.damageEnemy = damageEnemy;
+
+/** 暂停：只能从进行中的界面进入；来处由 setState 记录 */
+Game.pause = function () {
+  if (['playing', 'levelup', 'shop'].indexOf(Game.state) < 0) return false;
+  return Game.setState('paused');
+};
+Game.resume = function () {
+  if (Game.state !== 'paused') return false;
+  var back = Game._pauseFrom;
+  // 来处必须仍然可达，否则退回 playing
+  if (!back || !Game.TRANSITIONS.paused || Game.TRANSITIONS.paused.indexOf(back) < 0) back = 'playing';
+  return Game.setState(back);
+};
+
+/** 无头测试用的自动操作（保证代码路径被覆盖） */
+Game.autoInput = function (t) {
+  if (!S) return { x: 0, y: 0 };
+  var p = S.player;
+  var best = null, bd = Infinity;
+  for (var i = 0; i < S.enemies.length; i++) {
+    var e = S.enemies[i];
+    var d = U.dist2(p.x, p.y, e.x, e.y);
+    if (d < bd) { bd = d; best = e; }
+  }
+  if (!best) return { x: Math.cos(t * 0.7), y: Math.sin(t * 0.7) };
+  var a = Math.atan2(p.y - best.y, p.x - best.x) + Math.sin(t * 0.6) * 0.4;
+  return { x: Math.cos(a), y: Math.sin(a) };
+};
+
+Game._internals = {
+  spawnEnemy: function (id, x, y, opt) { return spawnEnemy(Enemies.BY_ID[id], x, y, opt); },
+  startWave: startWave,
+  /** 直接翻到某一层（测试/实验台用：层的深度回报与主题倍率都在它里面算） */
+  enterFloor: enterFloor,
+  endWave: endWave,
+  openShop: market.openShop,
+  /* 武器数值的两个出口（**只给实验台与测试用**）：品级台阶是不是真的接在伤害公式上，
+     要能直接量 —— 否则只能靠"打桩打了一段时间差不多更多"去猜。 */
+  weaponDamage: weaponDamage,
+  /* "白给的回血"那一道门（**只给测试**）：道具代价 `noHeal` 要取消的是它，
+     而"它到底关没关掉"必须能被直接量出来 —— 否则只能靠"打一段时间看血条"去猜。 */
+  settleHeal: settleHeal,
+  /* **等级推进的唯一入口**（只给测试与实验台）。
+     `checkLevelUp` 平时只在"吃到废料"时跑（经验跟着废料走），
+     所以"玩家的成长曲线长什么样"没法在无头环境里直接量 ——
+     没有掉落物可吃。数值曲线体检要的正是这条曲线，于是把它开出来。 */
+  checkLevelUp: checkLevelUp,
+  weaponCd: weaponCd,
+  weaponReach: weaponReach,
+  rollLevelCards: rollLevelCards,
+  addStain: addStain,
+  hitWalls: hitWalls,
+  breakWall: breakWall,
+  /** 直接挪到某一间房（测试用：房间制下"哪一间"决定了刷什么怪、有没有门）
+      走的仍是**同一套"看见"逻辑**（`seeRoom`）——迷雾不该因为"怎么来的"而不同。 */
+  warpTo: function (roomId) {
+    var r = Dungeon.roomById(S.map, roomId);
+    if (!r) return false;
+    S.roomId = r.id;
+    seeRoom(r.id);
+    recalcWalls();
+    return true;
+  },
+  /** 直接设一条契约（**只给实验台与测试用**：正常路径是打完 Boss 抽签再挑） */
+  setBoon: function (id) {
+    if (!S || !Boons.BY_ID[id]) return false;
+    S.boon = id;
+    S.boonFold = Boons.fold(id);
+    S.pendingBoons = [];
+    recalcStats();
+    return true;
+  },
+  /** 钉住这一间不自动结束（房间制下"清空即过"会让短测试意外推进状态） */
+  holdRoom: function (sess) { if (sess) sess.roomHold = true; }
+};
+
+/* 注册到扩展点总账：状态名与场景表必须一一对应（场景表在 scene.ts 里反向引用这里） */
+Registry.family('state', {
+  note: '状态机状态（唯一入口 setState）', owner: 'game.ts',
+  values: function () { return Game.STATES.slice(); }
+});
+export { Game };

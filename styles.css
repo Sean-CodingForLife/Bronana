@@ -1,0 +1,935 @@
+/* =========================================================
+   Bronana — UI 样式
+   美术规范：粗黑外轮廓 + 纯色平涂 + 低饱和复古清新
+   禁止：渐变、阴影虚化、圆角过大、玻璃/金属质感
+   ========================================================= */
+
+:root{
+  --ink:#100d0c;
+  --paper:#e8dcc0;
+  --paper2:#d8c9a8;
+  --cream:#f2e6c8;
+  --ground1:#b26a41;
+  --ground2:#c98a55;
+  --accent:#e8b23c;
+  --hp:#cf4a3f;
+  --xp:#4f9d69;
+  --mats:#7fb2d6;
+  --danger:#b8402f;
+  --chal:#8fb8cf;
+  /* 品级色（T1–T5）：商店卡片 / 角标 / 武器条角标三处**共用这一份**。
+     写成变量不只是为了少打字：合成把"品级"变成了一个玩家要一直读的量，
+     三处各写一遍十六进制值时，改一处就会让同一个 T3 在两个地方是两种紫。
+     **档数与 data_tiers.ts 的表一一对应**，由 ui-check 的静态检查守住
+     （表里加一档、这里没加色 → 测试当场报"没有 --tierN"）。 */
+  --tier1:#cfd8c4;
+  --tier2:#a9cbe0;
+  --tier3:#d9b6e0;
+  /* T4 一直用的是强调色（金），这里把它**并进品级这一组**：
+     一档一个变量之后，"加一档"的清单是固定四条规则 + 一个变量，
+     而守卫（test/combine.mjs）能逐档查它们是否都在。 */
+  --tier4:#e8b23c;
+  --tier5:#d2402f;
+  --tier5-ink:#f3e6d6;
+  --line:3px;
+}
+
+/* ---------------- 色弱 / 高对比（DOM 侧） ----------------
+   canvas 里的危险色与拾取色由 `utils.ts` 的 `PAL` 换档（那里才是唯一出处）；
+   DOM 这一侧（血条 / 危险按钮 / 材料数字）走下面这三个变量。
+   **两处必须同时换** —— 只换 canvas 会出现"画面换了、按钮没换"。
+
+   取值依据是**色觉缺陷的可分辨轴**，不是配色审美：
+   红绿色盲最难分的是红↔绿，最容易分的是**蓝↔黄**，所以 1 档把
+   "危险"推到蓝白冷端、"材料/收益"推到暖黄端；2 档在此之上拉开明度差。
+   档位由 `main.ts` 的 `applyColourblind` 写在 `<html data-colourblind>` 上。 */
+html[data-colourblind="1"]{
+  --hp:#4a78d0; --danger:#3a62b8; --mats:#e0c060;
+}
+html[data-colourblind="2"]{
+  --hp:#2f5fd0; --danger:#23479c; --mats:#d8a81c;
+  /* 高对比：纸色压深、墨色提纯，让边界在强光下也看得清 */
+  --paper:#cfc3a4; --paper2:#bdae8c;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+
+html,body{
+  width:100%;height:100%;overflow:hidden;
+  background:#2a1d16;
+  font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC",sans-serif;
+  color:var(--ink);
+  -webkit-font-smoothing:none;
+  user-select:none;
+}
+
+#app{position:fixed;inset:0;}
+
+canvas#game{
+  display:block;position:absolute;inset:0;
+  width:100%;height:100%;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  background:var(--ground1);
+}
+
+/* ---------------- 覆盖层 ----------------
+   屏幕 = 顶栏（标题）+ 内容 + 底栏（菜单）。三条规矩让它对任何窗口都成立：
+     · 顶栏与底栏**不参与伸缩**（flex:none）——
+       以前它们是默认的 flex-shrink:1，于是"内容比视口高"时 flex 会把面板压扁，
+       角色页的"起始武器"那一行就是这样被下一个面板盖住的（看着像被裁，其实是叠在一起）
+     · 列表类面板吃掉剩下的高度，装不下时自己滚（不再写死 64vh：那会忽略标题与菜单）
+     · 整屏还装不下（很矮的窗口）时整屏也能滚 —— 以前不能，设置页最后几行够不着 */
+.layer{
+  position:absolute;inset:0;
+  pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  /* ---------------- 界面缩放（字号设置 / 触屏捏合） ----------------
+     为什么用 `zoom` 而不是 `font-size` + rem：
+     这一份 CSS 里的尺寸**全是 px**（量过：font-size 68 处 px、0 处 rem），
+     改根字号对它们一点作用都没有 —— 也就是说"字号"这个设置项
+     曾经是个**空转的开关**（能存、能读、界面不变）。
+     把一整层缩放掉才是真的放大：`zoom` 会连布局一起重排，
+     所以按钮不会被文字撑破（那是"只放大字"最容易出的问题）。
+     ⚠ `zoom` 加在 `.layer`（界面层）而**不是** `#app`：
+     游戏画面是同层的一张 canvas，它的分辨率由 dpr 决定，
+     缩放它会让画面变糊而不是变大。 */
+  zoom: var(--ui-zoom, 1);
+}
+/* 触屏设备允许捏合缩放界面（手机上的字号设置往往不够用） */
+html[data-touch="1"] .layer{touch-action:pinch-zoom;}
+.screen{
+  display:none;
+  position:absolute;inset:0;
+  pointer-events:auto;
+  flex-direction:column;align-items:center;
+  justify-content:center;
+  justify-content:safe center;     /* 装不下就退回上对齐：从顶部开始，能一直滚到底 */
+  gap:16px;
+  padding:20px 24px;
+  overflow-y:auto;
+  background:rgba(28,20,15,.82);
+}
+.screen.active{display:flex;}
+.screen.dim{background:rgba(28,20,15,.72);}
+/* 矮窗口（≤700px）：把屏幕的间隙与留白收紧一点。
+   这不是"缩放界面"，只是把**装饰性的**空隙还给内容 —— 960×640 的老笔记本上
+   角色页原本差 34px 装不下，收一收就够了，字号一个都没动。 */
+@media (max-height:700px){
+  .screen{gap:10px;padding:12px 20px;}
+}
+.screen > *{flex:none;}
+/* 列表 / 大面板：可以缩、可以滚（顺序很重要：这条必须在 .screen > * 之后） */
+.codex-wrap,.hub-room,#settings,.pause-stats,.end-body,.howto,.shop-cols,
+.shop-foot,.char-detail,.codex-list{flex:0 1 auto;min-height:0;}
+.codex-wrap,.settings{overflow-y:auto;}
+/* 据点页有**两份**清单（设施 + 图纸）：让整屏滚，而不是每份清单各自缩成一个小滚动框。
+   与商店那一次是同一个毛病 —— 面板自己的矩形很小、内容被压在里面（实测：一份清单
+   只露出 1 行半）。.codex-list 默认 flex:0 1 auto 是为了"多页签图鉴"那种单页场合。 */
+#scr-keep .codex-list{flex:none;}
+/* 图鉴是**标签页**：任何时刻只有一页在显示，所以那一页直接吃掉整块高度
+   （翻页时框的高度不跳，像一本始终摊开的册子） */
+.codex-wrap > *{flex:1 1 auto;min-height:0;margin-top:0;overflow-y:auto;}
+.hidden{display:none !important;}
+/* `hidden` 属性必须真的藏得住。
+   注意：作者样式里的 display（比如 .settings{display:flex}）**会盖过**
+   浏览器默认的 [hidden]{display:none} —— 于是 `el.hidden = true` 一点用都没有。
+   商店的"层间契约"面板与图鉴的非当前页都被这件事坑过，所以在这里一次钉住。 */
+[hidden]{display:none !important;}
+
+/* ---------------- 滚动条 ----------------
+   默认的系统滚动条是亮白的一竖条，压在牛皮纸面板上很出戏。
+   改成"墨线 + 纸底"，与美术规范同源（不是新语言，只是同一套颜色的复用）。 */
+.screen,.codex-wrap,.codex-list,.hub-room,.settings,.howto,.end-body{
+  scrollbar-width:thin;
+  scrollbar-color:var(--ink) rgba(0,0,0,.12);
+}
+.screen::-webkit-scrollbar,.codex-wrap::-webkit-scrollbar,.codex-list::-webkit-scrollbar,
+.hub-room::-webkit-scrollbar,.settings::-webkit-scrollbar,.howto::-webkit-scrollbar,
+.end-body::-webkit-scrollbar{width:11px;height:11px;}
+.screen::-webkit-scrollbar-track,.codex-wrap::-webkit-scrollbar-track,.codex-list::-webkit-scrollbar-track,
+.hub-room::-webkit-scrollbar-track,.settings::-webkit-scrollbar-track,.howto::-webkit-scrollbar-track,
+.end-body::-webkit-scrollbar-track{background:rgba(0,0,0,.12);border-radius:6px;}
+.screen::-webkit-scrollbar-thumb,.codex-wrap::-webkit-scrollbar-thumb,.codex-list::-webkit-scrollbar-thumb,
+.hub-room::-webkit-scrollbar-thumb,.settings::-webkit-scrollbar-thumb,.howto::-webkit-scrollbar-thumb,
+.end-body::-webkit-scrollbar-thumb{background:var(--ink);border:2px solid var(--paper);border-radius:6px;}
+
+/* ---------------- 标题页 ----------------
+   改造前是 8 个同宽按钮排成一列：没有主次（"开始游戏"被"每日挑战"压在下面）、
+   也不分组。现在按层级排：主行动（开始游戏）→ 挑战一对（并排）→ 分隔线 → 次级入口网格。
+   另一个真问题是**短窗口下会被裁掉**：整屏 justify-content:center 且没有滚动，
+   内容比视口高时上下同时溢出，底部那行提示只露一半。
+   现在标题页自己是滚动容器，内容用 `margin:auto` 居中 —— 装得下就居中，装不下就滚动。 */
+#scr-title{
+  justify-content:flex-start;
+  overflow-y:auto;
+  gap:clamp(10px,2.4vh,22px);
+  padding:clamp(14px,3.6vh,44px) 24px;
+}
+.title-inner{
+  margin:auto;
+  display:flex;flex-direction:column;align-items:center;
+  gap:clamp(14px,3.4vh,32px);
+  width:100%;
+}
+.logo-wrap{text-align:center;line-height:1;}
+/* 标题改成**画出来的**（`sprites.ts` 的 promo 那一类）。
+   画布属性尺寸 = 逻辑尺寸 × 设备倍率，所以 CSS 宽度必须写**确定的像素**：
+   无头校验会核对"每一张 DOM 画布按设备分辨率建、按逻辑尺寸显示"，
+   用一个响应式宽度（clamp）会让那一条判不出逻辑尺寸（实测报的是
+   "logo-wrap 没设 CSS 宽度"）。小屏适配交给下面的媒体查询，改的仍是同一批数值。 */
+.title-logo{
+  display:block;
+  margin:0 auto;
+  width:512px;
+  height:160px;
+  image-rendering:pixelated;
+}
+@media (max-width:900px){
+  .title-logo{width:384px;height:120px;}
+}
+@media (max-width:600px){
+  .title-logo{width:288px;height:90px;}
+}
+/* 副题（`ROGUELITE · SURVIVOR`）的 CSS 规则**已删除**：
+   它现在只画在 `#title-logo` 那张画布里（`sprites.ts` 的 `S.EMBLEMS`）。
+   留着一条没人用的选择器 = 下一个人会以为"副题的样式在这里调"。 */
+/* 底部提示做成一块"提示牌"，不再是一行飘着的小字（也就不会再被误当成溢出物） */
+.title-foot{
+  flex:none;
+  font-size:12.5px;letter-spacing:.12em;
+  color:var(--cream);
+  background:rgba(232,220,192,.13);
+  border:2px solid rgba(16,13,12,.5);
+  border-radius:8px;
+  padding:7px 16px;
+}
+/* .menu 是**共用**类（暂停 / 结算 / 战绩等 8 处都用它），所以标题页那一套
+   排版收窄在 #scr-title 下面 —— 改一个屏不要顺手改掉另外八个。 */
+.menu{display:flex;flex-direction:column;gap:12px;align-items:center;}
+/* 横排菜单：按钮少的时候竖着排会白吃掉两三百像素（暂停页 8 个按钮 = 420px），
+   那正是"内容被压扁"的来源之一。横排 + 自动换行，把高度还给内容。 */
+.menu.row{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:12px;}
+#scr-title .menu{
+  gap:clamp(8px,1.5vh,12px);
+  width:min(400px,88vw);
+}
+/* 等宽：一排按钮宽度各不相同，看着像是没排过版 */
+#scr-title .menu .btn{width:100%;}
+/* 挑战是一对，并排 —— 它俩是同级选项，排成两行会显得像两个不相关的入口 */
+.menu-challenge{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:clamp(8px,1.5vh,12px);
+  width:100%;
+}
+/* 3px 墨线分隔"开始玩"与"看东西"：本作的美术语言里，分隔就是一条实心墨线 */
+.menu-sep{
+  width:100%;height:var(--line);
+  background:var(--ink);opacity:.28;
+  margin:2px 0;
+}
+/* 次级入口：两列网格。据点占整行 —— 5 个按钮排两列会留一个洞，
+   而让"据点"横跨一行既是补洞，也正好把它和三个信息页分开。 */
+.menu-grid{
+  display:grid;grid-template-columns:1fr 1fr;
+  gap:clamp(8px,1.5vh,12px);
+  width:100%;
+}
+
+/* ---------------- 按钮 ---------------- */
+.btn{
+  pointer-events:auto;
+  font-family:inherit;
+  font-size:17px;font-weight:700;letter-spacing:.14em;
+  padding:11px 30px;
+  color:var(--ink);
+  background:var(--paper2);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  cursor:pointer;
+  box-shadow:4px 4px 0 0 var(--ink);
+  transition:none;
+}
+.btn:hover{background:var(--cream);transform:translate(-1px,-1px);box-shadow:5px 5px 0 0 var(--ink);}
+.btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 0 var(--ink);}
+.btn.big{font-size:23px;padding:15px 46px;background:var(--accent);}
+.btn.big:hover{background:#f0c257;}
+.btn.chal{background:var(--chal);}
+.btn.chal:hover{background:#a9cbdd;}
+.btn.wide{grid-column:1 / -1;}
+.btn.danger{background:var(--danger);color:var(--cream);}
+.btn:disabled{opacity:.45;cursor:not-allowed;background:#9d9182;transform:none;box-shadow:4px 4px 0 0 var(--ink);}
+/* 键盘 Tab 焦点：虚线墨环与实心描边区分开（手柄用的 .focused 是另一种表达） */
+.btn:focus-visible{outline:var(--line) dashed var(--ink);outline-offset:4px;}
+
+/* ---------------- 通用标题 ---------------- */
+.scr-h{
+  font-size:clamp(20px,3.2vw,34px);
+  letter-spacing:.16em;
+  color:var(--cream);
+  -webkit-text-stroke:4px var(--ink);
+  paint-order:stroke fill;
+  text-align:center;
+}
+.row{display:flex;gap:14px;align-items:center;}
+.center{justify-content:center;}
+
+/* ---------------- 角色选择 ---------------- */
+.char-grid{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:10px;
+  max-width:1080px;width:100%;
+}
+@media(max-width:900px){.char-grid{grid-template-columns:repeat(3,1fr);}}
+.char-card{
+  position:relative;
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  padding:8px 6px 10px;
+  text-align:center;cursor:pointer;
+  box-shadow:4px 4px 0 0 var(--ink);
+}
+.char-card:hover{background:var(--cream);}
+.char-card.sel{background:var(--accent);box-shadow:6px 6px 0 0 var(--ink);}
+.char-card canvas{display:block;margin:0 auto;image-rendering:pixelated;}
+.char-card .cn{font-size:14px;font-weight:700;letter-spacing:.06em;}
+.char-card .ce{font-size:10px;opacity:.62;letter-spacing:.06em;}
+.char-detail{
+  width:min(1080px,94vw);
+  min-height:118px;
+  flex:none;              /* 信息面板不许被压扁（压扁的下场是内容溢出去盖住下面的难度条） */
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:14px 18px;
+  font-size:14px;line-height:1.7;
+}
+.char-detail h3{font-size:20px;letter-spacing:.1em;margin-bottom:4px;}
+.char-detail .tag{
+  display:inline-block;background:var(--ink);color:var(--accent);
+  font-size:12px;padding:2px 9px;border-radius:5px;margin-right:6px;letter-spacing:.08em;
+}
+.char-detail .cols{display:grid;grid-template-columns:1fr 1fr;gap:4px 22px;margin-top:8px;}
+.buff{color:#2f6b45;font-weight:700;}
+.nerf{color:#a33528;font-weight:700;}
+/* 词条（affixes.ts）：前缀 = 进攻（暖色），后缀 = 防护/效用（冷色）。
+   两边的颜色不一样是刻意的 —— "三前缀"与"两前缀一后缀"必须**一眼**分得开，
+   否则词条家族这个维度在界面上等于不存在。 */
+.affix{font-size:12px;line-height:1.45;letter-spacing:.02em;}
+.affix.prefix{color:#b8552f;}
+.affix.suffix{color:#3f6f9c;}
+.wbox .affix{font-size:10px;line-height:1.3;}
+
+/* ---------------- 卡片（商店 / 升级） ---------------- */
+.cards{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:12px;
+  width:100%;
+}
+.cards.four{max-width:1080px;}
+.card{
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:4px 4px 0 0 var(--ink);
+  padding:8px 9px;
+  display:flex;flex-direction:column;gap:5px;
+  cursor:pointer;
+  position:relative;
+  min-height:148px;      /* 商店那一屏是"两列 × 好几行"，196px 会顶穿一屏 */
+}
+.card:hover{background:var(--cream);transform:translate(-1px,-1px);}
+.card.sold{opacity:.34;cursor:not-allowed;transform:none;background:#b3a68c;}
+.card.sold:hover{background:#b3a68c;}
+/* 占位槽（空武器位 / 还没有道具）：它们是"说明还有位置"的，不需要整张卡那么高 */
+.card.empty{min-height:104px;cursor:default;}
+.card .cv{display:flex;justify-content:center;align-items:center;height:52px;}
+.card .cv canvas{image-rendering:pixelated;}
+.card .nm{font-size:14px;font-weight:700;letter-spacing:.04em;text-align:center;}
+.card .en{font-size:10px;opacity:.6;text-align:center;letter-spacing:.05em;}
+.card .ds{font-size:11.5px;line-height:1.45;color:#3a2f26;}
+.card .pr{
+  margin-top:auto;
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:13px;font-weight:700;
+}
+/* 卡片上的动作行（合并 / 回收）。
+   为什么不再"点整张卡片就回收"：一张卡片现在有两个动作，而回收**不可撤销** ——
+   把整卡做成按钮会把"看一眼"和"卖掉"混成同一个手势。 */
+.card .acts{
+  display:flex;gap:6px;margin-top:6px;
+}
+.card .acts .btn{flex:1 1 auto;font-size:11.5px;padding:4px 6px;letter-spacing:.06em;}
+/* 品级一眼可见：卡片的左侧色条与角标同色（T1 不给颜色 = 默认） */
+.card.t2{border-left:8px solid var(--tier2);}
+.card.t3{border-left:8px solid var(--tier3);}
+.card.t4{border-left:8px solid var(--tier4);}
+.card.t5{border-left:8px solid var(--tier5);}
+
+/* ---------------- 「我的武器 / 我的道具」小格子 ----------------
+   为什么不跟货架共用 .card：量过了。137×213 的大卡片，六把武器在 1.6fr 那一列
+   要排**两行 438px**，而 shop-cols 只有 427px —— 于是这一块被压成 70px 高的滚动框，
+   只露出图标和名字，伤害行与「合并」按钮全在框外。小格子 96×107 六把一行 616px。
+   信息没丢：品级在角标上、数值与回收价在 title 提示里、两个动作是按钮。 */
+.shop-sub{display:flex;flex-direction:column;gap:6px;}
+.wrow{display:flex;flex-wrap:wrap;gap:8px;}
+.wbox{
+  width:96px;min-height:107px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:4px;position:relative;
+  background:var(--paper);border:var(--line) solid var(--ink);border-radius:8px;
+  box-shadow:3px 3px 0 0 var(--ink);
+}
+.wbox.t2{border-color:var(--tier2);}
+.wbox.t3{border-color:var(--tier3);}
+.wbox.t4{border-color:var(--tier4);}
+.wbox.t5{border-color:var(--tier5);}
+.wbox.empty{background:rgba(232,220,192,.4);border-style:dashed;box-shadow:none;opacity:.6;}
+.wbox.item{background:var(--cream);}
+.wbox canvas{image-rendering:pixelated;}
+.wbox .nm{
+  font-size:11px;font-weight:700;line-height:1.25;text-align:center;
+  max-width:88px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.wbox .tier{top:-4px;left:-4px;font-size:9px;padding:1px 5px;}
+.wbox .acts{display:flex;gap:4px;width:100%;margin-top:auto;}
+.wbox .acts .btn{flex:1 1 0;font-size:10.5px;padding:3px 2px;letter-spacing:0;}
+/* 折叠起来的参考段落（武器联动 / 道具套装）：一行，点开才铺 */
+.sub-h{
+  width:100%;text-align:left;font-size:11.5px;padding:4px 8px;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* ---------------- 工坊的配方页签 ----------------
+   53 条配方铺一屏会淹掉"设施 / 产线"那一块，所以分武器 / 道具两页，
+   并把"能造几件、这一波还剩几条产线"写在同一行里（玩家一眼知道能不能下手）。 */
+.craft-tabs{display:flex;align-items:center;gap:8px;margin:2px 0 6px;}
+.craft-tabs .btn.on{background:var(--accent);color:var(--ink);}
+.craft-note{font-size:11.5px;opacity:.75;letter-spacing:.02em;}
+/* 造不了的配方压暗（列出来是为了让玩家看见"图纸在干什么"，不是为了点） */
+.set-row.dim{opacity:.55;}
+.card .tier{
+  position:absolute;top:-3px;left:-3px;
+  font-size:10px;font-weight:700;letter-spacing:.08em;
+  padding:2px 8px;border:var(--line) solid var(--ink);border-radius:6px;
+  background:var(--paper2);
+}
+.tier.t1{background:var(--tier1);}
+.tier.t2{background:var(--tier2);}
+.tier.t3{background:var(--tier3);}
+.tier.t4{background:var(--tier4);}
+/* T5（神话）是唯一一档**深底浅字**：其余四档都是纸色/浅色底 + 墨字，
+   顶档反过来读，一眼就能从货架和一排角标里认出来。 */
+.tier.t5{background:var(--tier5);color:var(--tier5-ink);}
+
+/* ---------------- 商店 ---------------- */
+.shop-head{display:flex;align-items:center;gap:26px;}
+.shop-head .scr-h{font-size:clamp(18px,2.6vw,28px);}
+.wallet{
+  background:var(--ink);color:var(--mats);
+  border:var(--line) solid var(--ink);
+  border-radius:8px;padding:6px 16px;font-size:16px;font-weight:700;letter-spacing:.08em;
+}
+/* 两列：武器那列宽一点（它有六个小格子要排一行），道具那列窄一点。
+   比例是**量出来的**：1.15fr / 1fr 在 1280 宽下给左边 649px ——
+   六把武器的格子（96×6 + 8×5 = 616）刚好一行，货架四张卡也刚好一行。
+   以前是 1.6fr/1fr，道具列只有 466px → 四张商品卡排成两行，整列直接顶穿。 */
+.shop-cols{
+  display:grid;grid-template-columns:1.15fr 1fr;gap:16px;
+  /* **整块一起滚**，而不是两列各自滚：
+     各自滚时每一列都是一个小滚动框，"我的武器"就被压成 70px 高 ——
+     玩家看不到伤害行与「合并」按钮（量过：里面的卡片有 213px，框只有 70px）。
+     一个滚动区域，位置还能预期。 */
+  grid-template-rows:auto;
+  align-items:start;
+  overflow-y:auto;
+  /* **横向必须裁掉**：`overflow-y:auto` 只让纵轴可滚，横轴仍是 `visible`；
+     而 `visible` 在 CSS 里会被提升成 `auto`，于是"卡里的长文案把卡片撑宽"
+     并不会被裁 —— 实测 1280×720 的真机截图里，卡片底部的「材料 16」那几个字
+     渗到了下一节（「我的武器」/「武器联动」那一行）上面。
+     `overflow-x:hidden` 把这一条堵死；文案该换行的换行、该降字号的在卡片里解决，
+     不该由"漏到隔壁"来兜底。 */
+  overflow-x:hidden;
+  width:min(1240px,96vw);
+}
+.shop-col{display:flex;flex-direction:column;gap:8px;}
+/* 自己选房间：门是**主行动**，排在商店操作栏之上 —— 一眼看得出旁边是什么房。
+   数据来自 Game.doors()（房型名与图标由 dungeon.ts 的房型表给），界面不判断规则。 */
+.door-row{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;
+  width:min(1240px,96vw);
+}
+.door-row .door-head{
+  font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--cream);
+  text-shadow:1px 1px 0 var(--ink),-1px 1px 0 var(--ink),1px -1px 0 var(--ink),-1px -1px 0 var(--ink);
+}
+.door-row .btn.door{font-size:15px;padding:9px 18px;}
+.door-row .btn.door.shut{opacity:.45;cursor:not-allowed;}
+.shop-foot-row{display:flex;gap:18px;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;}
+.col-h{
+  font-size:14px;letter-spacing:.2em;color:var(--cream);font-weight:700;
+  -webkit-text-stroke:3px var(--ink);paint-order:stroke fill;
+}
+/* 商店的货架是"自适应列数"：**卡片不许窄过 124px** ——
+   写死 4 列时，1024 宽的窗口下每张只剩 85px，"材料 10"这样的字就被挤成竖排了 */
+.shop-col .cards{grid-template-columns:repeat(auto-fit,minmax(124px,1fr));}
+.shop-foot{
+  display:flex;gap:26px;align-items:center;width:min(1240px,96vw);justify-content:space-between;
+  flex:none;
+}
+.shop-actions{display:flex;gap:12px;}
+.shop-actions .btn{font-size:14px;padding:9px 20px;}
+
+/* 随机道具包 */
+.pack-box{display:flex;flex-direction:column;gap:5px;align-items:center;}
+.pack-row{display:flex;gap:10px;}
+.btn.pack{font-size:13px;padding:9px 16px;background:#c9b7d8;}
+.btn.pack:hover{background:#dccde8;}
+#btn-pack-deluxe{background:var(--accent);}
+#btn-pack-deluxe:hover{background:#f0c65c;}
+#pack-basic-cost,#pack-deluxe-cost{opacity:.66;font-size:12px;}
+.pack-odds{font-size:11px;letter-spacing:.06em;color:#cbb894;}
+
+/* ---------------- 暂停 / 结算 ---------------- */
+.pause-stats{
+  width:min(1000px,94vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:14px 18px;
+  display:grid;grid-template-columns:repeat(4,1fr);gap:6px 18px;
+  font-size:13px;
+}
+.pause-stats .k{opacity:.6;}
+.pause-stats .v{font-weight:700;text-align:right;}
+
+/* ---------------- 设置（独立场景 scr-settings） ---------------- */
+.settings{
+  width:min(1000px,94vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:10px 18px;
+  margin-top:10px;
+  display:flex;flex-direction:column;gap:6px;
+  font-size:13px;
+}
+.set-row{display:flex;align-items:center;gap:10px;min-height:28px;}
+.set-label{flex:1;opacity:.72;}
+.set-value{min-width:56px;text-align:right;font-weight:700;}
+.btn.tiny{
+  font-size:13px;padding:4px 12px;min-width:44px;
+  box-shadow:3px 3px 0 0 var(--ink);
+}
+.btn.tiny:hover{box-shadow:4px 4px 0 0 var(--ink);}
+.btn.tiny:active{box-shadow:1px 1px 0 0 var(--ink);}
+.howto{
+  width:min(960px,94vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:20px 24px;
+  font-size:14px;line-height:1.9;
+}
+.howto b{background:var(--accent);padding:1px 6px;border-radius:4px;}
+.end-body{
+  width:min(760px,94vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:20px 26px;
+  font-size:15px;line-height:2;
+  text-align:center;
+}
+.end-body .big-num{
+  font-size:40px;font-weight:700;color:var(--accent);
+  -webkit-text-stroke:4px var(--ink);paint-order:stroke fill;letter-spacing:.05em;
+}
+
+/* ---------------- HUD ---------------- */
+#hud{
+  position:absolute;left:0;right:0;top:0;
+  padding:10px 14px;
+  display:flex;flex-direction:column;gap:8px;
+  pointer-events:none;
+}
+.hud-row{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+.hud-box{
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:8px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:5px 12px;
+  min-width:88px;
+}
+.hud-label{font-size:10px;letter-spacing:.18em;opacity:.55;}
+.hud-val{font-size:19px;font-weight:700;display:flex;align-items:baseline;gap:8px;}
+.hud-val span{font-size:12px;font-weight:400;opacity:.62;}
+
+/* ---------------- 关底血条 ----------------
+   场上有关底时才出现，横在屏幕上方正中间：它不是"某只怪的血条"，
+   而是"这一层要打到哪一步"的进度。 */
+#boss-bar{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);
+  width:min(560px,72vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:6px 12px 8px;
+  pointer-events:none;
+}
+.bb-name{font-size:13px;font-weight:700;letter-spacing:.14em;margin-bottom:3px;display:flex;justify-content:space-between;}
+#boss-bar .bar{height:16px;background:#5a4a44;}
+#boss-bar .bar i{background:#c96f6f;}
+#boss-bar.hidden{display:none;}
+
+/* ---------------- 小地图（房间制） ----------------
+   7×7 网格里只画"被发现过"的房间：隐藏房在破墙之前**根本不在 DOM 里**，
+   所以它既不会剧透，也不可能被误点。可走的那几间是**按钮**（点一下就过去），
+   其余是纯展示 —— "哪几扇门能走"是这一层唯一的决策，得让它看得见。 */
+#minimap{
+  position:absolute;right:14px;bottom:14px;
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:6px 8px 7px;
+  pointer-events:auto;
+  min-width:132px;
+}
+.mm-head{display:flex;justify-content:space-between;gap:8px;font-size:10px;letter-spacing:.06em;opacity:.75;margin-bottom:4px;}
+.mm-head b{font-size:11px;}
+.mm-grid{display:grid;gap:2px;}
+.mm-cell{
+  width:17px;height:17px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;line-height:1;
+  background:#c3b192;
+  border:1px solid var(--ink);
+  border-radius:3px;
+  color:var(--ink);
+  padding:0;
+}
+.mm-cell.empty{background:none;border:1px dashed rgba(0,0,0,.16);}
+.mm-cell.done{background:#8f9c72;}
+.mm-cell.here{background:var(--cream);box-shadow:0 0 0 2px var(--ink) inset;}
+.mm-cell.go{background:var(--cream);cursor:pointer;}
+.mm-cell.go:hover{background:#fff6dd;transform:scale(1.12);}
+/* 房型的配色也来自声明表（dungeon.ts 的 cls）—— 界面不按房型 id 分支 */
+.mm-cell.mm-start{background:#a9a08a;}
+.mm-cell.mm-fight{background:#b9ac93;}
+.mm-cell.mm-elite{background:#c8a06a;}
+.mm-cell.mm-rush{background:#d9a06a;border-style:dashed;}
+.mm-cell.mm-treasure{background:#d8c58a;}
+.mm-cell.mm-shop{background:#a8b6c4;}
+.mm-cell.mm-camp{background:#9fb08a;}
+.mm-cell.mm-event{background:#b9a5c4;}
+.mm-cell.mm-boss{background:#c98a8a;}
+.mm-cell.mm-secret{background:#e0cf9a;}
+.mm-hint{font-size:10px;opacity:.6;margin-top:4px;max-width:150px;line-height:1.3;}
+.mm-hint.warn{opacity:1;color:#8a4a2a;font-weight:700;}
+#minimap.hidden{display:none;}
+.hp-box{min-width:210px;}
+.bar{
+  position:relative;height:22px;
+  background:#c3b192;
+  border:2px solid var(--ink);
+  border-radius:5px;overflow:hidden;
+  margin-top:2px;
+}
+.bar.thin{height:9px;}
+.bar i{display:block;height:100%;width:100%;background:var(--hp);}
+.bar.thin i{background:var(--xp);}
+.bar span{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--cream);
+  text-shadow:1px 1px 0 var(--ink),-1px 1px 0 var(--ink),1px -1px 0 var(--ink),-1px -1px 0 var(--ink);
+}
+#weapon-strip{
+  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  display:flex;gap:6px;
+  padding:7px 9px;
+  background:rgba(232,220,192,.94);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:4px 4px 0 0 var(--ink);
+  pointer-events:none;
+}
+#hud.hidden ~ #weapon-strip{display:none;}
+.wslot{
+  position:relative;
+  width:46px;height:46px;
+  background:rgba(255,255,255,.35);
+  border:var(--line) solid var(--ink);
+  border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+}
+.wslot canvas{image-rendering:pixelated;}
+.wslot.empty{background:rgba(232,220,192,.32);border-style:dashed;}
+/* 武器条上的品级角标（只在 T2+ 画）：颜色与商店卡片、角标三处同一套（.t1–.t5） */
+.wslot .pip{
+  position:absolute;right:2px;bottom:2px;
+  width:9px;height:9px;border-radius:50%;
+  border:2px solid var(--ink);
+}
+.wslot .pip.t1{background:var(--tier1);}
+.wslot .pip.t2{background:var(--tier2);}
+.wslot .pip.t3{background:var(--tier3);}
+.wslot .pip.t4{background:var(--tier4);}
+.wslot .pip.t5{background:var(--tier5);}
+
+/* ---------------- Toast ----------------
+   位置：底部居中、抬到**武器条之上**（武器条占 bottom 16..82，且几乎一直在屏幕上）。
+   以前是 bottom:56 —— 正好压在武器条和暂停页第二排按钮上，玩家看到的"提示"与"按钮"
+   糊在一起。 */
+#toast-wrap{
+  position:absolute;left:50%;bottom:56px;transform:translateX(-50%);
+  display:flex;flex-direction:column-reverse;gap:6px;align-items:center;
+  pointer-events:none;
+}
+/* 局内界面（HUD 与武器条可见）抬到武器条之上：武器条占 bottom 16..82，
+   toast 落在 56 会正好压住它（实测 26px）。局外界面**不抬** ——
+   那里底部是按钮区，抬上去反而压住"再来一局"那一排（实测 30px）。
+   谁抬谁不抬由场景表决定（`Scene.showsStrip`），不是按状态名硬编码。 */
+#toast-wrap.lifted{bottom:96px;}
+.toast{
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:8px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:6px 16px;font-size:14px;font-weight:700;
+  animation:toastIn .16s steps(2) both;
+}
+.toast.warn{background:#e7c05c;}
+.toast.good{background:#9dc98a;}
+@keyframes toastIn{from{transform:translateY(10px);opacity:0;}to{transform:none;opacity:1;}}
+
+/* ---------------- 诊断面板（?diag=1）：引擎的 debug overlay ---------------- */
+#diag{
+  position:absolute;left:12px;top:12px;max-width:min(560px,92vw);max-height:92vh;
+  background:rgba(16,13,12,.86);
+  border:var(--line) solid var(--ink);border-radius:10px;
+  color:var(--cream);font-size:12px;line-height:1.55;
+  padding:8px 10px;overflow:auto;pointer-events:auto;
+}
+#diag[hidden]{display:none;}
+.diag-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
+.diag-head span{font-weight:700;letter-spacing:.12em;color:var(--accent);}
+#diag-body{margin:0;white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;}
+.diag-foot{margin-top:6px;opacity:.65;font-size:11px;}
+.btn.tiny{font-size:11px;padding:2px 10px;box-shadow:2px 2px 0 0 var(--ink);}
+
+/* ---------------- 菜单焦点（方向键 / 手柄 dpad） ----------------
+   改造前菜单只能用鼠标点，升级卡只能按 1-4 —— 于是手柄能移动、能暂停，
+   却选不了卡。焦点环是最省的一种"当前选中的是哪个"表达。 */
+.card.focused,.char-card.focused{
+  outline:4px solid var(--accent);
+  outline-offset:3px;
+}
+.btn.focused{
+  background:var(--cream);
+  transform:translate(-1px,-1px);
+  box-shadow:5px 5px 0 0 var(--ink);
+}
+
+/* ---------------- 局内营地：相邻组合 ----------------
+   组合是"摆法"的玩法，所以界面必须把"谁挨着谁"画出来 ——
+   否则玩家永远发现不了自己错过了一个组合。 */
+.camp-combo{font-size:11.5px;letter-spacing:.04em;opacity:.72;}
+
+/* ---------------- 枢纽（局与局之间的"家"） ----------------
+   参照 Hades 的"家"：**一间房 + 若干站点**，而不是一份菜单。
+   三块自上而下：状态带（我这一趟攒下了什么）· 站点网格（谁在、能做什么）· 对话框。
+   之前那版把状态塞进 232px 的窄列里，`.set-label{flex:1}` 被右边的值挤到只剩一两个字宽，
+   于是"走过的局数"竖着排成一列 —— 这是**布局**问题，不是文字问题。
+   所以状态带改成一条**横带**（每项 nowrap），站点改成**格子里的东西**（有头像）。
+
+   比例是量出来的（tools/ui-shot.mjs 在 1280×720 上实测）：
+     房 1040 宽 → 内宽 1012 → 站点**四列**（每张卡 ≈224×124）→ 两行
+     一通到底的高度：标题 40 + 间隙 48 + 房 425 + 菜单 110 + 内边距 40 ≈ 663 / 720
+   四列而不是"能塞几列塞几列"：8 站刚好 4+4 两行；少一个人（记录官）时
+   末行 3 张**居中**，看上去仍然是"摆好的"，而不是"少了一张"。 */
+.hub-room{
+  width:min(1040px,95vw);
+  overflow-y:auto;
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:12px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:9px 13px 11px;
+  display:flex;flex-direction:column;gap:9px;
+}
+/* 状态带：一横带，每项 nowrap —— 它在一屏宽里，永远不该折字 */
+.hub-status{
+  display:flex;flex-wrap:wrap;gap:5px 15px;
+  font-size:12.5px;
+  border-bottom:2px dashed rgba(0,0,0,.2);
+  padding-bottom:7px;
+}
+.hub-status b{font-size:14px;}
+.hub-status .hs-item{white-space:nowrap;opacity:.85;}
+.hub-status .hs-item.warn{opacity:1;color:#8a4a2a;font-weight:700;}
+/* 站点网格：每个站点一张卡（头像 + 名字 + 职能 + 新话角标）。
+   四列 + 末行居中：flex 换行而不是 grid —— grid 的末行靠左，看着像漏了一张。 */
+.hub-stations{
+  display:flex;flex-wrap:wrap;justify-content:center;gap:9px;
+}
+/* 站点是 .btn（于是键盘/手柄的方向键天然能选中它：焦点只在 .btn 里找），
+   但外形要像"屋里的东西"：竖排、居中、四列 */
+.station{
+  flex:0 1 calc(25% - 7px);
+  min-width:132px;max-width:236px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  background:var(--paper);
+  border-radius:10px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:6px 8px 7px;
+  letter-spacing:normal;
+  text-align:center;
+  position:relative;
+}
+.station:hover{background:var(--cream);transform:translateY(-1px);}
+.station.sel{background:var(--cream);box-shadow:0 0 0 2px var(--ink) inset,3px 3px 0 0 var(--ink);}
+.station canvas{display:block;image-rendering:pixelated;}
+.station .st-nm{font-size:14.5px;letter-spacing:.05em;line-height:1.25;}
+.station .st-role{font-size:11px;font-weight:400;opacity:.68;line-height:1.25;}
+.station .st-news{
+  position:absolute;top:-7px;right:-7px;
+  width:19px;height:19px;border-radius:50%;
+  background:var(--danger);color:var(--cream);
+  font-size:12px;font-weight:700;line-height:19px;text-align:center;
+  border:2px solid var(--ink);
+  letter-spacing:0;
+}
+/* 对话框：头像 + 名牌 + 台词（只在该说话的时候出现）。
+   整块可点 = 往前走一句；里面那个小按钮是给键盘/手柄用的同一条路。 */
+.hub-talk-box{
+  display:flex;gap:11px;align-items:flex-start;
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  background:var(--cream);
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:8px 13px;
+  cursor:pointer;
+}
+.hub-talk-box[hidden]{display:none;}
+.hub-talk-box .tx-cv{flex:0 0 auto;}
+.hub-talk-box .tx-body{flex:1;min-width:0;}
+.hub-talk-box .tx-name{
+  font-size:13.5px;font-weight:700;letter-spacing:.08em;
+  display:flex;align-items:baseline;gap:8px;margin-bottom:3px;
+}
+.hub-talk-box .tx-name .tx-role{font-size:11px;font-weight:400;opacity:.62;letter-spacing:0;}
+.hub-talk-box .tx-line{font-size:14.5px;line-height:1.5;word-break:break-word;}
+.hub-talk-box .tx-next{margin-top:6px;letter-spacing:.06em;}
+.hub-talk-box .tx-quiet{font-size:13px;opacity:.6;line-height:1.5;}
+
+/* 标题页菜单上的"枢纽"入口与它的新话角标（与枢纽屏内的角标同源） */
+.hub-btn{position:relative;}
+#hub-news{
+  position:absolute;top:-6px;right:-6px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--danger);color:var(--cream);
+  font-size:12px;font-weight:700;line-height:18px;text-align:center;
+  border:2px solid var(--ink);
+}
+#hub-news[hidden]{display:none;}
+
+/* ---------------- 层间契约（打完 Boss 之后挑一条） ----------------
+   它不是常驻面板：只在"两层之间"出现一次。所以样式要**抢眼但克制** ——
+   玩家要意识到"这是不可撤销的一次选择"。 */
+#shop-boons{margin:6px 0 2px;gap:6px;}
+.boon-row{display:flex;gap:10px;flex-wrap:wrap;}
+.boon-card{
+  display:flex;flex-direction:column;gap:3px;align-items:flex-start;
+  text-align:left;cursor:pointer;
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:9px;
+  box-shadow:3px 3px 0 0 var(--ink);
+  padding:7px 12px;
+  max-width:280px;
+}
+.boon-card:hover{background:var(--cream);transform:translateY(-1px);}
+.bn-name{font-size:15px;font-weight:700;letter-spacing:.06em;}
+.bn-note{font-size:12px;opacity:.75;}
+.bn-eff{font-size:11.5px;opacity:.9;color:#7a4a1e;font-weight:700;}
+
+/* ---------------- 图鉴与挑战 ----------------
+   26 条挑战 + 三个图鉴家族放不进一屏，所以给两块可滚动区；
+   样式复用 .settings / .set-row，界面语言与设置页保持一致。 */
+.codex-wrap{
+  display:flex;flex-direction:column;gap:10px;
+  width:min(1120px,95vw);
+}
+.codex-list{
+  flex:1 1 auto;min-height:0;
+  overflow-y:auto;
+  gap:4px;
+}
+/* 分组小标题（挑战那一页）：代替"每一行都重复一遍组名" */
+.codex-group{
+  font-size:11.5px;font-weight:700;letter-spacing:.14em;
+  opacity:.6;margin:8px 0 2px;border-bottom:1px dashed rgba(0,0,0,.22);
+  padding-bottom:2px;
+}
+.codex-group:first-child{margin-top:0;}
+
+/* ---------------- 未解锁的角色 ----------------
+   挑战解锁的角色在选人页显示为锁定；模拟层不做校验（测试与 CLI 仍可直接开局），
+   门槛只在界面这一层。 */
+.char-card.locked{opacity:.42;filter:grayscale(.7);}
+.char-card.locked .ce{color:var(--danger);opacity:1;font-weight:700;}
+
+/* ---------------- 难度选择（选人页） ----------------
+   阶梯是逐级累加的，所以选人页只给"已解锁到哪一级"的按钮：
+   没解锁的显示为禁用，而不是藏起来 —— 让玩家看见"再赢一级就开下一档"。 */
+.danger-pick{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center;
+  width:min(1080px,94vw);
+  background:var(--paper);
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  box-shadow:5px 5px 0 0 var(--ink);
+  padding:8px 16px;font-size:13px;
+}
+.danger-row{display:flex;gap:6px;flex-wrap:wrap;}
+.danger-info{opacity:.75;}
+/* 这一条横带里的标签**不许伸缩**：`.set-label{flex:1}` 会把它撑成一根弹簧，
+   把后面的按钮/说明全推到最右边（枢纽第一版"文字竖排"也是同一个根因） */
+.danger-pick .set-label{flex:none;}
+
+/* 成绩码：等宽 + 可选择，方便整行复制给别人复算 */
+.score-code{
+  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  user-select:all;-webkit-user-select:all;
+  word-break:break-all;
+}
+
+/* ---------------- 触摸控制 ---------------- */
+/* 浮动摇杆：由 input.ts 在手指按下的位置定位（固定位置的摇杆在手机上永远不对） */
+#touch-stick{
+  position:absolute;display:none;
+  width:112px;height:112px;margin:-56px 0 0 -56px;
+  border:3px solid rgba(242,230,200,.42);
+  border-radius:50%;
+  pointer-events:none;z-index:5;
+}
+.touch-knob{
+  position:absolute;left:50%;top:50%;
+  width:44px;height:44px;margin:-22px 0 0 -22px;
+  background:rgba(242,230,200,.5);
+  border:3px solid rgba(28,20,15,.55);
+  border-radius:50%;
+}
+/* 屏幕暂停键只在触屏设备上出现：鼠标设备上它只会挡住画面 */
+.touch-pause{display:none;position:absolute;right:14px;top:14px;z-index:6;}
+@media (pointer:coarse){.touch-pause{display:block;}}

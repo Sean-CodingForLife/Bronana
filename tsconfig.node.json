@@ -1,0 +1,36 @@
+{
+  /* Node 侧：命令行入口（src/cli.ts）与它 import 的服务器模块。
+     与浏览器侧的 tsconfig.json 分开，是为了让浏览器代码**看不到** Node 全局
+     （否则 src/ 里误用 process 也能编译通过，到浏览器里才炸）。
+
+     `allowJs` 让 .mjs（server/static.mjs、tools/*）也进类型检查范围；
+     但只 include cli.ts 与 server/ 下的声明，避免把一堆一次性脚本拖进来。 */
+  "compilerOptions": {
+    "target": "ES2022",
+    /* lib 里必须带 DOM：cli.ts 会 import 模拟层，而模拟层里存在
+       `typeof document === 'undefined'` 这类受保护的浏览器分支（运行时不需要 DOM，
+       但类型上要看得见这些名字）。注意方向：浏览器侧（tsconfig.json）仍然是
+       `types: []`，所以"浏览器代码误用 process/fs"照样编译不过。 */
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "allowJs": true,
+    "checkJs": false,
+    "isolatedModules": true,
+    "noEmit": true,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "noImplicitThis": false,
+    "strictFunctionTypes": false,
+    "useUnknownInCatchVariables": false,
+
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/cli.ts", "src/types.d.ts", "server/static.d.mts"]
+}

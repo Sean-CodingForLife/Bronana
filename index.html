@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Bronana · Roguelite Survivor</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- ============ 覆盖层 UI（粗黑描边 + 纯色平涂 美术规范） ============ -->
+  <div id="ui" class="layer">
+
+    <!-- 标题页 -->
+    <section id="scr-title" class="screen active">
+      <div class="title-inner">
+        <div class="logo-wrap">
+          <!-- 标题**连副题一起是画出来的**（`sprites.ts` 的 promo 那一类），不是字体渲染：
+               逐字手排 + 硬边投影，于是"标题多宽"是算出来的，三台机器上一样。
+               ⚠ 副题**不再**另写一行 CSS 文字：那样它会在标题下面出现两次
+               （画布里一次、DOM 一次）—— 实测 1280×720 的真机截图就是这样。
+               一处出处原则在这里同样适用：字形与字距既然已经进了 `S.EMBLEMS`
+               那张表，界面就不该再排一遍。 -->
+          <canvas id="title-logo" class="title-logo" width="512" height="160"></canvas>
+        </div>
+        <div class="menu">
+          <button class="btn big" data-act="start">开 始 游 戏</button>
+          <button class="btn" id="btn-continue" data-act="continue-run" hidden>继 续 上 一 局 <span id="continue-info"></span></button>
+          <div class="menu-challenge">
+            <button class="btn chal" id="btn-daily" data-act="daily">每 日 挑 战</button>
+            <button class="btn chal" id="btn-weekly" data-act="weekly">每 周 挑 战</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div class="menu-grid">
+            <button class="btn hub-btn" data-act="hub">枢 纽 <span id="hub-news" hidden>!</span></button>
+            <button class="btn" data-act="howto">操 作 说 明</button>
+            <button class="btn" data-act="settings">设 置</button>
+            <button class="btn" data-act="records">战 绩</button>
+            <button class="btn" data-act="codex">图 鉴 与 挑 战</button>
+            <button class="btn wide" data-act="keep">据 点</button>
+          </div>
+        </div>
+      </div>
+      <div class="title-foot">WASD 移动 · 武器自动开火 · 波次结束进商店</div>
+    </section>
+
+    <!-- 角色选择 -->
+    <section id="scr-chars" class="screen">
+      <h2 class="scr-h">选 择 角 色</h2>
+      <div class="char-grid" id="char-grid"></div>
+      <div class="char-detail" id="char-detail"></div>
+      <div class="danger-pick">
+        <span class="set-label">难度</span>
+        <div class="danger-row" id="danger-row"></div>
+        <span class="danger-info" id="danger-info"></span>
+      </div>
+      <div class="row center">
+        <button class="btn" data-act="hub">枢 纽</button>
+        <button class="btn" data-act="talents">天 赋</button>
+        <button class="btn" data-act="back-title">返回</button>
+        <button class="btn big" id="btn-confirm-char" data-act="confirm-char">确 认 出 发</button>
+      </div>
+    </section>
+
+    <!-- 商店 -->
+    <section id="scr-shop" class="screen">
+      <div class="shop-head">
+        <h2 class="scr-h">商 店 <span id="shop-wave"></span></h2>
+        <div class="wallet">材料 <b id="shop-mats">0</b></div>
+      </div>
+      <!-- 层间契约：打完 Boss 之后出现一次（挑一条，不可撤销） -->
+      <div class="settings" id="shop-boons" hidden></div>
+      <!-- 自己选房间（Hades / 以撒那种）：门摆在这一屏的**最上面**，因为它是主行动。
+           以前这里只有"下一波"一个按钮，它替你按"最近的房间"自动走 ——
+           选择权被系统拿走了，而且走一步落在空房里时看着像"跳关"。 -->
+      <div class="door-row" id="shop-doors"></div>
+      <div class="shop-cols">
+        <div class="shop-col">
+          <div class="col-h">武 器</div>
+          <div class="cards" id="shop-weapons"></div>
+        </div>
+        <div class="shop-col">
+          <div class="col-h">道 具</div>
+          <div class="cards" id="shop-items"></div>
+        </div>
+      </div>
+      <div class="shop-foot">
+        <!-- 门只有一处：上面那个 #shop-doors（renderDoors 取的是**第一个**同 id 元素）。
+             这里原来还留着一个同 id 的空 .door-row —— 它永远不会被填，
+             白占 45px 高，还把 shop-foot 顶到 700px。重复 id 是不合法的 HTML。 -->
+        <div class="shop-foot-row">
+          <div class="shop-actions">
+            <button class="btn" id="btn-reroll" data-act="reroll">刷 新 <span id="reroll-cost"></span></button>
+            <button class="btn" id="btn-lock" data-act="lock">锁 定 商 店</button>
+            <button class="btn" data-act="camp">去 营 地</button>
+          </div>
+          <div class="pack-box">
+            <div class="pack-row">
+              <button class="btn pack" id="btn-pack-basic" data-act="pack-basic">
+                普通道具包 <span id="pack-basic-cost"></span>
+              </button>
+              <button class="btn pack" id="btn-pack-deluxe" data-act="pack-deluxe">
+                高级道具包 <span id="pack-deluxe-cost"></span>
+              </button>
+              <!-- 建材包：商店的"原料"那一栏。建材是工坊的本钱，
+                   出击时主要在宝箱/补给/密室里捡；这里是"我这一波就是要开工"的应急口 -->
+              <button class="btn pack" id="btn-pack-build" data-act="pack-build">
+                建材 ×4 <span id="pack-build-cost"></span>
+              </button>
+            </div>
+            <div class="pack-odds" id="pack-odds"></div>
+          </div>
+          <button class="btn" id="btn-next-wave" data-act="next-wave" title="按「最近的可达房间」自动走，省得自己挑">自动探索</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 升级选词条 -->
+    <section id="scr-levelup" class="screen dim">
+      <h2 class="scr-h">升 级 ！ 选 择 一 项 强 化</h2>
+      <div class="cards four" id="levelup-cards"></div>
+    </section>
+
+    <!-- 暂停 -->
+    <section id="scr-pause" class="screen dim">
+      <h2 class="scr-h">暂 停</h2>
+      <div class="pause-stats" id="pause-stats"></div>
+      <div class="menu row">
+        <button class="btn big" data-act="resume">继 续</button>
+        <button class="btn" data-act="daily">每 日 挑 战</button>
+        <button class="btn" data-act="weekly">每 周 挑 战</button>
+        <button class="btn" data-act="settings">设 置</button>
+        <button class="btn" data-act="records">战 绩</button>
+        <button class="btn" data-act="codex">图 鉴 与 挑 战</button>
+        <button class="btn" data-act="howto">操 作 说 明</button>
+        <button class="btn danger" id="btn-quit" data-act="quit">放 弃 本 局</button>
+      </div>
+    </section>
+
+    <!-- 设置（独立场景：标题页与暂停页都能进；改造前只能从暂停进） -->
+    <section id="scr-settings" class="screen dim">
+      <h2 class="scr-h">设 置</h2>
+      <!-- 控件写死在 HTML 里（静态 id 契约），值由 ui.ts 按 settings 表填 -->
+      <div class="settings" id="settings">
+        <div class="set-row">
+          <span class="set-label">音效</span>
+          <button class="btn tiny" id="set-sound" data-act="set-sound">开</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">背景音乐</span>
+          <button class="btn tiny" id="set-music" data-act="set-music">开</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">音量</span>
+          <button class="btn tiny" id="set-volume-down" data-act="set-volume-down">−</button>
+          <span class="set-value" id="set-volume-val">22%</span>
+          <button class="btn tiny" id="set-volume-up" data-act="set-volume-up">＋</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">游戏速度</span>
+          <button class="btn tiny" id="set-speed" data-act="set-speed">1x</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">屏幕抖动</span>
+          <span class="set-value" id="set-shake-val">100%</span>
+          <button class="btn tiny" id="set-shake-down" data-act="set-shake-down">−</button>
+          <button class="btn tiny" id="set-shake-up" data-act="set-shake-up">＋</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">帧率叠加层</span>
+          <button class="btn tiny" id="set-fps" data-act="set-fps">关</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">失焦自动暂停</span>
+          <button class="btn tiny" id="set-autopause" data-act="set-autopause">开</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">全屏</span>
+          <button class="btn tiny" id="set-fullscreen" data-act="fullscreen">关</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">伤害飘字</span>
+          <button class="btn tiny" id="set-damage" data-act="set-damage">开</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">减少动效</span>
+          <button class="btn tiny" id="set-motion" data-act="set-motion">关</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">语言</span>
+          <button class="btn tiny" id="set-locale" data-act="set-locale" aria-label="界面语言">中文</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">字号</span>
+          <button class="btn tiny" id="set-fontscale" data-act="set-fontscale" aria-label="界面字号">中</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">色弱模式</span>
+          <button class="btn tiny" id="set-colourblind" data-act="set-colourblind" aria-label="色弱模式">关</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">存档槽位</span>
+          <button class="btn tiny" id="set-slot-prev" data-act="slot-prev" aria-label="上一个存档槽位">−</button>
+          <span class="set-value" id="set-slot-val">槽位 1</span>
+          <button class="btn tiny" id="set-slot-next" data-act="slot-next" aria-label="下一个存档槽位">＋</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">存档搬运（换设备 / 备份）</span>
+          <button class="btn tiny" id="set-save-export" data-act="save-export" aria-label="导出存档到剪贴板">导出</button>
+          <button class="btn tiny" id="set-save-import" data-act="save-import" aria-label="从剪贴板导入存档">导入</button>
+          <button class="btn tiny" id="set-save-reset" data-act="save-reset" aria-label="重置当前槽位">重置本槽位</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">按键（方向键始终可用）</span>
+          <button class="btn tiny" id="set-keys-default" data-act="keys-default">恢复默认</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">上</span>
+          <button class="btn tiny" id="bind-keyUp" data-act="rebind" data-bind="keyUp">W</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">下</span>
+          <button class="btn tiny" id="bind-keyDown" data-act="rebind" data-bind="keyDown">S</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">左</span>
+          <button class="btn tiny" id="bind-keyLeft" data-act="rebind" data-bind="keyLeft">A</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">右</span>
+          <button class="btn tiny" id="bind-keyRight" data-act="rebind" data-bind="keyRight">D</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">暂停</span>
+          <button class="btn tiny" id="bind-keyPause" data-act="rebind" data-bind="keyPause">P</button>
+        </div>
+        <div class="set-row">
+          <span class="set-label">存档</span>
+          <button class="btn tiny" id="set-reset" data-act="set-reset">清空存档与记录</button>
+        </div>
+      </div>
+      <div class="menu">
+        <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 战绩（跨局累计：Save.addRun 一直在写，改造前没有任何界面读） -->
+    <section id="scr-records" class="screen dim">
+      <h2 class="scr-h">战 绩</h2>
+      <div class="pause-stats" id="records-body"></div>
+      <div class="menu">
+        <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 据点（跨局经营：花孢子解锁功能，永久） -->
+    <section id="scr-keep" class="screen dim">
+      <h2 class="scr-h">据 点</h2>
+      <div class="settings" id="keep-head"></div>
+      <div class="settings codex-list" id="keep-list"></div>
+      <!-- 图纸工坊：局外"养成"的第三条腿（花**合金**，只解锁能力，不给属性）。
+           与据点同屏是因为两者都是"开局前改条件"的东西；货币不同、去处分区写明。 -->
+      <div class="settings" id="forge-head"></div>
+      <div class="settings codex-list" id="forge-list"></div>
+      <div class="menu">
+        <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 局内工坊（制造这根柱子在局内的那一半：产线 + 配方 + 设施） -->
+    <section id="scr-camp" class="screen dim">
+      <h2 class="scr-h">工 坊</h2>
+      <div class="settings" id="camp-head"></div>
+      <div class="settings codex-list" id="camp-craft"></div>
+      <div class="settings codex-list" id="camp-list"></div>
+      <div class="door-row" id="camp-doors"></div>
+      <div class="menu row">
+        <button class="btn" data-act="camp-back">回 商 店</button>
+        <button class="btn" data-act="next-wave">自动探索</button>
+      </div>
+    </section>
+
+    <!-- 天赋（角色养成：多级永久树，只改开局条件） -->
+    <section id="scr-talents" class="screen dim">
+      <h2 class="scr-h">天 赋</h2>
+      <div class="danger-pick">
+        <span class="set-label">角色</span>
+        <div class="danger-row" id="talent-char"></div>
+        <span class="danger-info" id="talent-points"></span>
+      </div>
+      <div class="settings" id="talent-head"></div>
+      <div class="settings codex-list" id="talent-list"></div>
+      <div class="menu row">
+        <button class="btn" data-act="talent-undo">撤 销 上 一 点</button>
+        <button class="btn" data-act="talent-respec" id="btn-talent-respec">洗 点</button>
+        <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 枢纽（局与局之间的"家"）——
+         参照 Hades 的"家"：那里不是一份菜单，而是**一间房 + 若干站点**
+         （镜面=天赋、承包商=据点、纪念品柜=配装、记录墙=图鉴），NPC 站在房里，
+         谁有新话谁头上挂个气泡。所以这里是"状态带 + 站点网格 + 对话框"三块，
+         而不是一行行文字（文字列表读起来像设置页，不像一个地方）。 -->
+    <section id="scr-hub" class="screen dim">
+      <h2 class="scr-h">枢 纽</h2>
+      <div class="hub-room">
+        <div class="hub-status" id="hub-status"></div>
+        <div class="hub-stations" id="hub-stations"></div>
+        <div class="hub-talk-box" id="hub-talk" hidden></div>
+      </div>
+      <div class="menu row">
+        <button class="btn big" data-act="hub-go">出 发</button>
+        <button class="btn" data-act="hub-back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 图鉴与挑战（账号档案的可见面：解锁进度 / 三态图鉴 / 孢子）
+         五块内容（概览 / 挑战 / 图鉴 / 剧情 / 今日本周）**装不进一屏**：
+         以前它们叠在一起，三张长列表被 flex 压成 28px 高的细条 ——
+         所以这里改成标签页：一次只显示一页，那一页吃掉整块高度并自己滚。 -->
+    <section id="scr-codex" class="screen dim">
+      <h2 class="scr-h">图 鉴 与 挑 战</h2>
+      <div class="danger-pick">
+        <span class="set-label">翻哪一页</span>
+        <div class="danger-row" id="codex-tabs"></div>
+      </div>
+      <div class="codex-wrap">
+        <div class="settings" id="codex-summary"></div>
+        <div class="settings codex-list" id="codex-challenges"></div>
+        <div class="settings codex-list" id="codex-catalog"></div>
+        <div class="settings codex-list" id="codex-story"></div>
+        <div class="settings codex-list" id="codex-daily"></div>
+      </div>
+      <div class="menu row">
+        <button class="btn big" data-act="back">返 回</button>
+      </div>
+    </section>
+
+    <!-- 操作说明 -->
+    <section id="scr-howto" class="screen dim">
+      <h2 class="scr-h">操 作 说 明</h2>
+      <div class="howto">
+        <p><b>WASD / 方向键</b> — 八向移动，角色自动锁定最近的敌人开火。</p>
+        <p><b>ESC / 空格 / P</b> — 暂停菜单（暂停键可在<b>设置</b>里改）。</p>
+        <p><b>F</b> — 切换 1x / 2x 游戏速度。<b>M</b> — 静音。</p>
+        <p><b>Shift</b> — 按住慢走（微操走位）。</p>
+        <p><b>方向键 + 回车</b> — 在任何菜单里选择与确认；升级卡也可以直接按 1-4。</p>
+        <p><b>手柄</b> — 左摇杆移动，A 确认，B / Start 暂停或返回。</p>
+        <p>每波持续 20~60 秒，撑满时间即过关并进入<b>商店</b>。</p>
+        <p><b>撑到第 20 波并清场就是通关</b>；每通关一级会解锁下一档<b>难度</b>（在选人页选）。</p>
+        <p>击杀怪物掉落<b>材料</b>，材料 = 经验 + 货币。靠近自动吸附。</p>
+        <p>升级时从 4 个词条中选 1 项；商店可购买<b>武器</b>与<b>道具</b>，最多携带 6 把武器。</p>
+        <p>武器全部自动开火，同侧武器越多伤害越高 —— 满配 6 把才是本体。</p>
+      </div>
+      <button class="btn big" data-act="back">知 道 了</button>
+    </section>
+
+    <!-- 结算 -->
+    <section id="scr-end" class="screen">
+      <h2 class="scr-h" id="end-title">游 戏 结 束</h2>
+      <div class="end-body" id="end-body"></div>
+      <div class="menu row">
+        <button class="btn big" data-act="again">再 来 一 局</button>
+        <button class="btn" data-act="records">战 绩</button>
+        <button class="btn" data-act="back-title">返回标题</button>
+      </div>
+    </section>
+
+    <!-- 顶部 HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-row">
+        <div class="hud-box hp-box">
+          <div class="hud-label">生命</div>
+          <div class="bar"><i id="hp-fill"></i><span id="hp-text">20 / 20</span></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">波次</div>
+          <div class="hud-val"><b id="hud-wave">1</b><span id="hud-timer">20</span></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">所在</div>
+          <div class="hud-val"><b id="hud-room">入口</b><span id="hud-floor">1F</span></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">等级</div>
+          <div class="hud-val"><b id="hud-level">1</b><span id="hud-xp">0/8</span></div>
+          <div class="bar thin"><i id="xp-fill"></i></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">材料</div>
+          <div class="hud-val"><b id="hud-mats">0</b></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">存活</div>
+          <div class="hud-val"><b id="hud-kills">0</b></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">速度</div>
+          <div class="hud-val"><b id="hud-speed">1x</b></div>
+        </div>
+        <div class="hud-box">
+          <div class="hud-label">帧率</div>
+          <div class="hud-val"><b id="hud-fps">--</b></div>
+        </div>
+      </div>
+      <!-- 关底血条：场上有 Boss 时才显示（Boss 的常规血条被刻意关掉了，
+           那种小血条放在 3 倍体型的怪头上既看不清也说不出"这是关底"） -->
+      <div id="boss-bar" class="hidden">
+        <div class="bb-name" id="boss-name">关底</div>
+        <div class="bar"><i id="boss-fill"></i><span id="boss-hp">0/0</span></div>
+      </div>
+      <!-- 小地图：房间制的地图面板（这一层走到哪了、哪几扇门能走）。
+           隐藏房在没被发现之前**根本不在这里**，所以它不会剧透。 -->
+      <div id="minimap">
+        <div class="mm-head"><b id="mm-floor">第 1 层</b><span id="mm-theme">碎石浅层</span></div>
+        <div class="mm-grid" id="mm-grid"></div>
+        <div class="mm-hint" id="mm-hint">走到门口就过去</div>
+      </div>
+    </div>
+
+    <!-- 底部武器栏 -->
+    <div id="weapon-strip"></div>
+
+    <!-- 触摸控制：浮动摇杆由 input.ts 在按下的位置定位；暂停键只在触屏设备上显示 -->
+    <div id="touch-stick"><div class="touch-knob" id="touch-knob"></div></div>
+    <button class="btn tiny touch-pause" id="btn-touch-pause" data-act="pause">暂 停</button>
+
+    <div id="toast-wrap"></div>
+
+    <!-- 诊断面板（?diag=1 打开）：把扩展点总账 / 容器账目 / 深度层带 / 缓存预算显示出来。
+         引擎里这是 debug overlay —— 没有它，那些"系统"就只是代码里的数字。 -->
+    <div id="diag" hidden>
+      <div class="diag-head">
+        <span>诊断</span>
+        <button class="btn tiny" data-act="diag-close">关闭</button>
+      </div>
+      <pre id="diag-body"></pre>
+      <div class="diag-foot">
+        <span id="diag-hint">. 单步 · R 录制 · P 回放</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 单一 ES 模块入口：依赖顺序由 import 图决定，不再手写 16 个 <script> -->
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
