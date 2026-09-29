@@ -782,22 +782,23 @@ var CAMP_RECIPE_PAGE = 24;      // 一屏铺多少条配方（53 条全铺会淹
 function renderCamp() {
   if (!el.campList) return;
   var sess = Game.getSession();
-  var state = (sess && sess.camp) || {};
-  var row = (sess && sess.campRow) || [];
-  var mats = sess ? Math.round(sess.player.scrap || 0) : 0;
-  var pts = sess ? Math.round(sess.campPoints || 0) : 0;
+  /* ⚠ 工坊的四样东西现在都在**档案**里（跨局），不在会话里：
+       设施 / 建造顺序 / 材料 / 折叠效果。会话只提供"这一波还空着几条产线"。 */
+  var state = Profile.campOwned();
+  var row = Profile.campRowClean();
+  var opts = Game.campOpts();
+  var mats = Math.round(Profile.material());
   var used = Camp.usedSlots(state);
-  var fx = Camp.effects(state, row);
+  var fx = Profile.campFx();
   var active = Camp.combosFor(row);
   var lines = Game.craftLines();
   var free = Game.craftFreeLines();
 
-  var head = setRow('建材', String(pts) + '（出击每波带回 +' + Camp.POINTS_PER_WAVE + '；建产线花建材，不是废料）');
-  head += setRow('废料', String(mats) + '（出击收集来的；制造花的是这一笔）');
-  head += setRow('产线', used + ' / ' + Camp.SLOTS + ' 座设施' +
+  var head = setRow('材料', String(mats) + '（出击打出来的，**带得出局**；建产线与制造都花这一笔）');
+  head += setRow('产线', used + ' / ' + opts.slots + ' 座设施' +
     (Game.forgeMods().lines > 0 ? ' + 图纸 ' + Game.forgeMods().lines + ' 条' : '') +
     ' → 共 ' + lines + ' 条，这一波还空着 ' + free.length + ' 条' +
-    (used >= Camp.SLOTS ? '（设施位满了 —— 升级已有设施不占新位子，也可以拆掉一个）' : '（还可以盖 ' + (Camp.SLOTS - used) + ' 个）'));
+    (used >= opts.slots ? '（设施位满了 —— 升级已有设施不占新位子，也可以拆掉一个）' : '（还可以盖 ' + (opts.slots - used) + ' 个）'));
   // 建造顺序 = 「谁挨着谁」；相邻组合只看这一行
   var rowTxt = row.length
     ? row.map(function (id, i) {
@@ -815,17 +816,26 @@ function renderCamp() {
     }).join(' / ') + '）');
   var effTxt = Camp.effectLines(fx);
   head += setRow('制造效果', effTxt.length ? effTxt.join(' · ') : '（无）');
+  head += setRow('设施是**跨局**的', '盖好就一直有；换一局不用重盖（这也是它和商店最大的区别）');
   head += setRow('和商店的分工', '造 = 便宜但要图纸 + 占一条产线的一波；货架 = 应急成品（贵）与回收（回收产合金）');
   el.campHead.innerHTML = head;
-  renderDoors(el.campDoors, Game.getSession());   // 工坊也能直接挑门走
+  renderDoors(el.campDoors, sess);   // 工坊也能直接挑门走
 
   /* ---- 配方：只把**能造**的排前面，造不了的也列出来（否则玩家不知道图纸在干什么）---- */
   drawCraftList(sess, free, mats);
 
   var html = '';
-  Camp.LIST.forEach(function (d) {
-    var lvl = Camp.levelOf(state, d.id);
-    var chk = Camp.canBuy(state, d.id, pts);
+  /* 费用 / 能不能盖 / 退款**全部来自 `Game.campFacilities()`** ——
+     界面不再自己调 `Camp.canBuy` 与 `Camp.refundOf`。
+     改造前这里各自调了一遍，而且**没传 opts**（据点给的位子与工匠的全额返还
+     在按钮上都没算），于是按钮上的价钱与实际扣的钱可能不一致 ——
+     这正是"界面自己算规则"必然掉进去的坑。 */
+  var facs = Game.campFacilities();
+  facs.forEach(function (f) {
+    var d = Camp.BY_ID[f.id];
+    if (!d) return;
+    var lvl = f.level;
+    var chk = { ok: f.ok, reason: f.reason, cost: f.cost };
     var nextTxt;
     if (lvl >= d.levels.length) nextTxt = '已满级';
     else {
@@ -847,7 +857,7 @@ function renderCamp() {
         (chk.reason === '已经满级' ? '满级' : '不可') + '</button>';
     }
     var sell = lvl
-      ? ' <button class="btn tiny" data-act="camp-sell" data-camp="' + d.id + '">拆（退 ' + Camp.refundOf(state, d.id) + '）</button>'
+      ? ' <button class="btn tiny" data-act="camp-sell" data-camp="' + d.id + '">拆（退 ' + f.refund + '）</button>'
       : '';
     // 这一个设施与"已经建好的邻居"能凑出什么组合 —— 让玩家在按下建造前就看得见
     var comboTxt = Camp.COMBOS.filter(function (k) { return k.a === d.id || k.b === d.id; })
@@ -1375,13 +1385,13 @@ var ACT_CAMP: ActMap = {
     var fid = (t.dataset && t.dataset.camp) || '';
     if (Game.campBuy(fid)) {
       var fd = Camp.BY_ID[fid];
-      UI.toast('营地建成：' + (fd ? fd.name : fid) + ' Lv.' + Camp.levelOf(Game.getSession().camp, fid), 'good');
+      if (fd) UI.toast('工坊建成：' + fd.name + ' Lv.' + Profile.campLevel(fid), 'good');
     }
     renderCamp();
   },
   'camp-sell': function (t) {
     var sid = (t.dataset && t.dataset.camp) || '';
-    if (Game.campSell(sid)) UI.toast('已拆除，退还一半废料', '');
+    if (Game.campSell(sid)) UI.toast('已拆除，材料退还', '');
     renderCamp();
   },
 };

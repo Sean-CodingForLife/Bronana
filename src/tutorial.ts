@@ -184,8 +184,17 @@ Tutorial.audit = function () {
     else perWhen[d.when] = (perWhen[d.when] || 0) + 1;
     if (!d.text) problems.push(d.id + ' 没有文案（它是 i18n 的键，不能空）');
     if (!d.note) problems.push(d.id + ' 没有 note —— 说不出"为什么要有这条提示"的提示不该存在');
-    /* 文案**必须**进 i18n 表：否则切到英文之后这几句会一直是中文 */
-    if (d.text && !Registry.ids('messageKey').some(function (k) { return k === d.text; })) {
+    /* 文案**必须**进 i18n 表：否则切到英文之后这几句会一直是中文。
+       ⚠ 这里**必须先问"那个家族在不在"**，不能直接 `Registry.ids('messageKey')` ——
+       它是**跨模块**检查，而 `i18n.ts` 只被 `main.ts` / `ui.ts` 认识。
+       在无头入口（`cli.ts`、测试、任何只加载模拟层的场景）里 i18n 可能根本没被加载，
+       于是这一句会抛"未注册的家族"，把整个模块的加载打断 ——
+       而这个错误的**表现**是"加载失败"，与"文案没进表"完全无关，极难定位。
+       这与 `SelfCheck.scan({registry:'partial'})` 是同一条纪律：
+       **目标家族不在场时不代表写错了，只代表那个模块没被加载**。
+       在浏览器里 i18n 一定在（main.ts 先加载它），所以这条检查照样生效。 */
+    if (d.text && Registry.has('messageKey') &&
+      !Registry.ids('messageKey').some(function (k) { return k === d.text; })) {
       problems.push(d.id + ' 的文案不在 i18n 表里（切英文之后它会一直是中文）');
     }
   }
@@ -197,7 +206,16 @@ Tutorial.audit = function () {
   return { ok: problems.length === 0, problems: problems, counts: { hints: LIST.length, whens: whens.length } };
 };
 
-if (!Tutorial.audit().ok) throw new Error('tutorial 自检失败：\n' + Tutorial.audit().problems.join('\n'));
+/* 这里**故意不在加载期跑一遍**（其它表模块大多会跑）。
+   理由与上面那条 `Registry.has` 是同一个：这一份 audit 里有一条**跨模块**检查
+   （"文案必须进 i18n 表"），它要求 `i18n` 已经加载 —— 而"谁先加载"对
+   本模块是**不可控**的（`i18n.ts` 只被 main / ui 认识，不在模拟层的依赖图里）。
+   在加载期跑就等于把"模块求值顺序"变成一条隐式契约：顺序对了没事，
+   顺序变了就报一个**看起来毫不相关**的错（实测就是这样，见上面那段注释）。
+
+   `SelfCheck.register` 才是它该待的地方：那条路在**两个入口的启动期**都会走
+   （`main.ts` 的 boot 与 `cli.ts`），而那时 i18n 一定已经在场。
+   `test/tutorial.mjs` 也会显式调它。 */
 SelfCheck.register('Tutorial', Tutorial.audit);
 
 /* =========================================================

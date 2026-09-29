@@ -282,7 +282,7 @@ console.log('\n[2] 公共常量：可调数值有没有重复定义 / 漂移');
    ---------------------------------------------------------
    改造前 `interface Session` 是一个 72 个字段的平铺大对象：谁也说不清
    "哪些字段属于同一件事"，新增字段时也没有东西提醒你"它要不要进存档"。
-   现在它按子系统分成 7 个组（SessionCore / SessionCamp / SessionMarket /
+   现在它按子系统分成 7 个组（SessionCore / SessionCraft / SessionMarket /
    SessionDungeon / SessionWave / SessionEnts / SessionDebug），`Session` 只是并集。
    这一节守三件事：
      · 没有一个字段是**散装**的（直接写在 Session 里，不属于任何组）
@@ -292,7 +292,7 @@ console.log('\n[2] 公共常量：可调数值有没有重复定义 / 漂移');
 console.log('\n[2b] Session 的字段分组：不许有散装字段');
 {
   const tsrc = fs.readFileSync(path.join(ROOT, 'src', 'types.d.ts'), 'utf8');
-  const GROUPS = ['SessionCore', 'SessionCamp', 'SessionMarket', 'SessionDungeon',
+  const GROUPS = ['SessionCore', 'SessionCraft', 'SessionMarket', 'SessionDungeon',
     'SessionWave', 'SessionEnts', 'SessionDebug'];
   const fieldsOf = {};
   for (const gname of GROUPS) {

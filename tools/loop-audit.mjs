@@ -2,7 +2,7 @@
    loop-audit.mjs — 循环体检：把"三个模块怎么互相喂"画出来
 
    这一份输出回答的是**架构问题**，不是数值问题：
-     · 四笔钱各自的层级（能不能带出局）、来源、去向
+     · 每一笔钱的层级（能不能带出局）、来源、去向
      · 三个模块之间的边，以及每条边上流的是什么
      · 每条边**成不成立**（有没有货币在走）
      · 每一笔钱"从哪来、花在哪"是不是都落在已登记的系统上
@@ -34,7 +34,7 @@ console.log('  ' + v.counts.currencies + ' 笔货币 · ' + v.counts.tiers + ' �
   v.counts.systems + ' 个系统 · ' + v.counts.edges + ' 条循环边\n');
 
 /* ---------------- 1. 货币表 ---------------- */
-console.log('[1] 四笔钱：层级 / 来源 / 去向\n');
+console.log('[1] ' + Economy.LIST.length + ' 笔钱：层级 / 来源 / 去向\n');
 console.log('  ' + PAD('货币', 12) + PAD('层级', 12) + PAD('来源', 10) + PAD('去向', 16) + '带出局');
 for (const d of Economy.LIST) {
   const tier = Economy.TIERS[d.tier];

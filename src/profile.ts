@@ -17,6 +17,8 @@
    ========================================================= */
 
 import { Challenges } from './challenges.ts';
+import { Camp } from './camp.ts';
+import { Craft } from './craft.ts';
 import { Daily } from './daily.ts';
 import { Danger } from './danger.ts';
 import { Envelope } from './envelope.ts';
@@ -25,6 +27,7 @@ import { Items } from './data_items.ts';
 import { Offline } from './offline.ts';
 import { Registry } from './registry.ts';
 import { Season } from './season.ts';
+import { SelfCheck } from './selfcheck.ts';
 import { Slots } from './slots.ts';
 import { Tutorial } from './tutorial.ts';
 import { Storage } from './storage.ts';
@@ -41,6 +44,30 @@ var env = Envelope.create({ name: 'profile', version: 1 });
    ========================================================= */
 /** 图鉴的三态：见过 / 用过 / 满级过 */
 var CODEX_SEEN = 1, CODEX_USED = 2, CODEX_MASTERED = 3;
+
+/* =========================================================
+   0. 档案有哪些字段（**一份清单，两处读**）
+   ---------------------------------------------------------
+   这张清单原先只写在 `Registry.family('profileSection')` 的 `values()` 里，
+   于是它**没有任何对照物** —— 漂了很久没人响。提成模块级常量之后，
+   `values()` 与 `Profile.audit()` 读同一份，而 audit 拿 `blank()` 的真实键集合
+   跟它对账。**这份自检第一次跑就抓出三个漏登记的字段**：
+
+     | 漏的字段 | 为什么它该在清单里 |
+     | --- | --- |
+     | `wallet` | 材料钱包 —— 整条"带出局"的落点 |
+     | `tutorialSeen` | 引导进度，换存档槽要跟着走 |
+     | `core` | 核心材料（meta-rare 那一档），经营与养成的共同门槛 |
+     | `createdAt` / `updatedAt` | 档案自身的元数据 |
+
+   前四个是"漂掉了的跨局字段"，最后两个是"清单从来没管过的元数据"。
+   ========================================================= */
+var PROFILE_SECTIONS = [
+  'wallet', 'spores', 'alloy', 'core',
+  'forge', 'unlocked', 'codex', 'done', 'perChar',
+  'daily', 'season', 'keep', 'camp', 'campRow', 'tutorialSeen',
+  'story', 'lastSeen', 'createdAt', 'updatedAt'
+];
 
 function blank() {
   return {
@@ -74,7 +101,18 @@ function blank() {
     perChar: Object.create(null),
     daily: {},          // 'YYYY-MM-DD' -> 当天最好的一局（见 daily.ts）
     season: {},         // 'YYYY-Www'   -> 当周最好的一局（见 season.ts）
-    keep: {},           // 据点设施 -> 等级（跨局永久，花孢子）
+    keep: {},           // 据点设施 -> 等级（跨局永久，花**材料**）
+    /* **工坊（经营场景的产线）**：`{ 设施id: 等级 }` + 建造顺序。
+       它原先住在**局内会话**里（`game.ts` 的 `S.camp`），每局从零开始盖 ——
+       那是"经营只是个局内小游戏"的形状。搬到档案里之后：
+         · 设施是**跨局资产**：盖一次，之后每一局都在
+         · 造装备/道具花的是**材料**（那笔能带出局的钱），不再是局内的"建材"
+         · 相邻组合的摆法是**长期**决定，不是每局重摆
+       与 `keep` 的关系：据点给的是"容量与能力"（多一条产线、拆解全额返还），
+       工坊给的是"**制造能力**本身"（省料 / 抬档 / 回收）。两者都不把数字
+       乘到战斗的柱子上 —— 这是它们与战斗不嵌合的地方。 */
+    camp: {},           // 工坊设施 -> 等级（跨局永久，花材料）
+    campRow: [],        // 建造顺序（相邻组合靠它判定；升级不挪位置）
     /* 首局引导：说过哪几条提示（`tutorial.ts` 的 id -> true）。
        落在这里而不是 localStorage，是因为它属于**这一份档** ——
        换槽位 / 换设备之后提示行为要跟着那份档走，
@@ -176,6 +214,30 @@ Profile.load = function () {
     if (!Stronghold.BY_ID[kid]) continue;
     var klv = Math.floor(num(kp[kid]));
     if (klv > 0) data.keep[kid] = Math.min(klv, Stronghold.maxLevel(kid));
+  }
+  // 工坊（经营场景的产线）：与据点同一套夹取，但多一层 —— **建造顺序**也要恢复，
+  // 因为相邻组合靠它判定。顺序丢了不是"少个字段"，而是**静默把组合拆了**：
+  // 界面上设施都还在、等级也对，可「淬火」这类加成凭空消失。
+  // 两道防线：① 只收真的建了的设施；② 每项只收一次（坏档里可能有重复）。
+  var cg = (got.camp && typeof got.camp === 'object') ? got.camp : {};
+  for (var cid in cg) {
+    if (!Object.prototype.hasOwnProperty.call(cg, cid)) continue;
+    if (!Camp.BY_ID[cid]) continue;
+    var clv = Math.floor(num(cg[cid]));
+    if (clv > 0) data.camp[cid] = Math.min(clv, Camp.maxLevel(cid));
+  }
+  var crow = Array.isArray(got.campRow) ? got.campRow : [];
+  for (var cri = 0; cri < crow.length; cri++) {
+    var rid = crow[cri];
+    if (typeof rid !== 'string' || !data.camp[rid] || data.campRow.indexOf(rid) >= 0) continue;
+    data.campRow.push(rid);
+  }
+  // 老档没有 campRow（或者顺序不全）：按设施表顺序补一份。
+  // **补一份**而不是丢弃整座工坊 —— 组合会按声明表顺序重算，而不是静默消失。
+  for (var cfid in data.camp) {
+    if (Object.prototype.hasOwnProperty.call(data.camp, cfid) && data.campRow.indexOf(cfid) < 0) {
+      data.campRow.push(cfid);
+    }
   }
   // 剧情进度：**逐表校验**（认不出的 id 一律丢掉）
   // 这条防线比别的字段更要紧：`said` 里混进一个拼错的台词 id 会让"这句话说过了"
@@ -1097,6 +1159,109 @@ Profile.keepOwned = function () {
 Profile.keepMods = function () { return Stronghold.modsFor(data.keep); };
 Profile.keepInvested = function () { return Stronghold.invested(data.keep); };
 
+/* =========================================================
+   6b. 工坊（经营场景的产线）—— **跨局**
+   ---------------------------------------------------------
+   改造前这一整块在**局内会话**里（`game.ts` 的 `S.camp` / `S.campRow` /
+   `S.campPoints`），每局从零盖一遍；用户拍板的方向是"营地从局内搬出去"，
+   也就是：**设施是账号资产，不是一局的临时工事**。
+
+   三处随之改变的地方，都要说清楚：
+     · **钱换了**：从局内的"建材"（每波 +2，结算清零）换成**材料**
+       （带得出局的那一笔）。于是"打 → 拿材料 → 造 → 再打"这条循环闭合，
+       而材料在**战斗场景里**依然一分不花（花它的地方是经营场景）。
+     · **"产线"的含义收了**：改造前一条产线 = "这一波还能再买一次建设"；
+       现在 = "**这一局能造几件**"。每波重置（`S.craftUsed` 是局内的）。
+     · **摆法不再每局重来**：`campRow` 是长期决定，相邻组合跟着它走。
+
+   规则（售价 / 等级 / 组合 / 折叠 / 封顶）全在 `camp.ts`，这里只做三件事：
+   读状态、扣材料、写状态。
+   ========================================================= */
+Profile.campOwned = function () {
+  var out: Record<string, number> = {};
+  for (var k in data.camp) if (Object.prototype.hasOwnProperty.call(data.camp, k)) out[k] = data.camp[k];
+  return out;
+};
+Profile.campRow = function () { return data.campRow.slice(); };
+/** 工坊效果的折叠（相邻组合要顺序，所以两个一起给） */
+Profile.campFx = function () { return Camp.effects(data.camp, data.campRow); };
+/** 建造顺序里每一个都必须是**真的建了**的设施（坏档防线：顺序与状态不能脱节） */
+Profile.campRowClean = function () {
+  var out: string[] = [];
+  for (var i = 0; i < data.campRow.length; i++) {
+    var id = data.campRow[i];
+    if (data.camp[id] > 0 && out.indexOf(id) < 0) out.push(id);
+  }
+  return out;
+};
+/** 这一局有几条产线 = 已建设施数（每条产线一座；图纸另给名额，由 craft.ts 加） */
+Profile.campLines = function () { return Camp.usedSlots(data.camp); };
+Profile.campLevel = function (id) { return Camp.levelOf(data.camp, id); };
+
+/**
+ * 买 / 升级一个工坊设施（花**材料**）。
+ * @param opts.slots      设施位上限（据点「地基」能抬高；缺省 = 基准）
+ * @param opts.discount   价格折扣（天赋「商会」；缺省 = 不打折）
+ * @param opts.fullRefund 拆除全额返还（据点「工匠」；缺省 = 退一半）
+ * @returns { ok, reason, cost, toLevel }
+ */
+Profile.campBuy = function (id, opts) {
+  var chk = Camp.canBuy(data.camp, id, Profile.material(), opts);
+  if (!chk.ok) return chk;
+  if (!Profile.spendMaterial(chk.cost)) {
+    return { ok: false, reason: '材料不够（需要 ' + chk.cost + '）', cost: chk.cost, toLevel: 0 };
+  }
+  var isNew = Camp.levelOf(data.camp, id) === 0;
+  data.camp[id] = chk.toLevel;
+  /* 新建设施排到行尾（升级**不挪**位置）——「谁挨着谁」由建造顺序决定，
+     这正是相邻组合那套玩法成立的前提。 */
+  if (isNew && data.campRow.indexOf(id) < 0) data.campRow.push(id);
+  Profile.save();
+  return { ok: true, reason: '', cost: chk.cost, toLevel: chk.toLevel };
+};
+
+/**
+ * 拆掉一个工坊设施，退还一部分材料（`opts.fullRefund` 时全额）。
+ * 拆掉会**同时拆掉它参与的组合** —— 那是"摆法"这套玩法的代价，不是 bug。
+ */
+Profile.campSell = function (id, opts) {
+  var lvl = Camp.levelOf(data.camp, id);
+  if (!lvl) return { ok: false, reason: '没有这个设施', refund: 0 };
+  var back = Camp.refundOf(data.camp, id, opts);
+  delete data.camp[id];
+  var at = data.campRow.indexOf(id);
+  if (at >= 0) data.campRow.splice(at, 1);
+  if (back > 0) Profile.addMaterial(back);
+  Profile.save();
+  return { ok: true, reason: '', refund: back };
+};
+
+/**
+ * 界面要铺的那一屏：每条配方的费用 / 能不能造 / 造不造得起。
+ * **不写任何规则** —— 规则全在 `craft.ts`（费用与档位）与 `camp.ts`（省料与抬档）。
+ * @param mods 图纸给的制造修正（`Forge.modsFor` 那一份）
+ */
+Profile.craftOptions = function (mods) {
+  var fx = Profile.campFx();
+  /* 显式标注：`var out = []` 会被推断成 `any[]`，于是这个函数的返回类型丢掉，
+     调用方（`game.ts` 的 `craftOptions`）就会拿不到 `kind` 的字面量类型。 */
+  var out: Array<{
+    id: string; kind: 'weapon' | 'item'; refId: string; name: string; tier: number;
+    cost: number; ok: boolean; reason: string; affordable: boolean;
+  }> = [];
+  var mat = Profile.material();
+  for (var i = 0; i < Craft.LIST.length; i++) {
+    var r = Craft.LIST[i];
+    var chk = Craft.canMake(r, mods);
+    var cost = Craft.costOf(r, mods, fx);
+    out.push({
+      id: r.id, kind: r.kind, refId: r.refId, name: r.name, tier: r.tier,
+      cost: cost, ok: chk.ok, reason: chk.reason, affordable: mat >= cost
+    });
+  }
+  return out;
+};
+
 /**
  * 买 / 升级一个据点设施（花孢子；高级等级还要**核心材料**）。
  *
@@ -1148,13 +1313,49 @@ Tutorial.onChanged(function () {
    ========================================================= */
 Registry.family('profileSection', {
   note: '账号档案的字段（哪些是跨局成长）', owner: 'profile.ts',
-  values: function () {
-    return ['spores', 'alloy', 'forge', 'unlocked', 'codex', 'done', 'perChar', 'daily', 'season', 'keep', 'story', 'lastSeen'];
-  }
+  values: function () { return PROFILE_SECTIONS.slice(); }
 });
 Registry.family('codexLevel', {
   note: '图鉴三态', owner: 'profile.ts',
   values: function () { return ['见过', '用过', '满级过']; }
 });
+
+/* =========================================================
+   9. 定义期自检
+   ---------------------------------------------------------
+   改造前 `profile.ts` **没有 audit**（据点 / 工坊 / 天赋 / 挑战都各有一条，
+   唯独"账号档案本身"没有）。这有真实的代价：`profileSection` 那份清单
+   可以随便漂，没有第二处会响 —— 而它正是"哪些字段是跨局的"的**唯一声明**。
+
+   判据只验**表自身**能验的：清单与 `blank()` 的键集合互为镜像。
+   "落盘往返对不对"是测试的活（`test/profile.mjs` / `persist.mjs`）。
+   ========================================================= */
+Profile.audit = function () {
+  var problems: string[] = [];
+  var declared: Record<string, boolean> = Object.create(null);
+  var i;
+  /* 与 `Registry.family('profileSection')` 读的是**同一份常量**。
+     不从总账读回来：`Registry.info()` 只给 note/owner，**不暴露 values** ——
+     想读就得给总账加一个"取家族值域"的 API，那是为了一处自检去动公共接口。 */
+  for (i = 0; i < PROFILE_SECTIONS.length; i++) declared[PROFILE_SECTIONS[i]] = true;
+
+  var real = Object.keys(blank());
+  for (i = 0; i < real.length; i++) {
+    if (!declared[real[i]]) problems.push('字段 ' + real[i] + ' 在档案里，但没登记进 profileSection（清单漏了它）');
+  }
+  for (i = 0; i < PROFILE_SECTIONS.length; i++) {
+    if (real.indexOf(PROFILE_SECTIONS[i]) < 0) problems.push('profileSection 声明了 ' + PROFILE_SECTIONS[i] + '，但档案里没有这个字段（清单写错了）');
+  }
+  /* 顺序表与状态表不能脱节：`campRow` 里出现没建的设施 → 组合判定会读到幽灵 */
+  var ghost = Profile.campRowClean();
+  if (ghost.length !== data.campRow.length) {
+    problems.push('campRow 里有 ' + (data.campRow.length - ghost.length) + ' 项不是"真的建了"的设施（相邻组合会按幽灵位置判定）');
+  }
+  return {
+    ok: problems.length === 0, problems: problems,
+    counts: { sections: real.length, campFacilities: Object.keys(data.camp).length }
+  };
+};
+SelfCheck.register('Profile', Profile.audit);
 
 export { Profile };

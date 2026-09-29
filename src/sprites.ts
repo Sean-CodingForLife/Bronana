@@ -9,6 +9,7 @@ import { Art } from './art_spec.ts';
 import { Bronana } from './bronana.ts';
 import { ArtShaders } from './art_shaders.ts';
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 import { PAL, U } from './utils.ts';
 var S = {} as SpritesApi;
 
@@ -1373,6 +1374,62 @@ S.drawEnemyBullet = function (x, b, time, ox, oy) {
     });
   }
 };
+
+/* =========================================================
+   8b. 定义期自检（**这个模块原先一条都没有**）
+   ---------------------------------------------------------
+   为什么这里最需要它：造型分派是"**注册即声明**" —— 写错一个字符串，
+   画面上的表现是"那个东西不出现"，而不是报错。两个真实的静默故障：
+
+     · `S.drawObj`（第 1101 行）在 `kind` 没注册时**什么都不画**，
+       连一次 console 都没有 —— 少一个粒子，没人会发现
+     · `S.drawPickup`（第 1231 行）写的是 `p.kind === 'heal' ? 'heal' : 'mat'`，
+       于是**任何**写错的掉落物种类都静默变成 `mat`（回血药画成材料）
+
+   这一版**刻意不做的**：不拿手写清单去跟代码对账。试过一版"把弹丸/掉落物的
+   `values()` 清单与源码里的 `kind ===` 分支逐一比对"，那是错的 ——
+   `mat` 是 `else` 兜底（不是分支）、`bulletCullR` 只管剔除半径不管形状，
+   于是判据会大面积假阳。"清单与代码有没有对齐"是**检查期**的事，
+   留在 `test/art.mjs`；启动期只验"注册表自身是不是完整可用的"。
+   ========================================================= */
+/** 粒子种类清单（注册表在每个 `S.register` 处 populate；这里只钉住"必须有"的那几个） */
+var REQUIRED_PARTICLE_KINDS = ['text', 'slash', 'ring', 'blast', 'spark', 'flash', 'dot', 'chip'];
+
+S.audit = function () {
+  var problems: string[] = [];
+  var i;
+
+  /* ---- 粒子注册表：每一项都得真的能画 ---- */
+  var reg = Object.keys(S.kinds);
+  if (!reg.length) problems.push('粒子注册表是空的（S.register 一次都没被调用）');
+  for (i = 0; i < reg.length; i++) {
+    var e = S.kinds[reg[i]];
+    if (!e) { problems.push('粒子种类 ' + reg[i] + ' 是空的'); continue; }
+    /* 这一条直接对着 drawObj 的 `if (d) d.draw(x, obj)`：没有 draw 就永远不会被画 */
+    if (typeof e.draw !== 'function') {
+      problems.push('粒子种类 ' + reg[i] + ' 没有 draw —— S.drawObj 会用 `if (d)` 静默跳过它');
+    }
+    if (!(e.cullR !== undefined && (typeof e.cullR === 'function' || isFinite(e.cullR)))) {
+      problems.push('粒子种类 ' + reg[i] + ' 的 cullR 既不是数字也不是函数（剔除余量算不出来）');
+    }
+  }
+  /* 声明了却没注册 = 那个效果在画面上永远不会出现 */
+  for (i = 0; i < REQUIRED_PARTICLE_KINDS.length; i++) {
+    var k = REQUIRED_PARTICLE_KINDS[i];
+    if (reg.indexOf(k) < 0) problems.push('粒子种类 ' + k + ' 声明了却没注册（这个特效永远画不出来）');
+  }
+
+  /* ---- 注册表不能有孤儿：注册了却没人用的种类是死配置 ---- */
+  var registered = Object.keys(S.kinds).length;
+  return {
+    ok: problems.length === 0, problems: problems,
+    counts: { particles: registered, required: REQUIRED_PARTICLE_KINDS.length }
+  };
+};
+
+var spriteVerdict = S.audit();
+if (!spriteVerdict.ok) throw new Error('sprites.ts 造型分派自检失败：\n' + spriteVerdict.problems.join('\n'));
+SelfCheck.register('Sprites', S.audit);
 
 /* =========================================================
    9. 造型分派表登记到扩展点总账（见 registry.ts）

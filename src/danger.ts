@@ -15,6 +15,7 @@
    ========================================================= */
 
 import { Registry } from './registry.ts';
+import { SelfCheck } from './selfcheck.ts';
 
 var Danger = {} as DangerApi;
 
@@ -185,7 +186,86 @@ Danger.describe = function (level) {
 };
 
 /* =========================================================
-   4. 登记进扩展点总账
+   4. 定义期自检
+   ---------------------------------------------------------
+   这些判据原先**只存在于 `test/danger.mjs` 里**（40 多条断言）。
+   问题不是"没检查"，而是"**只在测试里检查、启动期不跑**" ——
+   也就是护栏存在但不在必经之路上：改坏一张表，跑测试才发现得到。
+
+   搬进来的只有**表自身**能验的那些。分界要写清楚：
+     · `audit()` 能验：等级连续、键有折叠方式、说明与方向表对得上、没有死键
+     · `audit()` **验不了**："这个键有没有人读" —— 那要 `fs.readFileSync` 扫源码，
+       是**检查期**的活，留在 `test/danger.mjs` 第 5 节。
+   两把尺子各管一段，谁都不能替谁。
+
+   每一条都对着一个真实的静默故障：
+     · 等级号跳号 → `BY_LEVEL[lv]` 取不到 → 那一级**整个不生效**且不报错
+     · 键漏了 `FOLD` → `modsFor` 的 `else` 分支**按 add 处理**（第 133 行），
+       于是一个本该相乘的倍率静默变成加法 —— 数值表里最难查的一类错
+     · 键漏了 `NOTES` → 界面那一行说明变成空白，玩家看不到这一级加了什么
+     · `DIRECTION` 写了不存在的键 → 那行方向声明永远读不到（形同注释）
+     · 某个键没有任何一级用它 → 死配置：它永远等于基准值
+   ========================================================= */
+var FOLD_KINDS = ['mul', 'add', 'min', 'or'];
+var DIRECTIONS = ['up', 'down'];
+
+Danger.audit = function () {
+  var problems: string[] = [];
+  var i, k;
+
+  /* ---- 等级：连续、有名字、非 0 级都要真的加一条 ---- */
+  for (i = 0; i < LEVELS.length; i++) {
+    var d = LEVELS[i];
+    if (d.level !== i) problems.push('第 ' + i + ' 项的等级号是 ' + d.level + '（必须连续从 0 开始，否则这一级永远取不到）');
+    if (!d.name || !d.note) problems.push('第 ' + d.level + ' 级缺名字或说明');
+    if (d.level > 0 && !Object.keys(d.mods || {}).length) problems.push('第 ' + d.level + ' 级一条修正都没有（它等于白升一级）');
+    for (k in (d.mods || {})) {
+      if (!Object.prototype.hasOwnProperty.call(BASE, k)) problems.push('第 ' + d.level + ' 级用了没有基准值的键：' + k);
+    }
+  }
+  if (LEVELS.length < 5) problems.push('阶梯少于 5 级（现在 ' + LEVELS.length + '）：难度曲线立不住');
+  if (Object.keys((LEVELS[0] && LEVELS[0].mods) || {}).length) problems.push('第 0 级不是恒等（它带了修正）—— 第 0 级必须等于"没有修正"');
+  if (BY_LEVEL[Danger.MAX] !== LEVELS[LEVELS.length - 1]) problems.push('BY_LEVEL 没有覆盖到最高级');
+
+  /* ---- 折叠规则：漏一个就静默变成加法 ---- */
+  for (k in BASE) {
+    if (!Object.prototype.hasOwnProperty.call(BASE, k)) continue;
+    if (!FOLD[k]) problems.push('修正键 ' + k + ' 没有折叠方式（漏了它会按 add 处理，倍率表静默变加法表）');
+    else if (FOLD_KINDS.indexOf(FOLD[k]) < 0) problems.push('修正键 ' + k + ' 的折叠方式不认识：' + FOLD[k]);
+    if (!NOTES[k]) problems.push('修正键 ' + k + ' 没有说明（界面上那一行会是空白）');
+  }
+  for (k in FOLD) {
+    if (!Object.prototype.hasOwnProperty.call(BASE, k)) problems.push('折叠规则里有多余的键：' + k + '（它不在基准里，永远不会被用到）');
+  }
+
+  /* ---- 方向：写错了不会有任何症状（界面按它判读"更难"） ---- */
+  for (k in DIRECTION) {
+    if (!Object.prototype.hasOwnProperty.call(BASE, k)) problems.push('DIRECTION 里的键不存在：' + k);
+    else if (DIRECTIONS.indexOf(DIRECTION[k]) < 0) problems.push('DIRECTION[' + k + '] 只能是 up / down，现在是 ' + DIRECTION[k]);
+  }
+
+  /* ---- 死键：没有任何一级用它的键永远等于基准 ---- */
+  var declared: Record<string, boolean> = Object.create(null);
+  for (i = 0; i < LEVELS.length; i++) {
+    for (k in (LEVELS[i].mods || {})) declared[k] = true;
+  }
+  for (k in BASE) {
+    if (!Object.prototype.hasOwnProperty.call(BASE, k)) continue;
+    if (!declared[k]) problems.push('修正键 ' + k + ' 没有任何一级用到它（死配置：它永远等于基准值）');
+  }
+
+  return {
+    ok: problems.length === 0, problems: problems,
+    counts: { levels: LEVELS.length, mods: Object.keys(BASE).length, folds: Object.keys(FOLD).length }
+  };
+};
+
+var dangerVerdict = Danger.audit();
+if (!dangerVerdict.ok) throw new Error('danger.ts 难度表自检失败：\n' + dangerVerdict.problems.join('\n'));
+SelfCheck.register('Danger', Danger.audit);
+
+/* =========================================================
+   5. 登记进扩展点总账
    ========================================================= */
 Registry.family('dangerLevel', {
   note: '难度阶梯（逐级累加）', owner: 'danger.ts',

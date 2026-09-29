@@ -192,29 +192,33 @@ console.log('\n[5] 在局里真的生效');
   ok(s.freeRerolls === 2, '每波白送 2 次刷新（钟楼）', s.freeRerolls);
 
   /* 工坊：位子 3+3=6（地基 2 + 工匠 1）—— 这是**据点 → 制造**那条边。
-     价格**不再打折**（据点那一档折扣已删）：据点给的是能力，不是折扣。 */
+     价格**不再打折**（据点那一档折扣已删）：据点给的是能力，不是折扣。
+     ⚠ 工坊现在在**档案**里（跨局），钱是**材料**；所以这里要先把钱包铺满，
+     而且"据点给的位子"要通过 `Game.campOpts()` 传给 `Profile.campBuy`。 */
   toShop();
+  for (const id of Object.keys(Profile.campOwned())) Profile.campSell(id);
+  Profile.addMaterial(9999);
   const slots = Camp.SLOTS + s.kmods.campSlots;
   Game.openCamp();
-  const canAfford = Camp.canBuy(s.camp, 'furnace', 999, { slots: slots, discount: 0 });
-  ok(canAfford.ok && canAfford.cost === 2, '工坊建材价**没有**据点折扣（2 就是 2）', canAfford.cost);
+  const opts = Game.campOpts();
+  ok(opts.slots === slots, '据点把工坊位子抬到 ' + slots + ' 个（Game.campOpts 真的读据点）', opts.slots);
+  const canAfford = Camp.canBuy(Profile.campOwned(), 'furnace', 999, { slots: slots, discount: 0 });
+  ok(canAfford.ok && canAfford.cost === 2, '工坊材料价**没有**据点折扣（2 就是 2）', canAfford.cost);
   /* 拆解全额返还：买一级 2 点，拆回来也是 2 点（不是 1 点）—— 摆法可以试错 */
-  Camp.refundOf(s.camp, 'furnace');
-  s.campPoints = 9999;
   ok(Game.campBuy('furnace') === true, '先盖一座，才能量拆除返还');
-  const refundFull = Camp.refundOf(s.camp, 'furnace', { fullRefund: true });
-  const refundHalf = Camp.refundOf(s.camp, 'furnace');
+  const refundFull = Camp.refundOf(Profile.campOwned(), 'furnace', { fullRefund: true });
+  const refundHalf = Camp.refundOf(Profile.campOwned(), 'furnace');
   ok(refundFull === 2 && refundHalf === 1, '工匠 → 拆了全额返还（' + refundFull + ' vs 半额 ' + refundHalf + '）');
-  s.campPoints = 9999;
-  s.player.scrap = 500;      // 建工坊前后都读这一个数：量的就是"建工坊动不动材料"
+  const scrapKeep = s.player.scrap;      // 建工坊前后都读这一个数：量的就是"建工坊动不动废料"
   let built = 0;
   Camp.LIST.forEach(d => {
     if (Game.campBuy(d.id)) built++;
   });
   ok(built === Camp.LIST.length, '据点把工坊扩到 6 个位子 → 5 种设施全都能建（基准只有 3）', built + ' 个');
-  ok(Camp.usedSlots(s.camp) === Camp.LIST.length, '位子确实用满了 5 个', Camp.usedSlots(s.camp));
-  ok(Game.campBuy('furnace') === false || Camp.levelOf(s.camp, 'furnace') === 2, '已建满的设施只能升级');
-  ok(s.player.scrap === 500, '建工坊一分材料都没花（建材与材料分开）', s.player.scrap);
+  ok(Camp.usedSlots(Profile.campOwned()) === Camp.LIST.length, '位子确实用满了 5 个',
+    Camp.usedSlots(Profile.campOwned()));
+  ok(Game.campBuy('furnace') === false || Profile.campLevel('furnace') === 2, '已建满的设施只能升级');
+  ok(s.player.scrap === scrapKeep, '建工坊一分**废料**都没花（那笔钱与材料是两回事）', s.player.scrap);
 
   /* 刷新价：**据点不再打折**（那是跨柱子的数值穿透），底价一点不少 */
   toShop();

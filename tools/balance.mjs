@@ -121,7 +121,7 @@ function shopTurn(log) {
   /* 「先造后买」与「只造不买」两种策略：制造与购买**抢同一笔材料**，
      先后顺序不一样，结果就不一样 —— 这正是"造得起的比买便宜"这句话该被量一次的地方。 */
   if (CRAFT_POLICY === 'first') craftTurn(log);          // 内部会把状态还回来
-  // 装备：买得起里最贵的（建材与材料是两笔钱，所以这里不用再"留钱"）
+  // 装备：买得起里最贵的。⚠ 工坊现在也花材料，所以这里**要留钱**给工坊（见 campWish）
   if (CRAFT_POLICY !== 'only') {
     for (let guard = 0; guard < 30; guard++) {
       const pool = Game.getSession().offers
@@ -141,7 +141,7 @@ function shopTurn(log) {
   }
   // 免费刷新：刷一次再收一轮（只刷一次，避免"无限刷"把材料烧光）
   if (Game.getSession().freeRerolls > 0 && log.rerolls < 2) { Game.reroll(); log.rerolls++; return shopTurn(log); }
-  // 营（工）坊：建材够了就按策略盖（**不花材料**，所以真正的取舍是"盖哪几座、怎么摆"）
+  // 工坊：材料够了就按策略盖。它现在与装备**抢同一笔钱**（材料），取舍是真的
   const wanted = campWish(Game.getSession());
   if (wanted && Game.openCamp()) {
     if (Game.campBuy(wanted.id)) log.campBuys.push(wanted.id);
@@ -180,18 +180,22 @@ function craftTurn(log) {
   if (back === 'shop' || back === 'camp') Game.setState(back, true);
 }
 
-/** 当前营地策略下"下一座想盖的设施"（没有就返回 null）。
-    建材每波固定 +2，所以这里只问"想盖哪个、买不买得起" —— 不用再和装备抢钱。 */
+/** 当前工坊策略下"下一座想盖的设施"（没有就返回 null）。
+    ⚠ 口径变了：改造前工坊花的是**局内的"建材"**（每波 +2、与材料分开），
+    所以那时候这里只问"想盖哪个、买不买得起"；现在花的是**材料**（带得出局的那一笔），
+    于是"盖工坊"与"造装备"开始**抢同一笔钱** —— 那正是用户要的那条取舍，也是这个尺子
+    现在必须量到的东西。 */
 function campWish(s) {
   if (CAMP_POLICY === 'never') return null;
-  const camp = s.camp || {};
-  if (Object.keys(camp).length >= Camp.SLOTS) return null;
-  const pts = s.campPoints || 0;
+  const camp = Profile.campOwned();
+  const opts = Game.campOpts();
+  if (Object.keys(camp).length >= opts.slots) return null;
+  const pts = Profile.material();
   const prefs = CAMP_POLICY === 'combo' ? ['furnace', 'anvil', 'salvage', 'still', 'assay']
     : CAMP_POLICY === 'struct' ? ['anvil', 'furnace', 'still', 'salvage', 'assay']
       : Camp.LIST.map(d => d.id).sort((x, y) => Camp.BY_ID[x].levels[0].cost - Camp.BY_ID[y].levels[0].cost);
   for (const id of prefs) {
-    const chk = Camp.canBuy(camp, id, pts, { slots: Camp.SLOTS, discount: 0 });
+    const chk = Camp.canBuy(camp, id, pts, opts);
     if (chk.ok) return { id, chk };
   }
   return null;
@@ -216,7 +220,13 @@ function runOnce(opts) {
     // 表现是"连只加每波回血 3 点的营火都让成绩变差 −1.3 波"——
     // 一个纯增益不可能有害，这本身就是"实验台坏了"的信号，而不是游戏的平衡问题。
     const back = Game.state;
-    sess.campPoints = 999;
+    /* ⚠ 工坊是**跨局资产**，所以每一次实验前必须**清空**它 ——
+       否则上一轮预建的设施会留下来，位子被占满，下一轮 `campBuy` 直接失败
+       （实测就是这样炸的）。清空之后"预建这几座"才是一个可控的实验变量。 */
+    for (const owned of Object.keys(Profile.campOwned())) Profile.campSell(owned, Game.campOpts());
+    /* 预建工坊要**先给材料**：它花的是带出去的那笔钱，而实验台跑的是短局，
+       机器人打不出足够材料。给足之后"预建几座"才是可控的实验变量。 */
+    Profile.addMaterial(9999);
     Game.setState('shop', true);
     if (!Game.openCamp()) throw new Error('openCamp 失败：实验参数不对');
     for (const id of camp) {
@@ -411,8 +421,8 @@ function expCampAblate() {
 }
 
 function expCampCost() {
-  console.log('\n================ 工坊二：怎么花**建材** ================');
-  console.log('  （建材每波 +2、与材料分开，所以这里比的是"盖哪几座、怎么摆"，不是"该不该花这笔钱"）');
+  console.log('\n================ 工坊二：怎么花**材料** ================');
+  console.log('  （材料是带出局的那一笔；盖设施与造装备抢同一笔钱 —— 这里比的是"盖哪几座、怎么摆"）');
   /* **造优先**：工坊的实验必须在"真的在用产线"的策略下量。
      第一版用的是默认的"买优先"，于是产线几乎空转（0.4 件/局）——
      那一版表格量到的是"买装备"，不是"工坊"，这也是 expCraft 才发现的。 */

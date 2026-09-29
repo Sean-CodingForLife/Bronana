@@ -108,7 +108,7 @@ const afterRng = [];
 for (let i = 0; i < 5; i++) afterRng.push(Game.getSession().rnd());
 
 /* 哪些组算"进度"：从 Session 的分组来（types.d.ts / test/persist.mjs 同一份声明） */
-const PROGRESS_GROUPS = ['SessionCore', 'SessionMarket', 'SessionDungeon', 'SessionCamp'];
+const PROGRESS_GROUPS = ['SessionCore', 'SessionMarket', 'SessionDungeon', 'SessionCraft'];
 const WORLD_GROUPS = ['SessionEnts', 'SessionWave', 'SessionDebug'];
 const fs = await import('node:fs');
 const path = await import('node:path');

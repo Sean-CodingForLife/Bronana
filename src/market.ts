@@ -13,14 +13,17 @@
    于是依赖图仍然无环。ctx 只给 8 样东西，且都是"本模块确实需要的"：
      会说会话、当前波次、配置、事件总线、状态机、重算属性、状态校验、装配武器。
 
-   纪律照旧：这里**不**自己写折叠（`S.kmods` / `S.omods` / `S.boonFold` / `S.campFx`
+   纪律照旧：这里**不**自己写折叠（`S.kmods` / `S.omods` / `S.boonFold`
    都是别处折好的派生值），只读。
+   ⚠ 工坊（营地）的买卖**不在这里**：它是跨局的账号资产，
+   买与卖在 `Profile.campBuy / campSell`，见下面第 3 节。
    ========================================================= */
 import { Camp } from './camp.ts';
 import { Affixes } from './affixes.ts';
 import { Comp } from './comp.ts';
 import { Craft } from './craft.ts';
 import { Items } from './data_items.ts';
+import { Profile } from './profile.ts';
 import { Weapons } from './data_weapons.ts';
 
 /** game.ts 注入的能力（本模块不认识 Game） */
@@ -71,12 +74,10 @@ export interface MarketApi {
   toggleLock(): boolean;
   packPrice(kind: string): number;
   buyPack(kind: string): boolean;
-  /** 建材包：花废料买建材（商店的"原料"那一栏） */
+  /** 材料包：花废料买**材料**（商店的"原料"那一栏）——
+      它是唯一一条"废料 → 材料"的兑换，用来把局内花不掉的钱转成经营的本钱 */
   buildPrice(): number;
   buyBuild(): boolean;
-  campBuy(id: string): boolean;
-  campSell(id: string): boolean;
-  recalcCampFx(): void;
   /** 「议价」那类经济修正的读取语义（add 键，没有就是 0） */
   omod(key: string): number;
   econAdd(key: string): number;
@@ -237,68 +238,19 @@ export function makeMarket(C: MarketCtx): MarketApi {
   }
 
   /* =========================================================
-     3. 局内营地（模拟经营的第一级）
+     3. 工坊买卖**不在这里了**
      ---------------------------------------------------------
-     花的是**建材**（营地自己的局内货币，每波固定到账），
-     与商店的**废料**彻底分开 —— 为什么必须分开，见 camp.ts 文件头那三轮实测：
-     废料会滚雪球，任何"先攒钱盖房"的路线都在雪球起步前自断一臂。
-     设施与效果在 camp.ts 里声明；这里只做四件事：
-     发建材、收建材、重算折叠效果、在枚举好的那几个点读它。
+     改造前这一节是"局内营地"：花**建材**（每波到账的局内货币）盖设施，
+     买卖当场写回会话的 `S.camp` / `S.campRow` / `S.campFx`。
+
+     营地在用户拍板之后搬到了**经营场景**，于是它整套换了归属：
+       · 状态与账目 → `profile.ts`（`Profile.campBuy/campSell`，**跨局**）
+       · 钱         → **材料**（那笔带得出局的），不再是局内专印的"建材"
+       · 成交后的重算 → `game.ts` 的 `Game.campBuy/campSell`
+
+     为什么留在 market.ts 会坏掉：它按定义只改"**这一局**"的状态
+     （`C.S()`），而工坊是账号资产 —— 放在这里必然每局清零。
      ========================================================= */
-  /** 营地买卖时要带上的据点/天赋好处（位子更多、价格更便宜） */
-  function campOpts() {
-    var S = C.S();
-    return {
-      slots: Camp.SLOTS + ((S.kmods && S.kmods.campSlots) || 0),
-      // 工坊价格：**只有天赋「商会」**在压它（据点那一档折扣已删）
-      discount: Math.min(0.6, omod('campDiscount')),
-      // 据点「工匠」：拆了全额返还（能力，不是折扣）
-      fullRefund: !!((S.kmods && S.kmods.refundFull) || 0)
-    };
-  }
-
-  /** 盖 / 升级一个设施（花**建材**） */
-  function campBuy(id: string) {
-    var S = C.S();
-    if (!C.requireState('camp', 'campBuy')) return false;
-    var chk = Camp.canBuy(S.camp, id, S.campPoints, campOpts());
-    if (!chk.ok) { C.events().emit('deny', chk.reason); return false; }
-    S.campPoints -= chk.cost;
-    var isNew = Camp.levelOf(S.camp, id) === 0;
-    S.camp[id] = chk.toLevel;
-    // 新建设施排到行尾（升级不挪位置）——「谁挨着谁」由建造顺序决定
-    if (isNew && S.campRow.indexOf(id) < 0) S.campRow.push(id);
-    recalcCampFx();
-    C.events().emit('campBuy', { id: id, level: chk.toLevel, cost: chk.cost });
-    return true;
-  }
-
-  /** 拆掉一个设施（退还一半建材）—— 让"选错"不至于毁掉一局；同时会拆掉它参与的组合 */
-  function campSell(id: string) {
-    var S = C.S();
-    if (!C.requireState('camp', 'campSell')) return false;
-    var lvl = Camp.levelOf(S.camp, id);
-    if (!lvl) return false;
-    var back = Camp.refundOf(S.camp, id, campOpts());
-    S.campPoints += back;
-    delete S.camp[id];
-    var at = S.campRow.indexOf(id);
-    if (at >= 0) S.campRow.splice(at, 1);
-    recalcCampFx();
-    C.events().emit('campSell', { id: id, refund: back });
-    return true;
-  }
-
-  /** 重算折叠效果。**只在买卖时算一次**，别处不再回表（与难度修正同一个套路） */
-  function recalcCampFx() {
-    var S = C.S();
-    S.campFx = Camp.effects(S.camp, S.campRow);
-    /* 回收比例跟着重算：工坊「回收炉」是**买/拆了就变**的东西，
-       冻结在开局那一份会让"建了回收炉却不涨回收价"。 */
-    S.salvageRate = Math.min(0.9,
-      Weapons.salvageRate + ((S.fmods && S.fmods.salvageBonus) || 0) + (S.campFx.salvageBonus || 0));
-    C.recalcStats();
-  }
 
   /* =========================================================
      4. 道具包与买 / 卖 / 刷新
@@ -342,11 +294,16 @@ export function makeMarket(C: MarketCtx): MarketApi {
   }
 
   /**
-   * **建材包**：花废料买建材（商店那一栏"原料"）。
-   * 为什么它必须存在：建材是工坊的本钱，而它主要靠**出击**去捡（每波 +2、宝箱/补给/密室）
-   * —— 那是"出击 → 制造"那条接口。可当你这一波就是想开工时，总得有个应急口，
-   * 否则"我这局想练制造"只能靠运气遇到补给房。
-   * 定价刻意**不划算**（越到后面越贵）：它买的是时间，不是资源。
+   * **材料包**：花废料买**材料**（商店那一栏"原料"）。
+   *
+   * ⚠ 改造前它买的是"建材"（局内那笔专印的钱，随营地一起被删掉了）。
+   * 现在是**唯一一条"废料 → 材料"的兑换**，而它必须存在，理由变了：
+   * 废料是**局内**的钱、结算清零，材料是**带出去**的钱 ——
+   * 没有这一条，一个"这局打得很顺、废料多得花不完"的玩家就只能看着它蒸发。
+   * 于是它是"把这一局的顺风，换成下一局的起点"的那个动作。
+   *
+   * 定价刻意**不划算**（越到后面越贵）：它买的是时间，不是资源 ——
+   * 想靠它刷材料会被这条曲线挡住（汇率随波次恶化）。
    */
   var BuildPack = { amount: 4, base: 8, perWave: 2 };
   function buildPrice() {
@@ -360,7 +317,10 @@ export function makeMarket(C: MarketCtx): MarketApi {
     var price = buildPrice();
     if ((p.scrap || 0) < price) { C.events().emit('deny', '废料不足'); return false; }
     p.scrap -= price;
-    S.campPoints += BuildPack.amount;
+    /* 材料当场进钱包（与房间奖励走同一条出口的语义），并且记一笔"本局打到多少" ——
+       它是**买来的**不是打来的，但对玩家来说都是"这一局多带出去的材料"。 */
+    Profile.addMaterial(BuildPack.amount);
+    S.materialEarned = (S.materialEarned || 0) + BuildPack.amount;
     C.events().emit('buyBuild', { price: price, amount: BuildPack.amount });
     return true;
   }
@@ -489,7 +449,6 @@ export function makeMarket(C: MarketCtx): MarketApi {
     reroll: reroll, toggleLock: toggleLock,
     packPrice: packPrice, buyPack: buyPack,
     buildPrice: buildPrice, buyBuild: buyBuild,
-    campBuy: campBuy, campSell: campSell, recalcCampFx: recalcCampFx,
     omod: omod, econAdd: econAdd,
     itemCostMul: C.itemCostMul, itemCostFlag: C.itemCostFlag
   };

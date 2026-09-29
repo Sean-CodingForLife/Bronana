@@ -214,14 +214,21 @@ console.log('\n[5] 在局里：档位 / 质量 / 产线 / 回收 / 异档熔接'
   ok(t4b && t4b.ok === true, '「大师图纸」→ T4 能造');
 
   // (b) 产线：图纸「量产线」不占设施位
+  /* ⚠ 工坊现在是**跨局资产**：它不会随 `runWith` 开新局而清零，
+     所以每次量"图纸给的名额"之前都要先清空、再补材料、再建一座。 */
+  const clearCampF = () => {
+    const owned = Profile.campOwned();
+    for (const id of Object.keys(owned)) Profile.campSell(id, Game.campOpts());
+    Profile.addMaterial(50);
+  };
   const s0 = runWith(['basic'], []);
   Game.openCamp();
-  s0.campPoints = 20;
+  clearCampF();
   Game.campBuy('furnace');
   ok(Game.craftLines() === 1, '一建设施 = 一条产线', Game.craftLines());
   const s1 = runWith(['basic', 'fuse', 'mass'], []);
   Game.openCamp();
-  s1.campPoints = 20;
+  clearCampF();
   Game.campBuy('furnace');
   ok(Game.craftLines() === 2, '「量产线」让产线 +1（不占设施位）', Game.craftLines());
 
@@ -230,9 +237,9 @@ console.log('\n[5] 在局里：档位 / 质量 / 产线 / 回收 / 异档熔接'
   ok(s2.salvageRate > 0.5, '「废料回收」抬回收比例（0.5 → ' + s2.salvageRate + '）', s2.salvageRate);
   const s3 = runWith([], []);
   Game.openCamp();
-  s3.campPoints = 20;
+  clearCampF();
   Game.campBuy('salvage');
-  const both = Weapons.salvageRate + Forge.modsFor(['recycle']).salvageBonus + s3.campFx.salvageBonus;
+  const both = Weapons.salvageRate + Forge.modsFor(['recycle']).salvageBonus + Profile.campFx().salvageBonus;
   ok(Math.abs((Weapons.salvageRate + 0.2 + 0.25) - both) < 1e-9,
     '图纸与工坊的回收加成**相加**（0.5 + 0.2 + 0.25）', both);
 

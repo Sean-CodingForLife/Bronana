@@ -554,13 +554,19 @@ function stripComments(src) {
 function Sessions_forceCraft(sess, recipeId) {
   const S = g.Game.getSession();
   g.Game.setState('shop', true);
-  // 产线来自营地设施；直接给一座「熔炉」，绕开"先攒建材"那一段（那是营地测试的事）
-  S.camp = S.camp || {};
-  S.camp['furnace'] = 1;
+  /* 产线来自**工坊设施**（跨局资产）；这里直接给一座「熔炉」并补一笔材料，
+     绕开"先打材料再盖"那一段（那是工坊测试的事）。 */
+  const P = g.Profile;
+  if (!P.campLevel('furnace')) {
+    const owned = P.campOwned();
+    for (const id of Object.keys(owned)) P.campSell(id);
+    P.addMaterial(500);
+    P.campBuy('furnace', g.Game.campOpts());
+  }
   S.craftUsed = [];
   g.Game.recalcStats();
   const lines = g.Game.craftFreeLines();
   const line = lines.length ? lines[0] : 0;
-  S.player.scrap = 100000;
+  P.addMaterial(100000);        // 制造花的是**材料**（不再是局内废料）
   return g.Game.craft(line, recipeId);
 }

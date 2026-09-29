@@ -25,6 +25,7 @@ import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
 import { Market } from './market.ts';
+import { Profile } from './profile.ts';
 import { Stats } from './stats.ts';
 import { Synergy } from './synergy.ts';
 import { Stronghold } from './stronghold.ts';
@@ -278,10 +279,10 @@ function newSession(charDef, seed, danger, opening, smods) {
     forge: Forge.toMap(smods && (smods as { forge?: unknown }).forge),
     fmods: fmods,
     /** 回收比例 = 底价 0.5 + 图纸「废料回收」+ 工坊「回收炉」。
-        开局折一次；工坊建/拆时由 market.recalcCampFx 重算（营地是"买了就重折"的东西） */
-    /* 回收比例：底价 0.5 + 图纸「废料回收」。**道具代价 salvage 在 market.salvageOf 里乘** ——
-     它随道具变化（买了/卖了就变），而这里只在开局折一次。 */
-  salvageRate: Math.min(0.9, Weapons.salvageRate + (fmods.salvageBonus || 0)),
+        ⚠ 工坊那一份现在**开局也折进来**（营地跨局，开局时它已经有确定的值），
+        但工坊可以在一局进行中被改建 —— 那时由 `Profile.campSell/Buy` 之后
+        的 `Game.refreshCampFx()` 重算这个字段，否则会出现"拆了回收炉回收价不降"。 */
+    salvageRate: campSalvageRate(fmods),
     /** 本局累积的合金（回收产出；结算时入账，局内不能花） */
     alloy: 0,
     /** 本局滚过几批词条（词条随机流的计数器；**不进存档** —— 见 SessionCore 的说明） */
@@ -290,13 +291,15 @@ function newSession(charDef, seed, danger, opening, smods) {
     craftUsed: [],
     /** 本局造了几件（结算展示用；进存档） */
     craftCount: 0,
-    /** 局内营地：`{ 设施id: 等级 }` + 折叠好的效果（买的时候重算一次） */
-    camp: {},
-    /** 营地的**建造顺序**（相邻组合靠它判定；升级不挪位置） */
-    campRow: [],
-    /** 营地的**建材**（与废料分开的局内货币，每波到账；结算清零） */
-    campPoints: 0,
-    campFx: Camp.effects({}),
+    /** 本局打到多少**材料**（`gainMaterial` 记账；只用于展示 —— 材料当场进钱包） */
+    materialEarned: 0,
+    /* **营地搬出去之后这里不再有 camp / campRow / campPoints / campFx。**
+       设施与建造顺序是**跨局资产**（`Profile.campOwned()` / `Profile.campRow()`），
+       钱是**材料**（`Profile.material()`）—— 三者都不该按局清零。
+       留在会话里的只有 `craftUsed`（"这一波用过哪几条产线"），
+       因为它确实是**这一局**的回合计数器。
+       折叠效果也不在这里缓存了：它在经营场景里随买随变，
+       冻结进会话就会出现"盖了熔炉这局却不省料"。 */
     /* 两份**派生**的联动结果（每次 recalcStats 重算；界面直接读，不自己算）：
        武器那一份按四条轴折，道具那一份按套装折 —— 分开存是因为界面上是两块。 */
     synergy: null,
@@ -821,18 +824,56 @@ function combine(i, j) {
 }
 
 /* =========================================================
+   工坊效果 → 会话（营地跨局之后的接线）
+   ---------------------------------------------------------
+   改造前营地是局内的，所以"建/拆了立刻生效"由 `market.recalcCampFx` 当场写回
+   `S.campFx` 与 `S.salvageRate`。现在设施在**档案**里（经营场景随买随变），
+   于是需要一条"档案变了 → 会话重新折一次"的单向通道：
+
+     经营场景改设施（Profile.campBuy / campSell）
+       → `Game.campFacilitiesChanged()`
+         → `salvageRate` 重折 + `recalcStats()`
+
+   只重算**真的被冻进会话的那一个派生值**（回收比例）。制造的费用与档位
+   不缓存（每次现读 `Profile.campFx()`），因为它们在经营场景里变，
+   缓存下来就会出现"盖了熔炉这局却不省料"。
+   ========================================================= */
+/** 回收比例 = 底价 0.5 + 图纸「废料回收」 + 工坊「回收炉」（夹 0.9） */
+function campSalvageRate(fmods) {
+  var campFx = Profile.campFx();
+  return Math.min(0.9,
+    Weapons.salvageRate + ((fmods && fmods.salvageBonus) || 0) + (campFx.salvageBonus || 0));
+}
+
+/** 经营场景改完工坊之后调它：把"冻在会话里的"那一份重算（没有会话时是空操作） */
+function refreshCampFx() {
+  if (!S) return false;
+  S.salvageRate = campSalvageRate(S.fmods);
+  recalcStats();
+  return true;
+}
+
+
+/* =========================================================
    制造（经营那一根柱子的出口）
    ---------------------------------------------------------
    **一次制造 = 一条产线的一波**。规则与费用全在 craft.ts / camp.ts / forge.ts，
-   这里只负责改会话状态：扣废料、把产物放进装备栏、记账、发事件。
+   这里只负责改会话状态：扣材料、把产物放进装备栏、记账、发事件。
    为什么"占产线的一波"这件事必须在模拟层：它是经营**自己的稀缺**
    （位子只有 3 个、每波每条只出一件），也是"这一波投产线还是投自己"这个
    取舍的真正来源 —— 放在界面里就只是冷却计数了。
+
+   ⚠ **营地搬出局外之后，这一节有三处换了口径**：
+     · 设施与建造顺序读 `Profile`（跨局），不再读会话；于是"这条产线"是
+       **你账号上真有的那座设施**，不是这一局临时盖的
+     · 钱从**废料**换成**材料**（用户拍板："材料靠战斗获得，玩家自己花材料打造"）
+     · 折叠效果每次现算（`Profile.campFx()`）：设施在经营场景里随买随变，
+       缓存进会话就会出现"盖了熔炉这局却不省料"
    ========================================================= */
-/** 这一局有几条产线（已建设施 + 图纸给的名额） */
+/** 这一局有几条产线（**账号上已建**的设施 + 图纸给的名额） */
 function craftLineCount() {
   if (!S) return 0;
-  return Craft.linesOf(Camp.usedSlots(S.camp), S.fmods);
+  return Craft.linesOf(Profile.campLines(), S.fmods);
 }
 /** 现在还空着的产线号（界面按它画按钮；空数组 = 这一波的产线都用完了） */
 function craftFreeLines() {
@@ -842,52 +883,44 @@ function craftFreeLines() {
   return out;
 }
 /** 能造的配方 + 费用 + 能不能造（界面铺一屏用它；**不写任何规则**） */
-function craftOptions() {
-  var out = [];
-  if (!S) return out;
-  var list = Craft.LIST;
-  for (var i = 0; i < list.length; i++) {
-    var r = list[i];
-    var chk = Craft.canMake(r, S.fmods);
-    out.push({
-      id: r.id, kind: r.kind, refId: r.refId, name: r.name, tier: r.tier,
-      cost: Craft.costOf(r, S.fmods, S.campFx),
-      ok: chk.ok, reason: chk.reason,
-      affordable: (S.player.scrap || 0) >= Craft.costOf(r, S.fmods, S.campFx)
-    });
-  }
-  return out;
+function craftOptions(): Array<{
+  id: string; kind: 'weapon' | 'item'; refId: string; name: string; tier: number;
+  cost: number; ok: boolean; reason: string; affordable: boolean;
+}> {
+  if (!S) return [];
+  return Profile.craftOptions(S.fmods);
 }
 /**
  * 造一件。
  * @param line 用哪条产线（这一波还没用过的那条）
  * @param id   配方 id（`weapon:knife` / `item:coffee`）
- * 失败一律**不动任何状态**（钱、废料、产线都不扣）—— 与买装备同一条纪律。
+ * 失败一律**不动任何状态**（材料、产线都不扣）—— 与买装备同一条纪律。
  */
 function craft(line, id) {
   if (!S) return false;
-  /* 与买 / 卖 / 建同一道门：制造只能在**商店或工坊**里做。
+  /* 与买 / 卖 / 建同一道门：制造只能在**商店、工坊或经营场景**里做。
      以前这里没有状态校验 —— 接口上"战斗中也能造一件"，界面虽然不画那个按钮，
      但一个不一致的调用点（或未来的机器人 / 新界面）就能在枪林弹雨里凭空变出装备。 */
-  if (!requireStateIn(['shop', 'camp'], 'craft')) return false;
+  if (!requireStateIn(['shop', 'camp', 'keep'], 'craft')) return false;
   var r = Craft.BY_ID[id];
   if (!r) return deny('没有这个配方');
   var n = craftLineCount();
-  if (n <= 0) return deny('还没有产线 —— 先到工坊盖一座设施');
+  if (n <= 0) return deny('还没有产线 —— 先到经营场景盖一座设施');
   if (!(line >= 0 && line < n)) return deny('没有这条产线');
   if (!Craft.lineFree(S.craftUsed, line)) return deny('这条产线这一波已经造过了');
   var chk = Craft.canMake(r, S.fmods);
   if (!chk.ok) return deny(chk.reason);
-  var cost = Craft.costOf(r, S.fmods, S.campFx);
+  var campFx = Profile.campFx();
+  var cost = Craft.costOf(r, S.fmods, campFx);
   var p = S.player;
-  if ((p.scrap || 0) < cost) return deny('废料不够（需要 ' + cost + '）');
+  if (Profile.material() < cost) return deny('材料不够（需要 ' + cost + '）');
   /* **先掷出来是"哪一档"，再按它探路**。
      顺序不能反：营地的「锻台 / 检验台」与图纸「淬火」会把结果抬一档，
      如果按配方自己的档位去探"放得下吗"，就会出现"探的是 T2、造出来是 T3"——
-     槽满时 T3 可能没有同名同档可以并，于是废料花了、产线也用掉了，什么都没拿到。
+     槽满时 T3 可能没有同名同档可以并，于是材料花了、产线也用掉了，什么都没拿到。
      （这一支是极端情况，但它是**静默**的，所以两件事一起做：先按真实档位探路，
-     万一落位还是失败，就把废料与产线**退回去**，绝不吞。） */
-  var res = Craft.resultTier(r, S.fmods, S.campFx, S.rnd);
+     万一落位还是失败，就把材料与产线**退回去**，绝不吞。） */
+  var res = Craft.resultTier(r, S.fmods, campFx, S.rnd);
   if (r.kind === 'weapon' && p.weapons.length >= maxWeapons()) {
     var def = Weapons.BY_ID[r.refId];
     var probe = { id: r.refId, def: def, cd: 0, swing: 0, tier: res.tier };
@@ -895,7 +928,7 @@ function craft(line, id) {
       return deny('武器槽满了，而且没有同名同档可以并 —— 先回收一件');
     }
   }
-  p.scrap = (p.scrap || 0) - cost;
+  if (!Profile.spendMaterial(cost)) return deny('材料不够（需要 ' + cost + '）');
   S.craftUsed.push(line);
   var got = r.name;
   if (r.kind === 'weapon') {
@@ -903,7 +936,7 @@ function craft(line, id) {
        所以"造了立刻拆"不会变成印钞机 —— 哪怕质量触发把回收价抬了一倍 */
     var placed = addWeaponOrCombine(r.refId, res.tier, cost);
     if (!placed.ok) {                                  // 理论上到不了；真到了就把账退回去
-      p.scrap = (p.scrap || 0) + cost;
+      Profile.addMaterial(cost);
       S.craftUsed.pop();
       return deny(placed.why);
     }
@@ -1067,15 +1100,23 @@ var ROOM_EVENTS: RoomEventDef[] = [
     }
   },
   {
-    id: 'shrine', name: '孢子神龛', note: '生命上限 +4，但要把建材全捐出去',
+    /* ⚠ 这一条的代价口径**换了主人**。改造前它捐的是"建材"（局内那笔专门盖工坊的钱），
+       建材随营地搬出局外一起被删掉了。现在它捐的是**这一局已经打出来的材料** ——
+       也就是从 `S.stats_total.scrap` 里真的扣掉一笔（`buildSummary` 的 `earned`
+       就是它），所以"带出去的材料变少"是真的会发生的事，不是一句话。
+
+       为什么从"总量"里扣而不是扣 `p.scrap`：`p.scrap` 是**局内废料余额**
+       （商店与刷新花的），扣它只是"少买一件"；扣总量才是"这一局白打了一段"。
+       两个都列在这里，因为它们是这两笔钱各自真正的含义。 */
+    id: 'shrine', name: '孢子神龛', note: '生命上限 +6，但这一局打出来的材料要捐掉三成',
     apply: function () {
       var p = S.player;
-      var spent = S.campPoints;
-      S.campPoints = 0;
-      p.upgrades.maxHp += 4;
+      var took = Math.round(S.stats_total.scrap * 0.3);
+      S.stats_total.scrap = Math.max(0, S.stats_total.scrap - took);
+      p.upgrades.maxHp += 6;
       recalcStats();
       p.hp = Math.min(S.stats.maxHp, p.hp + 8);
-      return '孢子神龛：生命上限 +4（捐掉 ' + spent + ' 建材）';
+      return '孢子神龛：生命上限 +6（捐掉本局 30% 材料 ≈ ' + took + '）';
     }
   },
   {
@@ -1117,12 +1158,18 @@ var ROOM_FX: Record<string, RoomFxDef> = {
        改造前它是笔亏账：整批精英化（更硬更疼）却和普通房拿一样的东西 ——
        所以玩家没有理由进去，房型表上那一行等于不存在。
        现在它给一笔明显的废料（按波次放大），于是"要不要拿命换这一笔"才是决定。 */
-    note: '精英房：整批精英化（更硬更疼），但打完有一大笔废料',
+    note: '精英房：整批精英化（更硬更疼），但打完有一大笔废料**和一笔材料**',
     enter: function () {
       var m = 30 + Game.wave * 8;
       S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
-      S.campPoints += 2;
-      return '精英：+' + m + ' 废料 · +2 建材';
+      /* 营地在局外之后，房型表里原本给"建材"的那几行改发**材料** ——
+         这就是"材料靠战斗获得"在房间这一层的落点，也是经营那条循环的燃料。
+         直接进钱包（而不是像废料那样先记在会话里、结算再入账）：
+         材料**当场**就要能在经营场景里花掉，否则"打一场 → 回工坊造一件"
+         这个循环中间会缺一环。重复入账不会发生 —— `earned` 只算废料。 */
+      var mat = 6 + Game.wave * 2;
+      gainMaterial(mat);
+      return '精英：+' + m + ' 废料 · +' + mat + ' 材料';
     }
   },
   treasure: {
@@ -1150,8 +1197,9 @@ var ROOM_FX: Record<string, RoomFxDef> = {
         recalcStats();
         got = ipick.name + '（道具）';
       }
-      S.campPoints += 3;
-      return '宝箱：' + got + ' · +3 建材';
+      var mat = 8;
+      gainMaterial(mat);
+      return '宝箱：' + got + ' · +' + mat + ' 材料';
     }
   },
   shop: {
@@ -1160,14 +1208,14 @@ var ROOM_FX: Record<string, RoomFxDef> = {
     enter: function () { return '商店房：货架 +2 · 本间九折'; }
   },
   camp: {
-    /* 补给房 = **建材的收集点**（建材是工坊的本钱，建产线全靠它） */
-    note: '补给房：进门回血、建材翻倍，可以就地开工',
+    /* 补给房 = **材料的收集点**（材料是工坊唯一的本钱，造装备全靠它） */
+    note: '补给房：进门回血、一批材料，可以就地开工',
     enter: function () {
       var h = Math.round(S.stats.maxHp * 0.25);
       settleHeal(h);
-      var pts = Camp.POINTS_PER_WAVE * 3;
-      S.campPoints += pts;
-      return '补给房：回血 ' + h + ' · 建材 +' + pts;
+      var mat = 10 + Game.wave * 2;
+      gainMaterial(mat);
+      return '补给房：回血 ' + h + ' · 材料 +' + mat;
     }
   },
   event: {
@@ -1188,12 +1236,13 @@ var ROOM_FX: Record<string, RoomFxDef> = {
     enter: function () {
       var m = 60 + Game.wave * 10;
       S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
-      S.campPoints += 6;
+      var mat = 14;
+      gainMaterial(mat);
       var alloy = 2 + Math.floor(Game.wave / 6);
       S.alloy = (S.alloy || 0) + alloy;
       S.secretsFound = (S.secretsFound || 0) + 1;
       Game.events.emit('secretFound', { room: S.roomId, floor: S.floor, count: S.secretsFound, alloy: alloy });
-      return '密室：+' + m + ' 废料 · +6 建材 · 合金 +' + alloy;
+      return '密室：+' + m + ' 废料 · +' + mat + ' 材料 · 合金 +' + alloy;
     }
   }
 };
@@ -1498,8 +1547,9 @@ function startWave(n) {
      而空着的产线就是浪费（它自己的失败状态，不需要额外的惩罚机制）。 */
   S.craftUsed = [];
 
-  // 建材：出击带回来的那一份（每波固定 + 宝箱/密室/营地房的收获）
-  S.campPoints += Camp.POINTS_PER_WAVE;
+  /* 建材那一笔**没有了**：材料现在只从"打"，不从"到账"（宝箱 / 精英 / 补给 /
+     密室四处 + 每只怪的掉落）。每波白送材料会让"打得好不好"与"经营能做什么"
+     脱钩 —— 那正是改造前"先攒钱盖房"越过战斗的那条捷径。 */
 
   /* 天赋"经营"扇区：每波到账的废料。
      与击杀**脱钩**是刻意的 —— 废料几乎全部来自击杀时，
@@ -2159,6 +2209,30 @@ function shockChain(e, dmg, depth) {
  * "吸血换不回复"就自相矛盾了 —— 实测那样配会让这件道具纯亏，
  * 而"纯亏的选项"正是这一轮要消灭的东西（没有决策 = 不选它）。
  */
+/* =========================================================
+   发材料（**唯一出口**）
+   ---------------------------------------------------------
+   材料在局内的路径与废料**刻意不同**，这里要写清楚，否则很容易接错：
+
+     废料（`scrap`） 局内余额，结算按"总量"（`stats_total.scrap`）入账 → 走 `p.scrap`
+     材料（`material`）**当场进钱包**（`Profile.addMaterial`）→ 走这里
+
+   为什么材料不等结算：它要在**经营场景**里立刻花得出去（打一场 → 回工坊造一件 → 再打）。
+   等结算的话，中间那一环"我想现在就造"就得先退出去结算一次。
+
+   为什么不会重复入账：`buildSummary` 的 `earned` 取的是 `stats_total.scrap`
+   （废料口径），**与这里无关** —— 材料从来没有"结算时再发一遍"这回事。
+   为了不让界面上的"本局打到多少材料"变成一个估算，这里顺手记一笔
+   `S.materialEarned`（只用于展示，不进结算计算）。
+   ========================================================= */
+function gainMaterial(n) {
+  var v = Math.max(0, Math.round(Number(n) || 0));
+  if (!v) return 0;
+  Profile.addMaterial(v);
+  if (S) S.materialEarned = (S.materialEarned || 0) + v;
+  return v;
+}
+
 function settleHeal(amount) {
   if (itemCostFlag('noHeal')) return 0;
   healPlayer(amount, true);
@@ -3045,12 +3119,12 @@ Game.exportRun = function () {
       dmg: Math.round(S.stats_total.dmg), taken: Math.round(S.stats_total.taken),
       healed: Math.round(S.stats_total.healed), waves: S.stats_total.waves
     },
-    // 局内营地是"本局永久"，所以要跟着存档走（否则读档就把营地静默丢了）
-    camp: S.camp,
-    // 建造顺序也要带着 —— 相邻组合靠它判定，丢了就等于把组合静默拆了
-    campRow: S.campRow,
-    // 建材：本局还剩多少（读档不该白送也不该吞掉）
-    campPoints: S.campPoints,
+    /* **营地不在一局存档里了**：设施 / 建造顺序 / 那笔钱现在都是**账号资产**
+       （`Profile.campOwned()` / `Profile.campRow()` / `Profile.wallet.material`），
+       它们本来就跨局活着，一局存档再存一份只会制造两个真相。
+       会话里与制造有关的只剩 `craftUsed`（这一波用过哪几条产线），见下面。 */
+    /* 本局打到多少材料（**只用于展示**；材料是即时进钱包的，不靠结算再发） */
+    materialEarned: Math.round(S.materialEarned || 0),
     // 据点等级同理：它是开局修正的来源，不带着读档会静默降级成"没有据点"
     keep: S.keep,
     /** 图纸：同样是一局开局修正的来源（存的是**开局时**那一份，见 importRun） */
@@ -3342,31 +3416,15 @@ Game.importRun = function (data) {
     }
     if (offers.length) { S.offers = offers; restoredOffers = true; }
   }
-  // 营地：逐项校验后恢复（未知设施 / 越界等级一律丢掉）
-  if (data.camp && typeof data.camp === 'object') {
-    for (var cid in data.camp) {
-      if (!Object.prototype.hasOwnProperty.call(data.camp, cid)) continue;
-      if (!Camp.BY_ID[cid]) continue;
-      var clv = Math.floor(Number(data.camp[cid]));
-      if (clv > 0) S.camp[cid] = Math.min(clv, Camp.maxLevel(cid));
-    }
-    // 建造顺序：只收"真的建了"的设施，并且**每项只收一次**（坏档防线）
-    var row = Array.isArray(data.campRow) ? data.campRow : [];
-    for (var ri = 0; ri < row.length; ri++) {
-      var rid = row[ri];
-      if (typeof rid !== 'string' || !S.camp[rid] || S.campRow.indexOf(rid) >= 0) continue;
-      S.campRow.push(rid);
-    }
-    // 老存档没有 campRow：按设施表顺序补一份，组合会重算而不是丢掉整座营地
-    for (var fid in S.camp) {
-      if (Object.prototype.hasOwnProperty.call(S.camp, fid) && S.campRow.indexOf(fid) < 0) S.campRow.push(fid);
-    }
-    market.recalcCampFx();
-  }
-  // 建材：坏档里可能是负数/NaN；老存档没有这个字段 → 按"已经打到第几波"补发，
-  // 而不是当成 0（否则读档会静默把经营进度吞掉）
-  var cp = Number(data.campPoints);
-  S.campPoints = isFinite(cp) && cp >= 0 ? Math.floor(cp) : Math.max(0, Game.wave * Camp.POINTS_PER_WAVE);
+  /* 营地**不在这里恢复了**：它在档案里（`Profile`），读档不该、也不能改它。
+     唯一要做的是把"冻在会话里的回收比例"按档案重折一次 ——
+     玩家可能在上一次读档之后回经营场景改建过工坊。 */
+  S.materialEarned = Math.max(0, Math.round(Number(data.materialEarned) || 0));
+  refreshCampFx();
+  /* 老存档里的 `data.camp` / `data.campRow` / `data.campPoints` 会被**静默忽略**。
+     这是有意的不迁移：那三个字段记的是"这一局临时盖的工坊"，
+     而新模型下工坊是账号资产 —— 把旧值搬进档案会让玩家凭一局旧档
+     白得一座工坊（越权），丢掉它只是"这一局没盖过"，代价小得多。 */
 
   Game.setState('playing', true);
   /* 随机流**放在最后**恢复：`restoreFloor` 里的 `enterFloor` 要重新长一遍地图，
@@ -3483,9 +3541,49 @@ Game.boonChoices = function () { return S ? S.pendingBoons.slice() : []; };
 Game.boonId = function () { return S ? S.boon : ''; };
 /** 自动探索（= "下一波"按钮在没有指定门时的默认路径），也留给"自动前进"用 */
 Game.autoExplore = function () { return autoExplore(); };
-Game.campBuy = market.campBuy;
-Game.campSell = market.campSell;
-/** 从商店进营地（可选去处；回商店是 camp → shop） */
+/* ---- 工坊（经营场景）----
+   规则在 camp.ts，账在 profile.ts（**跨局**）。这里只做两件模拟层该做的事：
+     ① 把"据点容量 / 天赋折扣 / 工匠全额返还"这三点开局修正带上（它们住在会话里）
+     ② 成交之后刷新"冻在会话里的那一份派生值"（回收比例）—— 否则会出现
+        "刚盖好的回收炉，这一局的回收价却还是旧的"
+   制造的费用与档位**不缓存**（每次现读 `Profile.campFx()`），所以它们不需要这一步。 */
+function campOpts() {
+  var base = Camp.SLOTS + ((S && S.kmods && S.kmods.campSlots) || 0);
+  return {
+    slots: base,
+    discount: Math.min(0.6, omod('campDiscount')),
+    fullRefund: !!((S && S.kmods && S.kmods.refundFull) || 0)
+  };
+}
+Game.campOpts = function () { return campOpts(); };
+Game.campBuy = function (id) {
+  var r = Profile.campBuy(String(id || ''), campOpts());
+  if (r.ok) refreshCampFx();
+  return r.ok;
+};
+Game.campSell = function (id) {
+  var r = Profile.campSell(String(id || ''), campOpts());
+  if (r.ok) refreshCampFx();
+  return r.ok;
+};
+/** 界面铺一屏工坊（费用 / 能不能盖 / 造不造得起）—— 不含规则 */
+Game.campFacilities = function () {
+  var owned = Profile.campOwned();
+  var opts = campOpts();
+  var out = [];
+  for (var i = 0; i < Camp.LIST.length; i++) {
+    var d = Camp.LIST[i];
+    var chk = Camp.canBuy(owned, d.id, Profile.material(), opts);
+    out.push({
+      id: d.id, name: d.name, note: d.note, level: Camp.levelOf(owned, d.id),
+      maxLevel: Camp.maxLevel(d.id), cost: chk.cost, toLevel: chk.toLevel,
+      ok: chk.ok, reason: chk.reason,
+      refund: Camp.refundOf(owned, d.id, opts)
+    });
+  }
+  return out;
+};
+/** 从商店进工坊（可选去处；回商店是 camp → shop） */
 Game.openCamp = function () {
   if (Game.state !== 'shop' && Game.state !== 'camp') return false;
   return Game.setState('camp');
@@ -3504,7 +3602,7 @@ Game.maxWeapons = maxWeapons;
 /* 制造（经营那一侧的主行动）：规则在 craft.ts，费用在 camp.ts / forge.ts，
    这里只做状态变更与校验。 */
 Game.craft = function (line, id) { return craft(Math.floor(Number(line) || 0), String(id || '')); };
-Game.craftOptions = craftOptions;
+Game.craftOptions = function () { return craftOptions(); };
 Game.craftLines = craftLineCount;
 Game.craftFreeLines = craftFreeLines;
 /** 回收价（界面显示与市场扣费共用一个算法：含品级与这一局的回收比例） */

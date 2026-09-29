@@ -1292,21 +1292,22 @@ interface SessionCore {
   stats_total: { kills: number; scrap: number; dmg: number; taken: number; healed: number; waves: number };
 }
 
-/** 局内营地（模拟经营第一级：花建材，结算清零） */
-interface SessionCamp {
-  /** 局内工坊：`{ 设施id: 等级 }`（每条产线一座，结算清零） */
-  camp: Record<string, number>;
-  /** 产线的建造顺序（相邻组合靠它判定；升级不挪位置） */
-  campRow: string[];
+/** 局内制造（**营地在局外之后，这里只剩"这一局的回合"与计数**）
+ *
+ * ⚠ 改造前这个接口叫 `SessionCamp`，装着 `camp` / `campRow` / `campPoints` / `campFx`
+ * —— 也就是"这一局临时盖的工坊"。营地搬到经营场景之后那四个字段全部迁去档案
+ * （`Profile.campOwned()` / `campRow()` / `wallet.material` / `campFx()`），
+ * 留在会话里的只有这两个计数加一个回合列表。接口改名是为了让"这里还有没有营地状态"
+ * 这个问题在类型层面就能回答：**没有**。 */
+interface SessionCraft {
   /** 这一波已经用过的产线（每波重置：经营那一侧的"回合"） */
   craftUsed: number[];
   /** 本局造了几件（结算展示；进存档） */
   craftCount: number;
-  /** 营地的**建材**（与材料分开的局内货币，每波到账；结算清零） */
-  campPoints: number;
-  /** 营地效果的折叠结果（买卖时重算一次） */
-  campFx: CampEffects;
-  /** 每波白送的刷新次数（营地祭坛给的） */
+  /** 本局打到多少**材料**（`gainMaterial` 记账）。只用于展示 —— 材料是**当场进钱包**的
+   *  （不等结算），所以它不是"待入账"的数，而是"这一局赚了多少"的数 */
+  materialEarned: number;
+  /** 每波白送的刷新次数（据点 / 事件给的） */
   freeRerolls: number;
 }
 
@@ -1408,7 +1409,7 @@ interface SessionDebug {
   arena?: ArenaData;
 }
 
-interface Session extends SessionCore, SessionCamp, SessionMarket, SessionDungeon, SessionWave, SessionEnts, SessionDebug {}
+interface Session extends SessionCore, SessionCraft, SessionMarket, SessionDungeon, SessionWave, SessionEnts, SessionDebug {}
 
 /** 一种房型的"进门内容"（game.ts 的 ROOM_FX 表） */
 interface RoomFxDef {
@@ -1651,6 +1652,8 @@ interface SpritesApi {
   drawEmblem(x: any, emblem: string | EmblemDef, scale: number): boolean;
   /** 把一枚宣传美术件烘成缓存贴图（界面把它塞进 `<canvas>`） */
   emblemSprite(id: string): Sprite | null;
+  /** 定义期自检：粒子注册表每一项都能画（`S.drawObj` 会静默跳过没有 draw 的） */
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
 
 /* ---------------- 存储 / 设置 / 存档 ---------------- */
@@ -2069,8 +2072,33 @@ interface ProfileApi {
   /** 据点的折叠修正（开局交给 Game.newRun） */
   keepMods(): StrongholdMods;
   keepInvested(): number;
-  /** 买 / 升级一个据点设施（花孢子） */
+  /** 买 / 升级一个据点设施（花材料） */
   keepBuy(id: string): { ok: boolean; reason: string; cost: number; toLevel: number };
+  /* ---- 跨局工坊（经营场景的产线）----
+     改造前它在**局内会话**里（每局从零盖）；现在是账号资产。 */
+  campLevel(id: string): number;
+  campOwned(): Record<string, number>;
+  /** 建造顺序（相邻组合靠它判定；升级不挪位置） */
+  campRow(): string[];
+  /** 顺序里剔除"不是真的建了"的设施（坏档防线） */
+  campRowClean(): string[];
+  /** 工坊效果的折叠（省料 / 抬档 / 回收） */
+  campFx(): CampEffects;
+  /** 这一局有几条产线（= 已建设施数；图纸名额由 craft.ts 另加） */
+  campLines(): number;
+  /** 买 / 升级一个工坊设施（花材料） */
+  campBuy(id: string, opts?: { slots?: number; discount?: number; fullRefund?: boolean }):
+    { ok: boolean; reason: string; cost: number; toLevel: number };
+  /** 拆掉一个工坊设施（退一半材料；`fullRefund` 时全额） */
+  campSell(id: string, opts?: { slots?: number; discount?: number; fullRefund?: boolean }):
+    { ok: boolean; reason: string; refund: number };
+  /** 界面铺一屏配方（费用 / 能不能造 / 造不造得起）—— **不写规则** */
+  craftOptions(mods: ForgeMods): Array<{
+    id: string; kind: 'weapon' | 'item'; refId: string; name: string; tier: number;
+    cost: number; ok: boolean; reason: string; affordable: boolean;
+  }>;
+  /** 定义期自检：`blank()` 的键集合与 profileSection 清单互为镜像 */
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
   /* ---- 图纸工坊（局外第三条腿：只解锁能力）---- */
   /** 现有合金 */
   alloy(): number;
@@ -2738,6 +2766,8 @@ interface DangerApi {
   /** 到这一级为止偏离基准的全部修正 */
   activeOf(level: number): Array<{ key: string; value: any; base: any; how: string }>;
   describe(level: number): string;
+  /** 定义期自检（表自身的完整性；"键有没有人读"是测试的活） */
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
 
 /* ---------------- 挑战表（challenges.ts） ---------------- */
@@ -3267,9 +3297,16 @@ interface GameApi {
   boonId(): string;
   ROOM_FX: Record<string, RoomFxDef>;
   ROOM_EVENTS: RoomEventDef[];
-  /* ---- 局内营地 ---- */
+  /* ---- 工坊（跨局；账在 profile.ts，这里只带上会话的开局修正并刷新派生值） ---- */
   campBuy(id: string): boolean;
   campSell(id: string): boolean;
+  /** 界面铺一屏工坊（费用 / 能不能盖 / 退款）—— 不含规则 */
+  campFacilities(): Array<{
+    id: string; name: string; note: string; level: number; maxLevel: number;
+    cost: number; toLevel: number; ok: boolean; reason: string; refund: number;
+  }>;
+  /** 买卖要带的开局修正（据点容量 / 天赋折扣 / 工匠全额返还） */
+  campOpts(): { slots: number; discount: number; fullRefund: boolean };
   openCamp(): boolean;
   addWeapon(id: string, tier?: number, paid?: number): WeaponInst | null;
   /** 给玩家一件道具（**唯一的入口**：词条在这里定下来，见 game.ts 的 addItem） */

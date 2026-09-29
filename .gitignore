@@ -61,6 +61,12 @@ lib-cov/
 *-audit.txt
 *-run.txt
 *-report.txt
+# 体检 / 基准工具的临时输出（`node tools/balance.mjs > .bal.txt`、分片跑 matrix 的
+# `.mx-*.json` 之类）：跑一次的产物，不是源码。要留证据就拷进 `docs/`。
+.bal.txt
+.mx-*.json
+.a[0-9].txt
+.m[0-9].txt
 test-out.tmp.txt
 .ui-shot-out.txt
 ui-shots/
