@@ -1587,6 +1587,20 @@ function endWave() {
   var bonus = Math.round((8 + Game.wave * 3) * harvestMul() * (S.bonusMul || 1) * speedMul * econMul('bonusMul') * itemCostMul('matMul'));
   S.stats_total.scrap += bonus;
   S.player.scrap = (S.player.scrap || 0) + bonus;
+
+  /* **清间的材料**（`material`，带得出局的那一笔）。
+     ⚠ 这一条是端到端模拟时补上的，理由值得写下来：
+     删掉"每波白送建材"之后，材料只剩下宝箱 / 精英 / 补给 / 密室**四种房间**这一个来源 ——
+     而普通战斗房一分不给。实测（`tools/tmp-loop-e2e` 那次的发现）：玩家清完第一间
+     拿到 **0 材料**，连最便宜的一座设施（2）都盖不起，于是"打 → 拿材料 → 造 → 再打"
+     这条循环在**真实游玩里是断的**；测试没发现是因为它们直接发材料。
+
+     它与被删掉的"每波白送"有本质区别，这也是它能留下的理由：
+       · 旧的那条是**无条件到账**（活得久就拿），与"打得好不好"无关
+       · 这一条挂在**清间**上，而且随波次增长 —— 打不完、被时限逼着狂暴，就拿不到
+     量与房间产出同级（房间是"进去了就有"，这里是"清掉了才有"）。 */
+  var matClear = Math.round((4 + Game.wave * 1.5) * harvestMul());
+  if (matClear > 0) gainMaterial(matClear);
   S.stats_total.waves++;
 
   var room = currentRoom();

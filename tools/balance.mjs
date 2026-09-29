@@ -253,7 +253,7 @@ function runOnce(opts) {
       fit.top = Math.max(fit.top, top);
       fit.samples.push(top);
       /* 每波的材料收入（实测）：后面"制造流成型节奏"要用它当收入曲线 */
-      (fit.income = fit.income || []).push(Game.getSession().waveMaterials || 0);
+      (fit.income = fit.income || []).push(Game.getSession().materialEarned || 0);
       shopTurn(log);
       Input.endFrame();
       continue;
@@ -270,7 +270,7 @@ function runOnce(opts) {
   const s2 = Game.getSession();
   const t = s2.stats_total;
   const row = {
-    wave: Game.wave, kills: Math.round(t.kills), materials: Math.round(t.materials),
+    wave: Game.wave, kills: Math.round(t.kills), materials: Math.round(s2.materialEarned || 0),
     level: s2.player.level, win: WON, frames: f, buys: log.buys, camp: log.campBuys.slice(),
     campCount: log.campBuys.length, saves: log.saves, crafts: log.crafts || 0,
     items: s2.player.items.length, weapons: s2.player.weapons.length,
