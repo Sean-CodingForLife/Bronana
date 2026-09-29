@@ -186,7 +186,9 @@ const DYNAMIC_CLASSES = new Set([
   // 「我的武器 / 我的道具」的小格子（.wbox）与折叠起来的参考段落（.sub-h）
   'shop-sub', 'wrow', 'wbox', 'sub-h',
   // 工坊的配方页签与"造不了"的行
-  'craft-tabs', 'craft-note', 'on', 'dim'
+  'craft-tabs', 'craft-note', 'on', 'dim',
+  // 技能栏的格子（按 sess.skills.slots **动态生成**：一个技能一格）
+  'sk-slot', 'ready', 'cooling', 'dry'
 ]);
 
 const missingId = [...cssIds].filter(id => !htmlIds.has(id));

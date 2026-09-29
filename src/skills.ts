@@ -275,8 +275,6 @@ interface TreeCardDef {
   options: string[];
 }
 
-var TREES: Record<string, { name: string; note: string; cards: TreeCardDef[] }> = {};
-
 /* 通用候选池：**没写专属技能的角色**也能看到的两个（它们是「如果你想稳一点」的退路）。
    为什么是"没写专属技能的角色"而不是"所有人"：每个角色本来就有两个专属技能，
    通用技能只在**建树时凑候选**用（见下面的卡 2）。 */
@@ -539,10 +537,12 @@ Sk.audit = function () {
   var charIds: Record<string, boolean> = Object.create(null);
   /* **有没有角色清单**：模块加载的那一刻它是空的（清单由调用方注入）——
      空集合会让下面每一条「owner 不是角色」都误报，所以那几条只在有清单时查。
-     代价是「加载期查不到 owner 写错」，所以注入之后必须再跑一次 audit
-     （`main.ts` 的 boot 里做，`test/skill.mjs` 会量它）。 */
-  var haveChars = _charList.length > 0;
-
+     ⚠ 两条自己踩过的坑，写在这里免得下次再踩：
+       1. 不能把这个判断缓存成局部变量（`audit()` 会被跑两次，缓存的是加载期那个值）
+       2. `charIds` 必须**在这里**用当前清单填一遍 —— 上一版是从别的分支里挪过来的，
+          于是 `_charList` 明明有 9 个角色、`charIds` 却是空的（26 条误报）。
+     现在每一处都直接问 `_charList.length`，而 `charIds` 就在它下面现填。 */
+  for (i = 0; i < _charList.length; i++) charIds[_charList[i].id] = true;
   for (i = 0; i < LIST.length; i++) {
     var s = LIST[i];
     if (!s.id) { problems.push('第 ' + i + ' 个技能没有 id'); continue; }
@@ -551,7 +551,7 @@ Sk.audit = function () {
     if (!s.name || !s.note) problems.push(s.id + ' 缺名字或说明');
     if (!FORMS[s.form]) problems.push(s.id + ' 的形不存在：' + s.form + '（它会静默地什么都不做）');
     if (!PAYLOADS[s.payload]) problems.push(s.id + ' 的效不存在：' + s.payload);
-    if (haveChars && s.owner !== null && !charIds[s.owner]) {
+    if (_charList.length && s.owner !== null && !charIds[s.owner]) {
       problems.push(s.id + ' 的 owner 不是角色：' + s.owner + '（这个技能永远不会出现在任何人的树上）');
     }
     if (!(s.cd > 0)) problems.push(s.id + ' 的冷却必须是正数：' + s.cd);
@@ -581,7 +581,7 @@ Sk.audit = function () {
     if (!r.id || !r.name || !r.note) { problems.push('符文缺少 id/名字/说明：' + (r.id || i)); continue; }
     if (seen[r.id]) problems.push('id 重复（技能与符文共用一个名字空间）：' + r.id);
     seen[r.id] = true;
-    if (haveChars && r.owner !== null && !charIds[r.owner]) problems.push(r.id + ' 的 owner 不是角色：' + r.owner);
+    if (_charList.length && r.owner !== null && !charIds[r.owner]) problems.push(r.id + ' 的 owner 不是角色：' + r.owner);
     var used = false;
     for (var mk in r.mods) {
       if (!Object.prototype.hasOwnProperty.call(r.mods, mk)) continue;

@@ -664,6 +664,35 @@ html[data-touch="1"] .layer{touch-action:pinch-zoom;}
   pointer-events:none;
 }
 #hud.hidden ~ #weapon-strip{display:none;}
+
+/* 技能栏：与武器条并排，在它右边。
+   `#hud.hidden ~` 那条兄弟选择器保证"没在玩"时它也跟着藏起来 ——
+   漏了它的表现是标题页上挂着一条技能栏。 */
+#hud-skills{
+  position:absolute;left:50%;bottom:74px;transform:translateX(-50%);
+  display:flex;gap:6px;
+  pointer-events:none;
+}
+#hud.hidden ~ #hud-skills{display:none;}
+.sk-slot{
+  position:relative;overflow:hidden;
+  min-width:96px;padding:5px 9px;
+  font-size:12px;line-height:1.5;white-space:nowrap;
+  color:var(--ink);
+  background:rgba(232,220,192,.94);
+  border:var(--line) solid var(--ink);
+  border-radius:8px;
+  box-shadow:3px 3px 0 0 var(--ink);
+}
+/* 冷却进度条：铺在格子底部，宽度由 ui.ts 写 */
+.sk-slot i{
+  position:absolute;left:0;bottom:0;height:3px;width:0;
+  background:var(--ink);opacity:.55;
+}
+/* 三态一眼分得开：就绪（亮）/ 冷却中（暗）/ 能量不够（虚线边） */
+.sk-slot.ready{background:rgba(255,252,238,.98);}
+.sk-slot.cooling{opacity:.72;}
+.sk-slot.dry{border-style:dashed;opacity:.6;}
 .wslot{
   position:relative;
   width:46px;height:46px;

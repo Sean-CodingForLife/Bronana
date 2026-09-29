@@ -187,6 +187,11 @@ export async function loadAll(names, before) {
   globalThis.holdRoom = holdRoom;
   if (globalThis.Skills && globalThis.Chars) {
     globalThis.Skills.make({ chars: function () { return globalThis.Chars.LIST; } });
+  /* 档案层也要接上技能表（与 `main.ts` 的 boot 同一件事）：
+     它是**注入**而不是 import（import 会构成一条向上的依赖边）。 */
+  if (globalThis.Skills && globalThis.Profile && globalThis.Profile.useSkills) {
+    globalThis.Profile.useSkills(globalThis.Skills);
+  }
   }
   globalThis.enterFightRoom = enterFightRoom;
   globalThis.toShop = toShop;

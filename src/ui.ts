@@ -197,6 +197,7 @@ UI.init = function () {
   hudNodes.fps = q('hud-fps');
   hudNodes.room = q('hud-room');
   hudNodes.floor = q('hud-floor');
+  hudNodes.skills = q('hud-skills');
   buildCharSelect();
   wireActions();
   wireEvents();
@@ -2066,6 +2067,40 @@ function updateBossBar(sess) {
   }
 }
 
+/* =========================================================
+   技能栏（HUD）
+   ---------------------------------------------------------
+   一格一个技能：名字 + 冷却进度 + 能量够不够。
+   为什么必须显示"能量够不够"：手动模式下玩家按下去如果没反应，
+   他分不清是**冷却没好**、**能量不够**还是**按键坏了** ——
+   三种情况的处理完全不同（等 / 攒 / 去设置里改键）。
+   ========================================================= */
+function updateSkillBar(sess) {
+  var box = hudNodes.skills;
+  if (!box) return;
+  var slots = (sess.skills && sess.skills.slots) || [];
+  if (box.childElementCount !== slots.length) {
+    U.clear(box);
+    for (var i = 0; i < slots.length; i++) box.appendChild(U.el('div', 'sk-slot'));
+  }
+  for (var k = 0; k < slots.length; k++) {
+    var el2 = box.children[k] as HTMLElement;
+    var st = slots[k];
+    var ready = st.cd <= 0 && (sess.energy || 0) >= st.skill.cost;
+    var cls = 'sk-slot' + (ready ? ' ready' : (st.cd > 0 ? ' cooling' : ' dry'));
+    if (el2.className !== cls) el2.className = cls;
+    /* 冷却进度用宽度表达（0..1）：比数字更快看懂"还有多久" */
+    var frac = st.skill.cd > 0 ? U.clamp(1 - st.cd / st.skill.cd, 0, 1) : 1;
+    var txt = st.skill.name + '　' + Math.round((sess.energy || 0)) + '/' + st.skill.cost;
+    if (el2.dataset.sig !== txt) { el2.dataset.sig = txt; el2.textContent = txt; }
+    var fill = el2.querySelector ? el2.querySelector('i') : null;
+    if (!fill) { fill = U.el('i'); el2.appendChild(fill); }
+    fill.style.width = U.pct1(frac);
+    if (el2.title !== st.skill.note) el2.title = st.skill.note;
+  }
+}
+
+
 UI.updateHud = function () {
   var sess = Game.getSession();
   if (!sess) return;
@@ -2096,6 +2131,7 @@ UI.updateHud = function () {
   setText('floor', h.floor, sess.floor + 'F');
   updateMinimap(sess);
   updateBossBar(sess);
+  updateSkillBar(sess);
 
   // 武器槽
   var strip = el.weaponStrip;
