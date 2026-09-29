@@ -53,6 +53,15 @@ jobs:
       - name: 装依赖（锁定版本，`--frozen-lockfile` 防止 CI 偷偷改锁文件）
         run: pnpm install --frozen-lockfile
 
+      # ⚠ **必须构建**：`test/modes.mjs` 的静态服务器两节要读 `dist/`
+      # （MIME / 缓存头 / 路径穿越都要有真文件才测得动）。
+      # 第一版 CI 漏了这一步 —— 而本地开发机一直留着上次的 `dist/`，
+      # 于是"本地全绿、CI 必红"，且红的地方看起来与改动毫无关系
+      # （`readdirSync('dist/assets')` 抛 ENOENT，整套崩在那里）。
+      # 现在两道保险：这一步显式构建；`modes.mjs` 自己也检测缺失并现场构建。
+      - name: 构建（dist/ —— 生产形态测试需要）
+        run: pnpm run build
+
       # ---------- 门 1：类型 ----------
       - name: 门 1 · typecheck（tsc ×2）
         run: pnpm run typecheck

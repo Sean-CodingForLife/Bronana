@@ -37,6 +37,35 @@ const stripComments = s => s
 const readCode = p => stripComments(readSrc(p));
 const SPAWN_OUT = path.join(ROOT, '.modes-child-out.txt');
 
+/* =========================================================
+   构建产物：**缺了就自己构建一次**（这一条是 CI 教我的）
+   ---------------------------------------------------------
+   `[3]` 与 `[4]` 两节要读 `dist/`（静态服务器的 MIME / 缓存头 / 路径穿越
+   都要有真文件才测得动）。原先它们**假定 `dist/` 已经存在** ——
+   本地开发机上一直留着上次构建的产物，所以从来没暴露；
+   而 CI 上从不执行 `pnpm run build`，于是：
+
+     fs.readdirSync(path.join(root, 'assets'))
+     → ENOENT → **整套测试崩在这里**，后面一节都不跑。
+
+   表现是"本地全绿、CI 必红"，而红的地方看起来与改动毫无关系。
+   现在缺了就现场构建：这套测试因此在任何干净环境里都能自足跑完。
+   构建失败不抛（那会让报错变成构建器的报错），而是记下来让下面的
+   `ok(...)` 如实报"缺产物"。 */
+const DIST = path.join(ROOT, 'dist');
+let buildNote = '';
+if (!fs.existsSync(path.join(DIST, 'index.html'))) {
+  console.log('  \x1b[33m[setup] dist/ 不存在或没有 index.html —— 先构建一次（要几秒）…\x1b[0m');
+  const b = spawnSync('npx', ['vite', 'build'], { cwd: ROOT, encoding: 'utf8', shell: process.platform === 'win32' });
+  if (b.status !== 0 || !fs.existsSync(path.join(DIST, 'index.html'))) {
+    buildNote = '自动构建失败（请手动 pnpm run build）：' +
+      String((b.stderr || b.stdout || '').split('\n').filter(l => l.trim()).slice(-3).join(' / ')).slice(0, 300);
+    console.log('  \x1b[31m[setup] ' + buildNote + '\x1b[0m');
+  } else {
+    console.log('  \x1b[32m[setup] 构建完成\x1b[0m');
+  }
+}
+
 /**
  * 起一个子进程并把它的 stdout+stderr 收进文件。
  * 不用管道：本沙箱下"用管道抓子进程输出"是被拒的（named pipe 不允许），
@@ -155,16 +184,24 @@ console.log('\n[3] 静态服务器：请求处理（假 req/res，不占端口�
   ok(Number(idx.headers['Content-Length']) > 0, '给出 Content-Length');
   ok(idx.body.length > 100, '响应体真的是流式写出来的（' + idx.body.length + ' 字节）');
 
-  const assets = fs.readdirSync(path.join(root, 'assets'));
-  const js = assets.find(f => f.endsWith('.js'));
-  ok(!!js, 'dist/assets 里有构建产物（否则先 pnpm run build）', assets.join(','));
-  if (js) {
-    const a = await callAsync('GET', '/assets/' + js);
-    ok(a.statusCode === 200 && /javascript/.test(a.headers['Content-Type'] || ''),
-      '构建产物可下载且类型正确', a.statusCode + ' ' + a.headers['Content-Type']);
-    ok(/immutable/.test(a.headers['Cache-Control'] || ''),
-      '带 hash 的产物用 immutable 长缓存', a.headers['Cache-Control']);
-    ok(a.body.length > 1000, '产物内容非空（' + a.body.length + ' 字节）');
+  /* ⚠ 这里**不能直接 readdirSync**：`dist/assets/` 不存在时它会抛，
+     而抛异常 = 整套测试崩在这里、后面一节都不跑（CI 上就是这样）。
+     缺产物要**如实报成一条失败**，而不是让测试死掉。 */
+  const assetsDir = path.join(root, 'assets');
+  if (!fs.existsSync(assetsDir)) {
+    ok(false, 'dist/assets 存在（缺产物）', buildNote || '先跑 pnpm run build');
+  } else {
+    const assets = fs.readdirSync(assetsDir);
+    const js = assets.find(f => f.endsWith('.js'));
+    ok(!!js, 'dist/assets 里有构建产物（否则先 pnpm run build）', assets.join(','));
+    if (js) {
+      const a = await callAsync('GET', '/assets/' + js);
+      ok(a.statusCode === 200 && /javascript/.test(a.headers['Content-Type'] || ''),
+        '构建产物可下载且类型正确', a.statusCode + ' ' + a.headers['Content-Type']);
+      ok(/immutable/.test(a.headers['Cache-Control'] || ''),
+        '带 hash 的产物用 immutable 长缓存', a.headers['Cache-Control']);
+      ok(a.body.length > 1000, '产物内容非空（' + a.body.length + ' 字节）');
+    }
   }
 }
 
