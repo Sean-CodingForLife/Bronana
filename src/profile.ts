@@ -471,8 +471,13 @@ Profile.CODEX_MASTERED = CODEX_MASTERED;
  * 两根线分开之后这个分叉变得要紧：材料是**制造业的本钱**、废料是**商店的本钱**，
  * 只读废料会让"经营流攒下的那一半收益"在结算里凭空消失
  * （它在 `RunSummary` 里叫 `materials`，早就报出来了，只是没人读）。
- * 现在两根线都算：废料 /40、材料 /20 —— 材料更贵（它只有清间与奖励房给），
- * 所以同样数量它更值钱。缺字段（旧档 / 别处造的 summary）按 0。
+ * 现在两根线都算：废料 /40、材料 /**10** —— 材料更贵。这个系数（/10）是**实测定出来的**：
+ * `tools/balance.mjs talents` 显示经济流的材料是战斗流的 1.1 倍（158.8 vs 144）
+ * 而波次只有 0.64 倍（4.8 vs 7.5）。系数太小（原先 /20）时"打得更深"在结算里
+ * 压过"打得更富"，于是**战斗流同时赢下战斗轴与局外轴** —— 那正是
+ * "经营天赋树没有意义"的数学形式。定在 /10 时两边的局外产出落在同一档
+ * （≈34 vs ≈34 孢子），两条轴各自有人赢。
+ * 缺字段（旧档 / 别处造的 summary）按 0。
  */
 Profile.sporesForRun = function (run) {
   if (!run) return 0;
@@ -480,7 +485,7 @@ Profile.sporesForRun = function (run) {
   var kills = Math.max(0, num(run.kills));
   var scrap = Math.max(0, num(run.scrap));
   var mats = Math.max(0, num(run.materials));
-  return Math.floor(wave * 2 + kills / 25 + scrap / 40 + mats / 20 + (run.win ? 25 : 0));
+  return Math.floor(wave * 2 + kills / 25 + scrap / 40 + mats / 10 + (run.win ? 25 : 0));
 };
 Profile.spores = function () { return data.spores; };
 
