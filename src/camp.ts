@@ -19,6 +19,7 @@
 
 import { SelfCheck } from './selfcheck.ts';
 import { Registry } from './registry.ts';
+import { U } from './utils.ts';
 
 var Camp = {} as CampApi;
 
@@ -33,15 +34,15 @@ function ck(note: string, text: (v: any) => string[]): CampEffectKeyDef { return
 
 var EFFECT_KEYS: Record<string, CampEffectKeyDef> = {
   weaponCost: ck('制造**武器**的材料费用折扣（craft.ts costOf）',
-    function (v) { return ['造武器省料 ' + Math.round(v * 100) + '%']; }),
+    function (v) { return ['造武器省料 ' + U.pct(v) + '%']; }),
   itemCost: ck('制造**道具**的材料费用折扣（craft.ts costOf）',
-    function (v) { return ['造道具省料 ' + Math.round(v * 100) + '%']; }),
+    function (v) { return ['造道具省料 ' + U.pct(v) + '%']; }),
   weaponQuality: ck('造出来的武器直接高一档的概率（craft.ts resultTier）',
-    function (v) { return ['造武器 ' + Math.round(v * 100) + '% 概率高一档']; }),
+    function (v) { return ['造武器 ' + U.pct(v) + '% 概率高一档']; }),
   itemDouble: ck('造出来的道具多给一件的概率（craft.ts resultTier）',
-    function (v) { return ['造道具 ' + Math.round(v * 100) + '% 概率多给一件']; }),
+    function (v) { return ['造道具 ' + U.pct(v) + '% 概率多给一件']; }),
   salvageBonus: ck('回收旧装备时返还的材料加成（market.ts sellWeapon）',
-    function (v) { return ['回收多返还 ' + Math.round(v * 100) + '%']; })
+    function (v) { return ['回收多返还 ' + U.pct(v) + '%']; })
 };
 
 /* =========================================================

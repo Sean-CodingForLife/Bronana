@@ -122,6 +122,13 @@ const GATES = [
     name: 'README 存量表与实测一致',
     cmd: ['node', ['tools/readme-stats.cjs', '--check']],
     why: '**漂了的统计比没有统计更糟** —— 它看起来是量过的（这张表真的漂过）'
+  },
+  {
+    id: 'hardcode',
+    name: '硬编码体检（同一个概念写了几遍）',
+    cmd: ['node', ['tools/hardcode-audit.cjs', '--strict']],
+    why: '不数"有几个数字"（渲染几何量毫无意义），只抓**同一个概念被写了第二遍**：' +
+      '同一文件里重复的算式 / 跨文件的同一语义算式 / 重复的格式化配方。基线只能变小'
   }
 ];
 

@@ -1352,8 +1352,8 @@ var ACT_SHOP: ActMap = {
     if (Game.combine(i, j)) {
       var now = Game.getSession().player.weapons[i];
       UI.toast('合成：' + name + ' T' + (before ? Weapons.tierOf(before) : '?') +
-        ' → T' + (now ? Weapons.tierOf(now) : '?') + '（伤害 +' +
-        Math.round(((now ? Weapons.mul(now, 'dmg') : 1) / (before ? Weapons.mul(before, 'dmg') : 1) - 1) * 100) + '%）',
+        ' → T' + (now ? Weapons.tierOf(now) : '?') + '（伤害 ' +
+        U.plusPct((now ? Weapons.mul(now, 'dmg') : 1) / (before ? Weapons.mul(before, 'dmg') : 1) - 1) + '）',
         'good');
     }
     renderShop();
@@ -1943,7 +1943,7 @@ function updateBossBar(sess) {
   }
   el.bossBar.classList.remove('hidden');
   var k = U.clamp(boss.hp / boss.maxHp, 0, 1);
-  setWidth('bossfill', el.bossFill, (k * 100).toFixed(1) + '%');
+  setWidth('bossfill', el.bossFill, U.pct1(k) + '%');
   setText('bosshp', el.bossHp, Math.max(0, Math.ceil(boss.hp)) + ' / ' + Math.round(boss.maxHp));
   var sig = boss.def.id + (boss.burrowed ? '|burrow' : '');
   if (sig !== _bossSig) {
@@ -1959,7 +1959,7 @@ UI.updateHud = function () {
   var h = hudNodes;
 
   var hpK = U.clamp(p.hp / s.maxHp, 0, 1);
-  setWidth('hpw', h.hpFill, (hpK * 100).toFixed(1) + '%');
+  setWidth('hpw', h.hpFill, U.pct1(hpK) + '%');
   setText('hpt', h.hpText, Math.ceil(p.hp) + ' / ' + s.maxHp);
 
   setText('wave', h.wave, Game.wave);
@@ -1968,7 +1968,7 @@ UI.updateHud = function () {
 
   setText('lvl', h.level, p.level);
   setText('xp', h.xp, Math.floor(p.xp) + '/' + p.xpNeed);
-  setWidth('xpw', h.xpFill, (U.clamp(p.xp / p.xpNeed, 0, 1) * 100).toFixed(1) + '%');
+  setWidth('xpw', h.xpFill, U.pct1(U.clamp(p.xp / p.xpNeed, 0, 1)) + '%');
 
   setText('mats', h.mats, Math.floor(p.scrap || 0));
   setText('kills', h.kills, sess.stats_total.kills);
@@ -2389,7 +2389,7 @@ function renderShop() {
       bs.dataset.act = 'salvage';
       bs.dataset.i = String(idx);
       bs.title = '低价卖回：+' + Game.salvageOf(w) + ' 废料（返还 ' +
-        Math.round(((Game.getSession() && Game.getSession().salvageRate) || 0.5) * 100) +
+        Number(U.pct((Game.getSession() && Game.getSession().salvageRate) || Weapons.salvageRate)) +
         '% 的当前价值，含品级）—— 同时产出**合金**，那是图纸树唯一的稳定来源';
       acts.appendChild(bs);
     }
@@ -2741,11 +2741,11 @@ function renderSettings() {
   var qq = (id) => q(id);
   var s = qq('set-sound'); if (s) s.textContent = Settings.get('sound') ? '开' : '关';
   var mu = qq('set-music'); if (mu) mu.textContent = Settings.get('music') ? '开' : '关';
-  var v = qq('set-volume-val'); if (v) v.textContent = Math.round(Settings.get('volume') * 100) + '%';
-  var sv = qq('set-sfxvol-val'); if (sv) sv.textContent = Math.round(Settings.get('sfxVolume') * 100) + '%';
-  var mv = qq('set-musvol-val'); if (mv) mv.textContent = Math.round(Settings.get('musicVolume') * 100) + '%';
+  var v = qq('set-volume-val'); if (v) v.textContent = U.pct(Settings.get('volume')) + '%';
+  var sv = qq('set-sfxvol-val'); if (sv) sv.textContent = U.pct(Settings.get('sfxVolume')) + '%';
+  var mv = qq('set-musvol-val'); if (mv) mv.textContent = U.pct(Settings.get('musicVolume')) + '%';
   var sp = qq('set-speed'); if (sp) sp.textContent = Settings.get('speed') + 'x';
-  var sh = qq('set-shake-val'); if (sh) sh.textContent = Math.round(Settings.get('shake') * 100) + '%';
+  var sh = qq('set-shake-val'); if (sh) sh.textContent = U.pct(Settings.get('shake')) + '%';
   var fp = qq('set-fps'); if (fp) fp.textContent = Settings.get('fps') ? '开' : '关';
   var ap = qq('set-autopause'); if (ap) ap.textContent = Settings.get('autopause') ? '开' : '关';
   // 全屏没有"设置项"：它是当前状态，不是偏好（所以标签读的是 API 而不是 Settings）

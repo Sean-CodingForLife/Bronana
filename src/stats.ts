@@ -52,7 +52,7 @@ var Stats = ({
   pretty: function (key, value) {
     var d = DEF[key];
     if (!d) return U.plus(U.round2(value));
-    if (d.kind === 'pct') return U.plus(U.round2(value * 100)) + '%';
+    if (d.kind === 'pct') return U.plusPct(value);
     return U.plus(U.round2(value)) + (d.per || '');
   },
 

@@ -59,6 +59,7 @@
     "drift": "node tools/registry-drift.mjs",
     "readme:stats": "node tools/readme-stats.cjs",
     "readme:check": "node tools/readme-stats.cjs --check",
+    "hardcode": "node tools/hardcode-audit.cjs",
     "draw": "node tools/draw-census.mjs",
     "score": "node tools/score.mjs",
     "ui-text": "node tools/extract-ui-text.mjs",

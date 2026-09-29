@@ -13,6 +13,23 @@ U.dist2 = function (ax, ay, bx, by) { var dx = bx - ax, dy = by - ay; return dx 
 U.dist = function (ax, ay, bx, by) { return Math.sqrt(U.dist2(ax, ay, bx, by)); };
 U.angle = function (ax, ay, bx, by) { return Math.atan2(by - ay, bx - ax); };
 U.round2 = function (v) { return Math.round(v * 100) / 100; };
+/* ---- 百分号：**唯一实现** ----
+   改造前 `Math.round(v * 100) + '%'` 在四个模块里各写了一遍
+   （`camp.ts` 5 处、`forge.ts` 3 处、`stats.ts`、`ui.ts`）—— 而且它们
+   **看起来不一样**：有的带正负号、有的不带。两套写法只要有一处改了舍入，
+   "同一个数值在工坊里显示 25%、在属性面板里显示 25.0%"就会成为一个
+   没人能一眼看出原因的差异。所以两件事分开、各自只有一处实现。 */
+U.pct = function (v) { return String(Math.round((Number(v) || 0) * 100)); };
+U.plusPct = function (v) {
+  var n = Math.round((Number(v) || 0) * 100);
+  return (n >= 0 ? '+' : '') + n + '%';
+};
+/* 一位小数的百分比：**给 CSS 宽度用**（血条 / 经验条 / Boss 条）。
+   与 `pct` 分开是因为用途不同：`pct` 是"给人读的数"（25 比 25.0 好），
+   而进度条截断到整数会**一格一格地跳** —— 两者要的东西不一样，
+   所以是两个函数而不是一个函数加参数（参数化之后调用点看不出区别，
+   而"血条用哪个"这件事必须一眼看出来）。 */
+U.pct1 = function (v) { return ((Number(v) || 0) * 100).toFixed(1) + '%'; };
 U.approach = function (cur, target, maxStep) {
   if (cur < target) return Math.min(cur + maxStep, target);
   if (cur > target) return Math.max(cur - maxStep, target);

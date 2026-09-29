@@ -262,7 +262,7 @@ I.packOddsText = function (wave, luck, kind) {
   var parts = [];
   for (i = 0; i < Tiers.MAX; i++) {
     if (w[i] <= 0) continue;
-    parts.push('T' + (i + 1) + ' ' + Math.round(w[i] / tot * 100) + '%');
+    parts.push('T' + (i + 1) + ' ' + U.pct(w[i] / tot) + '%');
   }
   return parts.join(' / ');
 };

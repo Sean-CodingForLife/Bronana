@@ -22,6 +22,7 @@
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
 import { Tiers } from './data_tiers.ts';
+import { U } from './utils.ts';
 
 var Forge = {} as ForgeApi;
 
@@ -38,13 +39,13 @@ Forge.MOD_KEYS = {
     kind: 'max', text: function (v) { return '图纸到 T' + v + '（能造这一档及以下的装备与道具）'; }
   },
   craftQuality: {
-    kind: 'max', text: function (v) { return '造武器 ' + Math.round(v * 100) + '% 概率高一档'; }
+    kind: 'max', text: function (v) { return '造武器 ' + U.pct(v) + '% 概率高一档'; }
   },
   lines: {
     kind: 'add', text: function (v) { return '额外产线 +' + v; }
   },
   salvageBonus: {
-    kind: 'add', text: function (v) { return '回收多返还 ' + Math.round(v * 100) + '%'; }
+    kind: 'add', text: function (v) { return '回收多返还 ' + U.pct(v) + '%'; }
   },
   alloyPerSalvage: {
     kind: 'add', text: function (v) { return '每次回收 +' + v + ' 合金'; }
@@ -53,7 +54,7 @@ Forge.MOD_KEYS = {
     kind: 'max', text: function (v) { return v ? '异档熔接：同名不同档也能合' : ''; }
   },
   alloyMul: {
-    kind: 'add', text: function (v) { return '结算合金 +' + Math.round(v * 100) + '%'; }
+    kind: 'add', text: function (v) { return '结算合金 +' + U.pct(v) + '%'; }
   }
 };
 

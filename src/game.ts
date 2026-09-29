@@ -2179,11 +2179,16 @@ function pickSpawnPoint() {
   var best = null, bestD = -1;
   for (var i = 0; i < 8; i++) {
     var edge = Math.floor(S.rnd() * 4);
-    var x, y, pad = Arena.PAD + 40;
-    if (edge === 0) { x = pad + S.rnd() * (Arena.W - pad * 2); y = pad; }
-    else if (edge === 1) { x = Arena.W - pad; y = pad + S.rnd() * (Arena.H - pad * 2); }
-    else if (edge === 2) { x = pad + S.rnd() * (Arena.W - pad * 2); y = Arena.H - pad; }
-    else { x = pad; y = pad + S.rnd() * (Arena.H - pad * 2); }
+    /* 边距与"可用的那条边长"。写成两个名字而不是每次现算 ——
+       改造前这里四行里各写了一遍 `pad * 2`（同一件事四份副本），
+       而它的含义（"两边各让出 pad"）只在脑子里，不在代码里。 */
+    var pad = Arena.PAD + 40;
+    var spanX = Arena.W - pad * 2, spanY = Arena.H - pad * 2;
+    var x, y;
+    if (edge === 0) { x = pad + S.rnd() * spanX; y = pad; }
+    else if (edge === 1) { x = Arena.W - pad; y = pad + S.rnd() * spanY; }
+    else if (edge === 2) { x = pad + S.rnd() * spanX; y = Arena.H - pad; }
+    else { x = pad; y = pad + S.rnd() * spanY; }
     var d = U.dist2(x, y, p.x, p.y);
     if (d > bestD) { bestD = d; best = { x: x, y: y }; }
   }

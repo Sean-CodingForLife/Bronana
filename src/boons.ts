@@ -19,6 +19,7 @@
 import { SelfCheck } from './selfcheck.ts';
 import { Registry } from './registry.ts';
 import { Stats } from './stats.ts';
+import { U } from './utils.ts';
 
 var Boons = {} as BoonsApi;
 
@@ -127,7 +128,7 @@ function effectText(key, v) {
   if (!mk) return '';
   var num = Math.round(Number(v) * 100) / 100;
   var sign = mk.how === 'mul'
-    ? (num >= 1 ? '+' + Math.round((num - 1) * 100) + '%' : '-' + Math.round((1 - num) * 100) + '%')
+    ? (num >= 1 ? U.plusPct(num - 1) : '-' + U.pct(1 - num) + '%')
     : (num >= 0 ? '+' + num : String(num));
   return mk.note + ' ' + sign;
 }

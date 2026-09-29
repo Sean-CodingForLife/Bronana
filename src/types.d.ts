@@ -1548,6 +1548,12 @@ interface UtilsApi {
   dist(ax: number, ay: number, bx: number, by: number): number;
   angle(ax: number, ay: number, bx: number, by: number): number;
   round2(v: number): number;
+  /** 数值 → **去掉百分号**的显示串（0.2534 → `"25"`）。与 `plusPct` 一样是唯一实现 */
+  pct(v: number): string;
+  /** 带符号的百分比（0.2534 → `"+25%"`，-0.1 → `"-10%"`） */
+  plusPct(v: number): string;
+  /** **一位小数**的百分比，给 CSS 宽度用（血条 / 经验条：截断到整数会让它一格一格跳） */
+  pct1(v: number): string;
   approach(cur: number, target: number, maxStep: number): number;
   /**
    * 种子化随机（xorshift32）。返回的函数**带着状态读写**：

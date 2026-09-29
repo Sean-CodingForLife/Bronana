@@ -285,7 +285,10 @@ export function makeChamber(ctx: ChamberCtx) {
     var d = Math.max(0, Math.floor(Number(depth) || 0));
     var rel = d - Ch.floorMeanDepth();
     var mul = (1 + (f - 1) * 0.30 + rel * 0.10) * hard;
-    return Math.max(0.5, Math.round(mul * 100) / 100);
+    /* `U.round2` 而不是 `Math.round(mul * 100) / 100`：这两个是同一件事，
+       而这个倍率会**出现在界面上**（"这一间 ×1.35"），所以它必须与
+       别处显示的小数走同一个舍入 —— 两处各写一遍就会慢慢漂开。 */
+    return Math.max(0.5, U.round2(mul));
   };
 
   return Ch;
