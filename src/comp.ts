@@ -394,6 +394,13 @@ Comp.define('Body', { r: 0 });
 Comp.define('Health', { hp: 0, maxHp: 0 });
 Comp.define('Damage', { dmg: 0 });
 Comp.define('Lifetime', { life: 0, lifeMax: 0 });
+/* 装置（炮塔）的两个扩展字段 —— 与 `Lifetime`（上面）同一类：
+   **技能放的装置**要用它们。
+     · `range`  = 它自己看得多远（道具炮塔固定 300；技能的装置在表里配）
+     · `dmgMul` = 技能强度折出来的伤害系数（缺省 0 = 恒等，见 `updateTurrets`）
+   为什么要在这里声明而不是往对象上随手挂：组件系统会**当场拒绝**未声明字段
+   （那正是它存在的意义 —— 池化复用时会留下上一只怪的残值）。 */
+Comp.define('TurretExt', { range: 0, dmgMul: 0 });
 Comp.define('Look', { kind: '', color: '', dark: '', tintA: '' });
 Comp.define('HitFlash', { hitFlash: 0 });
 Comp.define('Hurt', { hurtFlash: 0 });
@@ -489,8 +496,12 @@ Comp.archetype('decal',
   ['Transform', 'Body', 'Look', 'DecalArt'],
   { list: 'decals' });
 
+/* 装置（炮塔）：它比别的原型多一个 `Lifetime` ——
+   道具白给的炮塔寿命是"永久"（`life` 留 0 = 不过期），
+   而**技能放下的装置有寿命**（临时帮手，不是第二座塔）。
+   两者共用这一个原型，所以寿命做成可选：0 = 不过期。 */
 Comp.archetype('turret',
-  ['Transform', 'Body', 'Health', 'Cooldown', 'Aim'],
+  ['Transform', 'Body', 'Health', 'Cooldown', 'Aim', 'Lifetime', 'TurretExt'],
   { list: 'turrets' });
 
 Comp.archetype('weapon',

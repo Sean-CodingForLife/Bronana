@@ -2904,7 +2904,7 @@ function formSummon(p, pr, dmg) {
       r: 18,
       /* 技能的装置比道具给的炮塔**有寿命**：它是"临时帮手"而不是"永久多一座"。 */
       life: life, lifeMax: life, range: range,
-      dmgMul: (pr.mul || 1) * 0.6
+      dmgMul: Math.max(0.2, (pr.mul || 1) * 0.6)
     }));
   }
   Emit.shockRing(p.x, p.y);
@@ -3083,15 +3083,25 @@ function bulletKind(def) {
 function updateTurrets(dt) {
   for (var i = 0; i < S.turrets.length; i++) {
     var t = S.turrets[i];
+    /* **技能的装置有寿命**（`life` 留 0 = 不过期，那是道具白给的炮塔）。
+       倒着遍历（上面那个 for 改成 i--）是为了能在循环里回收 ——
+       正向删会把后面的元素跳过。 */
+    if (t.life > 0) {
+      t.life -= dt;
+      if (t.life <= 0) { S.turrets.splice(i, 1); continue; }
+    }
     if (t.muzzle > 0) t.muzzle -= dt;
     t.cd -= dt;
-    var target = nearestEnemy(t.x, t.y, 300);
+    var target = nearestEnemy(t.x, t.y, t.range > 0 ? t.range : 300);
     if (!target) continue;
     t.aim = U.angle(t.x, t.y, target.x, target.y);
     if (t.cd > 0) continue;
     t.cd = Math.max(0.08, 0.55 * Stats.cooldownMul(S.stats));
     t.muzzle = 0.07;
     var dmg = (4 + S.stats.engineering * 0.6 + S.stats.rangedDmg * 0.5) * (1 + S.stats.damage);
+    /* 技能的装置按**技能强度**算（`dmgMul`），道具炮塔按工程学那套 ——
+       两者共用这一个更新函数，所以倍率做成"乘法上的一个系数"（缺省 0 = 恒等）。 */
+    if (t.dmgMul > 0) dmg *= t.dmgMul;
     var spd = 680;
     S.bullets.push(Comp.spawn('bullet', {
       x: t.x, y: t.y, vx: Math.cos(t.aim) * spd, vy: Math.sin(t.aim) * spd,

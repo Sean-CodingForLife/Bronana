@@ -1200,6 +1200,12 @@ interface Decal {
 interface Turret {
   x: number; y: number; hp: number; maxHp: number;
   cd: number; aim: number; muzzle: number; r: number;
+  /** 寿命（**0 = 不过期** —— 道具白给的炮塔是永久的，技能放的有寿命） */
+  life: number; lifeMax: number;
+  /** 它自己看得多远（0 = 用默认 300）；技能放的装置按技能表配 */
+  range: number;
+  /** 技能强度折出来的伤害系数（**0 = 恒等**，见 `updateTurrets`） */
+  dmgMul: number;
 }
 
 interface SpawnItem { id: string; at: number; elite: boolean; boss?: boolean; }
