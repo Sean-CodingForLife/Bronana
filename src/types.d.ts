@@ -2915,6 +2915,11 @@ interface InputApi {
   _slow: boolean;
   /** 手柄：左摇杆方向 + 连接状态（键位另有内部副本，见 input.ts） */
   _pad: { x: number; y: number; active: boolean; connected: boolean; id: string };
+  /** **手柄的第一次按键**的回调（入口把它接到音频解锁上）。
+   *  为什么需要它：Gamepad API 是轮询的、**不派发 DOM 事件**，
+   *  而浏览器的自动播放策略只认 DOM 用户手势 —— 不接这一条，
+   *  纯手柄玩家的 `AudioContext` 会永远 suspended（全程无声）。 */
+  onPadGesture?: (() => void) | null;
   /** 触摸浮动摇杆：圆心 (ox,oy) 与当前方向 */
   _touch: { x: number; y: number; active: boolean; ox: number; oy: number; id: number };
   /** 可改键位（默认值必须与 settings.ts 的默认值一致） */
@@ -2943,9 +2948,20 @@ interface InputApi {
 interface SfxApi {
   enabled: boolean; volume: number;
   ctx: AudioContext | null; master: GainNode | null;
-  init(): void; resume(): void; setEnabled(v: boolean): void;
+  init(): void; /** 尝试解锁音频；返回是否已 running（被浏览器拦住时 false） */ resume(): boolean; setEnabled(v: boolean): void;
+  /** 音频被自动播放策略拦住（界面据此提示玩家点一下） */ blocked: boolean;
+  /** 滑杆值 → 感知增益（`volume^2.2`）。**唯一一处实现**，别处不许自己写 gain */
+  gainOf(v: number): number;
+  /** 改音量的唯一出口（初始化与 applySetting 都走它，保证同一条曲线） */
+  setVolume(v: number): number;
+  /** 每次播放的抖动幅度（音高/音量/起音时刻）—— 只在自检与测试里读 */
+  JITTER: { pitch: number; peak: number; when: number };
+  /** 音效声明表（自检与文档用；**唯一出处**，不是另抄一份） */
+  LIST: Array<{ id: string; label: string; note: string }>;
+  /** 定义期自检：声明表与实现是否一一对应（漏一个 = 那个音效悄悄没了） */
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
   shoot(kind?: string): void; melee(): void; kill(): void; hurt(): void;
-  levelUp(): void; buy(): void; deny(): void; explode(): void;
+  levelUp(): void; buy(): void; deny(): void; explode(): void; hit(): void;
   waveStart(): void; waveClear(): void; click(): void; pickup(): void;
 }
 

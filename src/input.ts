@@ -126,7 +126,24 @@ Input.poll = function () {
     if (key) {
       _padKeys[key] = down;
       if (down) anyDown = true;
-      if (down && !_padPrev[i]) _padOnce[key] = true;
+      if (down && !_padPrev[i]) {
+        _padOnce[key] = true;
+        /* =========================================================
+           **手柄玩家也要能解锁音频**（这一条是从 0 到 1 的修复）
+           ---------------------------------------------------------
+           浏览器的自动播放策略要求"用户手势"之后才允许出声，
+           而本项目原先只在两个 **DOM 事件**上尝试解锁：
+           `pointerdown` 与 `keydown`。
+           —— **Gamepad API 不派发任何 DOM 事件**（它是轮询的），
+           所以一个只用手柄的玩家 `AudioContext` 会永远停在 `suspended`：
+           **整个游戏无声**，而且界面上没有任何提示（他不会知道是浏览器拦的）。
+
+           这里只做一件事：把"手柄第一次被按下"这条边沿报出去，
+           由入口（`main.ts` 的 boot）决定怎么处理 —— 输入层不认识音频层，
+           这条分层约束不能为了修这个 bug 而破。
+           ========================================================= */
+        if (Input.onPadGesture) { try { Input.onPadGesture(); } catch (e) { /* 解锁失败不该影响输入 */ } }
+      }
     }
     _padPrev[i] = down;
   }

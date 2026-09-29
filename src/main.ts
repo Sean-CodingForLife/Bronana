@@ -31,6 +31,7 @@ import { S } from './sprites.ts';
 import { Scene } from './scene.ts';
 import { Settings } from './settings.ts';
 import { Storage } from './storage.ts';
+import { Slots } from './slots.ts';
 import { UI } from './ui.ts';
 import { PAL, Perf } from './utils.ts';
 
@@ -55,6 +56,7 @@ var lastDaily = null;
 var SFX_BY_INTENT: Record<string, (arg?: string) => void> = {
   shoot: function (kind) { Sfx.shoot(kind); },
   melee: function () { Sfx.melee(); },
+  hit: function () { Sfx.hit(); },
   kill: function () { Sfx.kill(); },
   hurt: function () { Sfx.hurt(); },
   explode: function () { Sfx.explode(); },
@@ -68,8 +70,10 @@ var SFX_BY_INTENT: Record<string, (arg?: string) => void> = {
 function applySetting(key, value) {
   if (key === 'sound') { Sfx.setEnabled(!!value); Music.setEnabled(!!value); }
   else if (key === 'volume') {
-    Sfx.volume = value;
-    if (Sfx.master) Sfx.master.gain.value = Sfx.enabled ? Sfx.volume : 0;
+    /* ⚠ 走 `Sfx.setVolume`，不要自己写 `master.gain.value = value` ——
+       滑杆值要过一条**感知曲线**（响度是对数感知的，线性赋值会让滑杆"不灵"）。
+       曲线只在 `audio.ts` 里实现一处，否则初始化与改设置会走两条不同的曲线。 */
+    Sfx.setVolume(value);
   } else if (key === 'music') Music.setEnabled(!!value);
   else if (key === 'speed') Game.speed = value >= 2 ? 2 : 1;
   else if (key === 'fps') R.showFps = !!value;
@@ -167,7 +171,25 @@ function initPersistence() {
   Settings.onChange(applySetting);
 
   // 账号档案（跨局成长）：必须在任何一局开始前就绪，否则第一局的结算会丢
-  Profile.init();
+  var profInit = Profile.init();
+  /* ⚠ **档案被拒时必须说出来**。三种情况要分清（`Profile.load()` 已经分了，只是没人读）：
+       · 首次启动（盘上没档）    → 静默，正常
+       · 存档读坏、已回退备份    → 记在 `Slots.lastRecovery()` 里，但**此前全项目零读取点**：
+                                  译文 `'存档损坏，已回退到上一次的备份'` 早就写好了，没人用。
+                                  玩家只会觉得"我怎么少了一半进度"。
+       · 档案被拒（版本太新/坏 JSON）→ 此前 `Profile.init` 会拿空白档**盖掉它**，
+                                  这是不可恢复的进度清零。现在不写了（见 profile.ts 的注释），
+                                  但**必须告诉玩家盘上还有一份、别去动它**。 */
+  if (profInit.discarded) {
+    console.error('[profile] 账号档案被拒，**未覆盖**（盘上原档保留）：' + profInit.reason);
+    if (UI.toast) UI.toast('账号档案读不出来（' + profInit.reason + '）—— 已保留原档案，没有覆盖它', '');
+  }
+  var rec = Slots.lastRecovery();
+  if (rec) {
+    console.warn('[storage] 读到坏档并已回退备份：' + rec.key + ' · ' + rec.reason);
+    if (UI.toast) UI.toast('存档损坏，已回退到上一次的备份', '');
+    Slots.clearRecovery();          // 只说一次：每局开局都提一遍会变成噪音
+  }
   resetPeaks();
 
   // 自动存档点：换波（进入商店）、以及本局结束。
@@ -474,6 +496,12 @@ function boot() {
   watchDpr();   // 拖到另一块显示器上：dpr 变了但 resize 不一定触发
   document.addEventListener('pointerdown', function () { Sfx.resume(); }, { once: true });
   window.addEventListener('keydown', function () { Sfx.resume(); }, { once: true });
+  /* **手柄玩家也要能解锁音频**：上面两个监听只覆盖鼠标/键盘，
+     而 Gamepad API 是轮询的、不派发 DOM 事件 —— 只用手柄的人会**全程无声**
+     且不知道原因（浏览器拦了自动播放）。输入层把"手柄第一次按下"这条边沿
+     报出来（`Input.onPadGesture`），这里接上。
+     不清除回调：`Sfx.resume()` 幂等，且浏览器可能在切标签、休眠后重新挂起。 */
+  Input.onPadGesture = function () { Sfx.resume(); };
   Game.events.on('sfx', function (d) {
     if (!d) return;
     var f = SFX_BY_INTENT[d.name];

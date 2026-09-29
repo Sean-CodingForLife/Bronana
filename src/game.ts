@@ -2148,6 +2148,14 @@ function damageEnemy(e, amount, opt) {
   e.hitFlash = 0.16;
   S.stats_total.dmg += dmg;
 
+  /* **命中音**（最高频的那一层反馈）。改造前是"开火有声、命中无声" ——
+     而玩家真正想听见的是"打着了"。这里只发**意图事件**，声音由入口桥接
+     （`main.ts` 的 `SFX_BY_INTENT`），模拟层不认识音频层。
+     ⚠ 刻意**不加命中粒子**：粒子的数量进了行为指纹（`fingerprint.mjs` 哈希
+     `s.particles.length`），而粒子配方会消费 `S.rnd()` —— 那会挪动主随机流。
+     命中火花要加就得走"确定性方向"或派生随机流，那是独立的一件事。 */
+  Game.events.emit('sfx', { name: 'hit' });
+
   if (opt.showText !== false) {
     Emit.damage(e.x + (S.rnd() - 0.5) * 10, e.y - e.r - 6, dmg, crit);
   }

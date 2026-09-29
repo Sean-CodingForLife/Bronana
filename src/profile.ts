@@ -351,7 +351,22 @@ Profile.save = function () {
 
 Profile.init = function () {
   var r = Profile.load();
-  if (!r.loaded) Profile.save();      // 首次启动就把默认档案落盘
+  /* ⚠ **只有"真的没有档案"才写默认档**（`discarded:false` 那一支）。
+     这一行原先是 `if (!r.loaded) Profile.save()` —— 把两种完全不同的情况当成一种：
+
+       · 盘上没有档案（首次启动）      → 当然要落一份默认档
+       · 盘上有档案但**被拒**（坏 JSON / 版本比当前客户端新）
+                                       → **绝不能覆盖它**
+
+     第二种情况的代价是**不可恢复的进度清零**：玩家用新版玩过之后回滚到旧客户端，
+     旧客户端判定"版本太新"→ 立刻写一份空白档盖掉真档案。
+     `.bak` 救不了这件事：`getJSONSafe` 只在 **JSON 解析失败**时回退
+     （`storage.ts`），从不对"信封拒绝"回退；而 `.bak` 里是同版本的档，同样会被拒。
+     结果是进度静默消失，只有 console 里一行字（玩家看不到）。
+
+     现在被拒时**什么都不写**：盘上留着原档案，玩家升级回新版就能继续玩。
+     调用方（`main.ts` 的 boot）会把 `reason` 抬到界面上。 */
+  if (!r.loaded && !r.discarded) Profile.save();
   return r;
 };
 
