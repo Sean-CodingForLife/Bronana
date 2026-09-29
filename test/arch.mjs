@@ -125,6 +125,13 @@ console.log('\n[3] 世界状态（会话 S）的写入者');
   const ALLOWED = {
     'game.ts': '*',
     'market.ts': '*',
+    /* 房间层（从 `game.ts` 拆出来的）：它写的是**位置**——
+       `floor` / `map` / `roomId`（翻层、进门、迷雾标记）。
+       这三个字段本来就该由"玩家在这一层走到哪了"那一层写：
+       留在 `game.ts` 里时它们是"上帝对象的一角"，拆出来之后它们是
+       **一个模块的全部职责**。写在这里而不是放宽判据，是因为
+       "谁可以写世界状态"这张名单本身就是这份架构的声明。 */
+    'chamber.ts': ['floor', 'map', 'roomId'],
     'emit.ts': ['particles', 'textParticles', 'freeParticles', 'freeTextParticles', 'visCursor', 'textCursor'],
     // 实验台：把这一间清空 / 直接改统计，好让某一屏拍得出来（不是玩法路径）
     'demo.ts': ['combineCount'],

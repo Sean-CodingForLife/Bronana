@@ -407,7 +407,13 @@ console.log('\n[5b] 环境：同一层每局长得不一样，但难度不变');
     '战场的随机流仍然只吃波次（环境只管色号/形状，不管摆在哪）');
 
   // (f) 三个消费端：地图数据、界面标题、战场数据都带着环境 id
-  const gameSrc = fs.readFileSync(path.join(ROOT, 'src', 'game.ts'), 'utf8');
+  /* ⚠ "模拟层"现在是**两份文件**：`game.ts` 与从它拆出去的 `chamber.ts`
+     （房间层：地图状态 / 迷雾 / 门 / 暗门墙 / 翻层）。
+     `enterFloor` 与那条 `floorEnter` 事件住在 `chamber.ts` 里，
+     所以这两条判据必须读**合并后的源码** —— 只读 `game.ts` 会在拆分的那一刻
+     变成"检查一个已经不存在的实现"，而它当时**确实**报红了（这正是它该做的）。 */
+  const gameSrc = [path.join(ROOT, 'src', 'game.ts'), path.join(ROOT, 'src', 'chamber.ts')]
+    .map(f => fs.readFileSync(f, 'utf8')).join('\n');
   ok(/S\.arena = Arena\.build\(n, S\.map \? S\.map\.theme : null\)/.test(gameSrc),
     'game.ts 把这一层的环境交给了战场生成');
   ok(/Dungeon\.THEME_BY_ID\[S\.map\.theme\]/.test(gameSrc), '进门事件带着环境名（界面能显示"这是哪儿"）');
@@ -448,9 +454,12 @@ console.log('\n[6] 接线：模拟层用上了地图，地图层不反向依赖�
     '每个折法声明都有恒等值（否则"没有修正的房间"会算成 NaN）');
 
   // 地图层自己的"量"确实被上层读走了（不是摆设）
-  const gameSrc = fs.readFileSync(path.join(srcDir, 'game.ts'), 'utf8');
+  /* 同上：`Dungeon.genFloor` 的调用点搬到了 `chamber.ts`（`enterFloor`），
+     所以这里读的是"模拟层的两份文件"而不是只有 `game.ts`。 */
+  const gameSrc = [path.join(srcDir, 'game.ts'), path.join(srcDir, 'chamber.ts')]
+    .map(f => fs.readFileSync(f, 'utf8')).join('\n');
   ok(/Dungeon\.foldMods\(/.test(gameSrc), 'game.ts 把地牢修正折进了刷怪用的那一份（房型 + 层主题真的生效）');
-  ok(/Dungeon\.genFloor\(/.test(gameSrc), 'game.ts 用种子长地图（同种子 = 同地牢）');
+  ok(/Dungeon\.genFloor\(/.test(gameSrc), '模拟层用种子长地图（同种子 = 同地牢）');
   ok(/Dungeon\.path\(/.test(gameSrc), '自动探索用 path() 找路（暗门默认不算通路）');
 }
 

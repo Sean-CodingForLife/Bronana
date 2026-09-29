@@ -63,7 +63,7 @@ const SYSTEMS = [
     id: 'sim', name: '模拟内核', level: 4,
     note: '每帧都在跑的那一层：纯逻辑、无 DOM、无 canvas。它**只读折好的派生值**，' +
       '不重算元进度；世界状态（78 个会话字段）的写入者只有 game.ts 与 market.ts',
-    modules: ['game.ts', 'market.ts', 'emit.ts', 'scene.ts', 'record.ts']
+    modules: ['game.ts', 'market.ts', 'emit.ts', 'scene.ts', 'record.ts', 'grid.ts', 'chamber.ts']
   },
   {
     id: 'run', name: '一局的进出', level: 5,

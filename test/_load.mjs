@@ -64,6 +64,8 @@ export const MODULES = {
   sprites: '../src/sprites.ts',
   emit:    '../src/emit.ts',
   game:    '../src/game.ts',
+  grid:    '../src/grid.ts',
+  chamber: '../src/chamber.ts',
   market:  '../src/market.ts',
   scene:   '../src/scene.ts',
   storage: '../src/storage.ts',
@@ -80,7 +82,7 @@ export const MODULES = {
 /** 模拟层（无 DOM 依赖，无头环境直接跑） */
 export const SIM_MODULES = [
   'utils', 'registry', 'selfcheck', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves', 'economy', 'art_spec', 'affixes', 'synergy', 'weapons',
-  'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'game', 'market', 'scene', 'demo',
+  'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'game', 'grid', 'chamber', 'market', 'scene', 'demo',
   'art_tiles', 'art_shaders', 'art_parallax', 'music',
   'storage', 'slots', 'settings', 'i18n', 'tutorial', 'save', 'challenges', 'camp', 'stronghold', 'forge', 'craft', 'talents', 'profile', 'danger', 'daily', 'season', 'offline', 'record', 'score', 'diag', 'crash'
 ];

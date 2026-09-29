@@ -21,6 +21,8 @@ import { Dungeon } from './dungeon.ts';
 import { Emit } from './emit.ts';
 import { Enemies } from './enemies.ts';
 import { Forge } from './forge.ts';
+import { makeChamber } from './chamber.ts';
+import { makeGrid } from './grid.ts';
 import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
@@ -107,6 +109,37 @@ var Game = ({
    所以它必须配一条测试（`test/persist.mjs [2b-2]`：game.ts 读的每个 `S.字段`
    都必须在 7 个分组里声明过）—— 谎言的护栏不能只是注释。 */
 var S: Session = null as unknown as Session;
+
+/* =========================================================
+   拆出去的两块：**房间层**（`chamber.ts`）与**空间网格**（`grid.ts`）
+   ---------------------------------------------------------
+   它们原先就住在这个文件里。拆的判据不是"短一点好看"，而是这两块
+   **各自能一句话说清自己管什么**（房间层：玩家在这一层走到哪了；
+   网格：圈里有谁），而且它们的依赖是**会话数据**而不是这个文件里的逻辑。
+
+   为什么是 `make(ctx)` 注入而不是让它们 import 本文件：
+   反过来依赖会让分层表把边算成"房间层/网格依赖模拟内核"，
+   而它们其实只依赖会话数据与少数几个回调。注入之后依赖是单向的
+   （本文件 → 它们），两边都不认识对方的名字。
+
+   ⚠ `session` 传的是**函数**而不是 `S` 本身 —— 换局时 `S` 是整体替换的，
+   存一个快照就会对着上一局的敌人/地图做查询（而且不报错，只是行为诡异）。
+   ⚠ 这两行必须在**任何调用点之前**求值：`Ch` / `Grid` 是 `var` 声明的对象，
+   在被赋值前调用它们的成员会抛 `undefined is not a function`。
+   放在 `S` 之后（`S` 也必须在它们之前声明）是有意的顺序，别随手挪走。
+   ========================================================= */
+var Grid: GridApi = makeGrid({ session: function () { return S; } });
+var Ch: ChamberApi = makeChamber({
+  session: function () { return S; },
+  wallBreakFx: function (x, y) { Emit.wallBreak(x, y); },
+  wallBreakSfx: function () { sfx('explode'); },
+  onWallBreak: function (from, to, secret) {
+    Game.events.emit('wallBreak', { from: from, to: to, secret: secret });
+  },
+  onFloorEnter: function (floor, theme, name) {
+    Game.events.emit('floorEnter', { floor: floor, theme: theme, name: name });
+  }
+});
 
 /* =========================================================
    状态机
@@ -1266,194 +1299,26 @@ Game.roomFxNote = function (type) {
 Game.ROOM_FX = ROOM_FX;
 Game.ROOM_EVENTS = ROOM_EVENTS;
 
-/* ---------------- 地图状态：当前层 / 当前房 / 破过的墙 ---------------- */
-function currentRoom() {
-  if (!S || !S.map) return null;
-  return Dungeon.roomById(S.map, S.roomId);
-}
+/* ---------------- 地图状态：当前层 / 当前房 / 破过的墙 ----------------
+   实现已搬到 `chamber.ts`（"玩家在这一层走到哪了"是它管的四件事之一）。
+   这里保留**同名转发**：本文件里有 40 多处调用点，而转发让这次拆分对
+   其余部分完全透明（少改 40 处 = 少 40 个出错的机会）。
+   ⚠ `Ch` 在文件顶部（`S` 之后）就建好了 —— 不要在这里再 `makeChamber` 一次，
+   那会得到第二个实例，它自己的 `wallsNow` 之类状态与这个不同步。
+   ⚠ 转发**不是**空壳：`ctx.session()` 每次现取 `S`，所以换局之后旧会话不会被留住。 */
+function currentRoom() { return Ch.currentRoom(); }
+function doorPoint(dir) { return Ch.doorPoint(dir); }
+function dirTo(a, b) { return Ch.dirTo(a, b); }
+function roomAtDir(cur, d) { return Ch.roomAtDir(cur, d); }
+function seeRoom(id) { return Ch.seeRoom(id); }
+function doorNearby() { return Ch.doorNearby(); }
+function recalcWalls() { Ch.recalcWalls(); }
+function hitWalls(x0, y0, x1, y1, r, dmg) { return Ch.hitWalls(x0, y0, x1, y1, r, dmg); }
+function breakWall(from, to, x?, y?) { return Ch.breakWall(from, to, x, y); }
+function enterFloor(f, opt?) { Ch.enterFloor(f, opt); }
+function floorMeanDepth() { return Ch.floorMeanDepth(); }
+function depthBonus(floor, depth) { return Ch.depthBonus(floor, depth); }
 
-/**
- * 深度的回报：越深的层，**每次收集拿得越多**（浅层 ×1 → 深井 ×2 上下）。
- *
- * 为什么它必须存在：能不能翻层是**玩家自己选时机**的 —— 打 Boss 就结束这一层，
- * 没打的房间连同它们的东西全丢。可如果"走光这一层"永远最优，那个"时机"就
- * 不是选择，只是顺序（清光 → 关底 → 下一层，唯一解）。
- * 有了它，两条路各自成立：
- *   · 走光这一层 = 次数多（每一间都是一次收集 + 一次买卖 + 一个制造回合）
- *   · 早打关底   = 单次更肥（更高的层倍率叠在后面的每一间上）
- *
- * 用的是**已有的东西**，一个新元素都没有：
- *   · 层号（已有）
- *   · 层主题的 `hpMul`（已有，它本来就写着"敌人更硬"；难点就该更肥 ——
- *     主题的文案 "菌毯洞窟：敌人更硬，孢子更多" 一直这么写，只是数值上没兑现）
- *   · `S.bonusMul`（已有的"这一间的奖励倍率"，事件房也用它）
- *
- * **一层之内也有深浅**（这一步加的）：房间的 `depth`（离入口几步）以前只用来排序，
- * 不进任何收益公式 —— 于是"往深走"只有"那里放了特殊房"这一个理由。
- *
- * 关键取舍：这一项**以本层的平均深度为基准**（`rel = depth − 平均`），不是"每深一步 +7%"。
- * 后者是一份**全局通胀**（每间房平均 +20% 废料），而用户这一轮的抱怨恰好包含"成型过快" ——
- * 加通胀会让它更快。以均值为基准之后：浅房略少、深房略多，**整层总量不变**；
- * 于是"一路冲关底"（跳过深处的支线）真的会少拿，而"绕进去清干净"才吃到那份加成。
- * 这才是"让绕路有第二个理由"，而不是把经济整体抬高。
- * 入口（depth 0）在浅层是略负的 —— 但入口不刷怪、不发波次奖励，所以游戏里没有实际影响。
- */
-function depthBonus(floor, depth) {
-  var t = S && S.map ? Dungeon.THEME_BY_ID[S.map.theme] : null;
-  var hard = t && t.hpMul ? t.hpMul : 1;
-  var f = Math.max(1, Math.floor(Number(floor) || 1));
-  var d = Math.max(0, Math.floor(Number(depth) || 0));
-  var rel = d - floorMeanDepth();
-  var mul = (1 + (f - 1) * 0.30 + rel * 0.10) * hard;
-  return Math.max(0.5, Math.round(mul * 100) / 100);
-}
-
-/** 这一层所有房间的平均深度（`rel` 的基准；没有地图时按 0 算 = 恒等） */
-function floorMeanDepth() {
-  if (!S || !S.map || !S.map.rooms.length) return 0;
-  var sum = 0;
-  for (var i = 0; i < S.map.rooms.length; i++) sum += Math.max(0, S.map.rooms[i].depth || 0);
-  return sum / S.map.rooms.length;
-}
-
-/** 生成一层并落到入口房（存档只存进度，地图**每次由种子重新长**） */
-function enterFloor(f, opt?) {
-  opt = opt || {};
-  S.floor = Math.max(1, Math.min(Dungeon.FLOORS, Math.floor(Number(f) || 1)));
-  S.map = Dungeon.genFloor(S.seed, S.floor);
-  S.roomId = S.map.start;
-  seeRoom(S.roomId);          // 入口 + 它那一圈（迷雾的第一个圈）
-  recalcWalls();
-  if (!opt.silent) {
-    Game.events.emit('floorEnter', {
-      floor: S.floor, theme: S.map.theme,
-      name: Dungeon.THEME_BY_ID[S.map.theme].name
-    });
-  }
-}
-
-/** 发现一间房（隐藏房"被发现"的唯一入口是进门或打穿它的墙）
- *
- *  **迷雾的定义在这里**（`Dungeon.visible` 只画 `seen` 的房间）：
- *  进门 = 这一间看见，**它的非密室邻房也一并看见** ——
- *  于是小地图是"见过的 + 紧挨着的一圈"，玩家仍然能规划下一步（门牌上也写着邻房是什么），
- *  但看不到远处那一层有什么。密室**不参与**这一圈：看见它等于泄露隐藏要素。 */
-function seeRoom(id) {
-  var r = Dungeon.roomById(S.map, id);
-  if (!r) return null;
-  r.seen = true;
-  var ns = Dungeon.neighbours(S.map, r);
-  for (var i = 0; i < ns.length; i++) {
-    if (ns[i].type === Dungeon.SECRET_TYPE) continue;
-    ns[i].seen = true;
-  }
-  return r;
-}
-
-/** 门在战场上的像素位置（归一化几何 × 战场尺寸） */
-function doorPoint(dir) {
-  var f = Dungeon.doorFrac(dir);
-  return {
-    x: U.clamp(f.fx * Arena.W, Arena.PAD, Arena.W - Arena.PAD),
-    y: U.clamp(f.fy * Arena.H, Arena.PAD, Arena.H - Arena.PAD)
-  };
-}
-
-/** a → b 是哪一面（没有相邻就 -1） */
-function dirTo(a, b) {
-  var D = Dungeon.DIRS;
-  for (var d = 0; d < 4; d++) if (b.x === a.x + D[d][0] && b.y === a.y + D[d][1]) return d;
-  return -1;
-}
-
-/**
- * 玩家贴着哪一扇门？（贴到门口就换房，不用按键 —— 以撒那一套）
- * 只在这一间**清干净之后**才判定：战斗中门是锁着的。
- * @returns 方向 0..3，或 -1
- */
-function doorNearby() {
-  var cur = currentRoom();
-  if (!cur || !cur.cleared) return -1;
-  var p = S.player;
-  var half = Dungeon.DOOR_HALF * Math.min(Arena.W, Arena.H);
-  var reach = p.r + 18;
-  for (var d = 0; d < 4; d++) {
-    if (!cur.doors[d]) continue;
-    var pt = doorPoint(d);
-    var near = (d === 0 || d === 2)
-      ? Math.abs(p.x - pt.x) <= half && Math.abs(p.y - pt.y) <= reach
-      : Math.abs(p.y - pt.y) <= half && Math.abs(p.x - pt.x) <= reach;
-    if (!near) continue;
-    var to = roomAtDir(cur, d);
-    if (!to) continue;
-    var lk = Dungeon.link(S.map, cur, to);
-    if (!lk || !lk.door) continue;
-    if (lk.hidden && !Dungeon.wallOpen(S.walls, S.floor, cur.id, to.id)) continue;   // 暗门要先打穿
-    return d;
-  }
-  return -1;
-}
-
-/**
- * 当前房间里"还没打穿的暗门墙"。
- * 只在**进房 / 破墙**时重算一次：模拟里每帧检查的是这一小份（最多 4 面）。
- */
-function recalcWalls() {
-  S.wallsNow.length = 0;
-  var cur = currentRoom();
-  if (!cur) return;
-  var ns = Dungeon.neighbours(S.map, cur);
-  for (var i = 0; i < ns.length; i++) {
-    var n = ns[i];
-    var lk = Dungeon.link(S.map, cur, n);
-    if (!lk || !lk.door || !lk.hidden) continue;
-    if (Dungeon.wallOpen(S.walls, S.floor, cur.id, n.id)) continue;
-    var dir = dirTo(cur, n);
-    if (dir < 0) continue;
-    var pt = doorPoint(dir);
-    S.wallsNow.push({
-      from: cur.id, to: n.id, dir: dir, x: pt.x, y: pt.y,
-      hp: Dungeon.WALL_HP, maxHp: Dungeon.WALL_HP
-    });
-  }
-}
-
-/**
- * 打墙：子弹/近战/爆炸都能打。打穿了就**发现**那间密室（它在小地图上才出现）。
- * @returns 是否打到了墙（打到了的子弹不再穿透）
- */
-function hitWalls(x0, y0, x1, y1, r, dmg) {
-  if (!S || !S.wallsNow.length || !(dmg > 0)) return false;
-  var half = Dungeon.DOOR_HALF * Math.min(Arena.W, Arena.H);
-  for (var i = 0; i < S.wallsNow.length; i++) {
-    var wall = S.wallsNow[i];
-    var t = Col.segCircle(x0, y0, x1, y1, wall.x, wall.y, r + half);
-    if (t < 0) continue;
-    wall.hp -= dmg;
-    wall.flash = 0.12;              // 渲染层据此画"刚被打中"的一下
-    if (wall.hp <= 0) breakWall(wall.from, wall.to, wall.x, wall.y);
-    else Emit.wallHit(x1, y1, 2);
-    return true;
-  }
-  return false;
-}
-
-/** 打穿一面墙（内部动作：子弹/近战打中触发，所以**不**单独录制） */
-function breakWall(from, to, x, y) {
-  if (!S) return false;
-  var already = Dungeon.wallOpen(S.walls, S.floor, from, to);
-  S.walls[Dungeon.wallKey(S.floor, from, to)] = true;
-  seeRoom(to);                    // 打穿 = 发现（密室这时才出现在小地图上）
-  recalcWalls();
-  var sec = Dungeon.roomById(S.map, to);
-  var isSecret = !!(sec && sec.type === 'secret');
-  if (!already) {
-    if (x !== undefined) Emit.wallBreak(x, y);
-    sfx('explode');
-  }
-  Game.events.emit('wallBreak', { from: from, to: to, secret: isSecret });
-  return true;
-}
 
 /**
  * 把一组"与 danger 同键名"的修正折进目标对象。
@@ -1835,13 +1700,6 @@ function pickBoon(id) {
   return true;
 }
 
-/** 方向 d 上是哪一间房（没有就 null） */
-function roomAtDir(cur, d) {
-  var D = Dungeon.DIRS;
-  if (!(d >= 0 && d < 4)) return null;
-  return Dungeon.at(S.map, cur.x + D[d][0], cur.y + D[d][1]);
-}
-
 /**
  * 进一间房。**唯一**换房间的入口（玩家走门、点小地图、自动探索都走它）。
  *
@@ -2035,42 +1893,16 @@ function nextWave() {
 
 /* =========================================================
    空间网格（子弹/近战范围查询）
+   ---------------------------------------------------------
+   实现已搬到 `grid.ts`（它只认识 `S.enemies` 与 `S.grid`，不认识武器/伤害/波次）。
+   这里保留两个**同名转发**：调用点有 8 处，而"转发"让这次拆分对
+   本文件的其余部分完全透明（少改 8 处 = 少 8 个出错的机会）。
+   ⚠ `Grid` 本身在文件顶部（`S` 之后）就建好了，这里**只**放转发 ——
+   在此处再 `makeGrid` 一次会得到第二个实例，而两个实例各自持有的
+   复用缓冲是分开的，于是"没分配数组"这件事会静默失效。
    ========================================================= */
-function gridKey(cx, cy) { return cx + ',' + cy; }
-
-function rebuildGrid() {
-  var g = S.grid, cell = g.cell, map = g.map, k;
-  for (k in map) map[k].length = 0;   // 复用单元格数组，避免每帧重建上百个小数组
-  for (var i = 0; i < S.enemies.length; i++) {
-    var e = S.enemies[i];
-    if (e.dead) continue;
-    k = gridKey(Math.floor(e.x / cell), Math.floor(e.y / cell));
-    var arr = map[k];
-    if (!arr) arr = map[k] = [];
-    arr.push(e);
-  }
-}
-
-function queryCircle(x, y, r, out?) {
-  out = out || [];
-  out.length = 0;
-  var g = S.grid, cell = g.cell;
-  var x0 = Math.floor((x - r) / cell), x1 = Math.floor((x + r) / cell);
-  var y0 = Math.floor((y - r) / cell), y1 = Math.floor((y + r) / cell);
-  for (var cx = x0; cx <= x1; cx++) {
-    for (var cy = y0; cy <= y1; cy++) {
-      var arr = g.map[gridKey(cx, cy)];
-      if (!arr) continue;
-      for (var i = 0; i < arr.length; i++) {
-        var e = arr[i];
-        if (e.dead) continue;
-        var rr = r + e.r;
-        if (U.dist2(x, y, e.x, e.y) <= rr * rr) out.push(e);
-      }
-    }
-  }
-  return out;
-}
+function rebuildGrid() { Grid.rebuild(); }
+function queryCircle(x, y, r, out?) { return Grid.queryCircle(x, y, r, out); }
 
 /* =========================================================
    伤害

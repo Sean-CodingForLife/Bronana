@@ -3145,6 +3145,57 @@ interface ArenaApi {
   inside(x: number, y: number, r?: number): boolean;
 }
 
+/* =========================================================
+   空间网格（grid.ts）
+   ---------------------------------------------------------
+   它原先住在 `game.ts` 里。拆出来的判据是"能不能单独说清楚"：
+   它只做"把敌人编进格子 + 回答圈里有谁"，不认识武器/伤害/波次/渲染。
+   `ctx.session()` 是**函数**而不是对象：换局之后会话会被整体替换。
+   ========================================================= */
+/* =========================================================
+   房间层（chamber.ts）
+   ---------------------------------------------------------
+   **与 `dungeon.ts` 的分工**（不写清楚这两个名字会互相长进去）：
+     · `dungeon.ts` = 一层怎么长出来（纯函数 `(种子, 层号) → 楼层图`）
+       + 房间图的拓扑查询。它**不读会话**。
+     · 本模块 = 玩家在这一层里**走到哪了**（会话语义）：`S.floor` / `S.roomId` /
+       `S.walls` 与房间的 `seen` 位。
+   它原先住在 `game.ts` 里。`ctx.session()` 是**函数**：换局之后会话会被整体替换。
+   ========================================================= */
+interface ChamberApi {
+  /** 当前这一间（没有会话 / 没有地图时 null —— 调用点普遍靠它做守卫） */
+  currentRoom(): DungeonRoom | null;
+  /** 门在战场上的像素位置（归一化几何 × 战场尺寸，夹进内边距内） */
+  doorPoint(dir: number): { x: number; y: number };
+  /** a → b 是哪一面（不相邻 -1）—— 把"邻居"翻译成"门在哪个方向" */
+  dirTo(a: DungeonRoom, b: DungeonRoom): number;
+  /** 某一方向上的邻房（没有则 null） */
+  roomAtDir(cur: DungeonRoom | null, d: number): DungeonRoom | null;
+  /** 发现一间房（**迷雾的唯一入口**：进门与打穿暗门都走它） */
+  seeRoom(id: string): DungeonRoom | null;
+  /** 玩家贴着哪一扇门（贴到门口就换房，不用按键）—— 方向 0..3，或 -1 */
+  doorNearby(): number;
+  /** 当前房间里"还没打穿的暗门墙"（只在进房/破墙时重算） */
+  recalcWalls(): void;
+  /** 打墙（子弹/近战/爆炸都能打）；返回是否打到了墙 */
+  hitWalls(x0: number, y0: number, x1: number, y1: number, r: number, dmg: number): boolean;
+  /** 打穿一面墙（内部动作：打中触发，所以**不**单独录制） */
+  breakWall(from: string, to: string, x?: number, y?: number): boolean;
+  /** 生成一层并落到入口房（存档只存进度，地图每次由种子重新长） */
+  enterFloor(f: number, opt?: { silent?: boolean }): void;
+  /** 这一层所有房间的平均深度（`depthBonus` 的基准；没有地图时 0） */
+  floorMeanDepth(): number;
+  /** 深度的回报：越深的层每次收集拿得越多（以本层平均深度为基准） */
+  depthBonus(floor: number, depth: number): number;
+}
+
+interface GridApi {
+  /** 重建整张表（每次敌人移动后调一次，不是每发子弹调一次） */
+  rebuild(): void;
+  /** `以 (x,y) 为心、r 为半径`圈内的活敌人。`out` 会被**先清空**（复用缓冲） */
+  queryCircle(x: number, y: number, r: number, out?: Enemy[]): Enemy[];
+}
+
 interface EmitApi {
   VIS_CAP: number; TEXT_CAP: number;
   /** 视觉强度（"减少动效"调低）：只影响画面，且**不得**消耗模拟随机数 */
