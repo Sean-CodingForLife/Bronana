@@ -2149,12 +2149,15 @@ function damageEnemy(e, amount, opt) {
   S.stats_total.dmg += dmg;
 
   /* **命中音**（最高频的那一层反馈）。改造前是"开火有声、命中无声" ——
-     而玩家真正想听见的是"打着了"。这里只发**意图事件**，声音由入口桥接
-     （`main.ts` 的 `SFX_BY_INTENT`），模拟层不认识音频层。
-     ⚠ 刻意**不加命中粒子**：粒子的数量进了行为指纹（`fingerprint.mjs` 哈希
-     `s.particles.length`），而粒子配方会消费 `S.rnd()` —— 那会挪动主随机流。
+     而玩家真正想听见的是"打着了"。
+     ⚠ 必须走 `sfx()` 助手，**不能**自己写 `Game.events.emit('sfx', {name:...})`：
+     项目已有的 6 个意图全走助手，而守卫（`test/arch.mjs` 的 [4] 节）就是用
+     `\bsfx\('name'` 这个正则对齐两边的 —— 换一种写法它看不到，于是
+     `hit` 会被判成"接线表里永远不会发的死键"（我第一版就是这么错的）。
+     ⚠ 刻意**不加命中粒子**：粒子数进了行为指纹（`fingerprint.mjs` 哈希
+     `s.particles.length`），且粒子配方会消费 `S.rnd()`（那会挪动主随机流）。
      命中火花要加就得走"确定性方向"或派生随机流，那是独立的一件事。 */
-  Game.events.emit('sfx', { name: 'hit' });
+  sfx('hit');
 
   if (opt.showText !== false) {
     Emit.damage(e.x + (S.rnd() - 0.5) * 10, e.y - e.r - 6, dmg, crit);
