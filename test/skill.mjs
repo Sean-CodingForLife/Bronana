@@ -21,7 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { installDom } from './_ctx.mjs';
-import { loadAll, SIM_MODULES } from './_load.mjs';
+import { loadAll, SIM_MODULES, holdRoom } from './_load.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -189,14 +189,46 @@ console.log('\n[3] 模拟层：自动会放，手动不按不放');
     return s;
   };
 
-  /* ---- 自动模式 ---- */
+  /* ---- 自动模式 ----
+     ⚠ **先给无敌**：`stage()` 把 4 只怪放在 160px 外、血量 1e9 —— 它们打不死，
+     而玩家会被它们贴脸打死（实测第 238 帧 `hp=0` → `state='end'`）。
+     一旦走了 'end'，后面的 `step` 就不再推进模拟，于是"冷却有没有在走"
+     这件事**根本没被测到**。无敌是这里唯一能让判据落到正确对象上的办法。 */
   const A = stage('auto');
+  A.player.invuln = 1e9;
   let castsA = 0;
   const hA = (e) => { castsA++; void e; };
   Game.events.on('skillCast', hA);
-  for (let i = 0; i < 300; i++) Game.step(Game.cfg.fixedDt, { x: 0, y: 0 });
+  for (let i = 0; i < 300; i++) {
+    A.player.invuln = 1e9;                 // 受击会把它减掉，逐帧续上
+    Game.step(Game.cfg.fixedDt, { x: 0, y: 0 });
+  }
   ok(castsA > 0, '自动模式：300 帧里自己放了 ' + castsA + ' 次技能');
   ok(A.energy < A.energyMax, '放技能真的扣了能量（' + Math.round(A.energy) + '/100）');
+
+  /* ---- 自动模式：**会一直放**，不是只放第一发 ----
+     这条判据问的是"冷却走完之后会不会再放"。写它的时候连着踩了三个坑，
+     每一个都会让下一个写这条判据的人再踩一次，所以都记在这里：
+
+       ① 这一间会自己结束（`drained && enemies.length === 0` → `endWave`）
+          → 后面的 `step` 不再推进模拟。用 `holdRoom()` 封住。
+       ② 玩家会被贴脸的怪打死（血量归零直接 `setState('end')`，
+          `roomHold` **管不着** —— 它管的是"别换房"）。用逐帧续的无敌封住。
+       ③ 怪被打死会让这一间清空 → 又回到 ①。上一节已经把它们的血设成 1e9。
+
+     判据落在**时间关系**上而不是次数上：r_swift 把火球压到 1.8s 冷却，
+     600 帧 = 10s，所以至少该放 4 次。只放 1 次说明冷却没有递减。 */
+  const held = Game.getSession();
+  holdRoom(held);
+  held.waveLeft = 9999;
+  const before = castsA;
+  for (let i = 0; i < 600; i++) {
+    held.player.invuln = 1e9;
+    Game.step(Game.cfg.fixedDt, { x: 0, y: 0 });
+  }
+  const repeat = castsA - before;
+  ok(repeat >= 4, '自动模式：**冷却走完之后会接着放**（后 600 帧又放了 ' + repeat + ' 次，冷却 1.8s）',
+    'casts=' + castsA + ' state=' + Game.state + ' hp=' + Math.round(held.player.hp));
 
   /* ---- 手动模式：不按 ---- */
   const B = stage('manual');
