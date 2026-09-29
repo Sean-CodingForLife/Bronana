@@ -665,16 +665,25 @@ Sk.make = function (ctx: SkillsCtx) {
   return Sk;
 };
 
-/* ⚠ **刻意不在模块级跑 audit，也不注册进 SelfCheck**。
-   理由：`audit()` 里那几条「owner 是不是真角色」的判据要「角色清单已注入」，
-   而模块加载的那一刻还没注入（清单由调用方给，见 `SkillsCtx`）。
-   注册一个会在启动期**误报**的自检比不注册更糟 —— 玩家会看到一张报错页，
-   而表其实是对的。所以它由调用方在注入之后显式跑：
-     · `main.ts` 的 boot（`Skills.make` 之后**立刻**跑，失败就抛）
-     · `test/skill.mjs`（量它，并守住"注入之后自检必须过"这条）
-   代价写在明面上：**没有人替我们记得跑它**。
-   所以 `test/skill.mjs` 里有一条判据专门检查"boot 里 make 之后跟着 audit" ——
-   它是一条源码形状判据，而这里只能这么守。 */
+/* ⚠ 模块级**不**跑 audit（会误报，见下面），但**登记进 SelfCheck**。
+   ---------------------------------------------------------
+   两件事必须分开看，第一版把它们当成一件，于是白丢了一道门：
+
+     · **不能在模块加载时跑** —— `audit()` 里那几条「owner 是不是真角色」的判据
+       要「角色清单已注入」，而模块加载的那一刻还没注入（清单由调用方给，见 `SkillsCtx`）。
+     · **但可以登记** —— `SelfCheck.scan()` 在 **boot 的最后**才跑，
+       而 `main.ts` 的 boot 里 `Skills.make({chars})` 排在它之前。
+       所以轮到 `audit()` 时清单**已经注入了**，那几条判据是有意义的。
+
+   而且就算顺序变了也不会炸出假阳：`audit()` 里每一处 owner 判据都夹着
+   `_charList.length &&`（没有清单**就跳过**，而不是报"owner 不是角色"）。
+   这条守卫是**当初**为了让"模块加载时跑一遍"不误报而加的，
+   现在它同时保证了"注册进启动期"是安全的 —— 代价是**清单没注入时它会静默通过**，
+   所以 `test/skill.mjs` 里另有一条判据：注入之后 audit 必须过、且必须真的查到问题
+   （喂一份假的坏表进去，它得报出来）。
+
+   剩下的那条纪律仍然靠源码形状守：`main.ts` 的 boot 里
+   `Skills.make(...)` 必须排在 `skillsRef.audit()` 之前 —— `test/skill.mjs` 会读源码对。 */
 
 /* =========================================================
    8. 登记进扩展点总账
@@ -724,5 +733,9 @@ Registry.family('skillTreeCard', {
 /* 字段 → 家族的声明（守卫读它，见 test/data-contract.mjs） */
 Registry.uses('form', 'skillForm');
 Registry.uses('payload', 'skillPayload');
+
+/* 进**必经之路**：boot 时 `SelfCheck.scan()` 会跑它一遍（不过就抛）。
+   上面那段注释说清了"为什么加载时不跑、但登记是安全的"。 */
+SelfCheck.register('Skills', Sk.audit);
 
 export { Sk as Skills };

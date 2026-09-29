@@ -303,6 +303,8 @@ src/                  ← 全部是真正的 ES 模块：import / export，没�
   data_tiers.ts       品级表（T1–T5，**唯一**的一张：合成台阶 + 词条上限 + 界面颜色）★
   data_elems.ts       元素表（4 种元素的名字 + 附带效果的机制名；武器 element 的值域）★
   curves.ts           数值曲线表（角色 / 怪物 / 刷怪节奏的成长：形状 + 常量 + 逐点表）★
+  levelup.ts          **升级池**：哪些属性在池里（防御向另标）+ 幅度与权重怎么随等级走（掷骰子仍在 game.ts）★
+  run_save.ts         **一局存档的编解码**：数值卫生 + 序列化 + 校验（纯数据变换，不推进任何状态）★
   economy.ts          货币与三模块循环：四笔钱 × 三档层级 × 两条反哺边 ★
   art_spec.ts         美术规范：12 类资源的前缀/尺寸/图集/混合/锚点 + 六道管线 + 资源归属 ★
   art_tiles.ts        瓦片集与自动规则瓦片（4 位掩码 → 16 格规则表 + 纯函数 autotile）★
@@ -379,6 +381,7 @@ test/                 ← 无头测试，直接 import src/*.ts，不经打包�
   particles.mjs       粒子发生器测试（池一致性 / 上限 / 复用残留 / 泄漏）
   packs.mjs           随机道具包测试（定价 / 概率 / 幸运 / 特殊道具联动）
   affixes.mjs         词条系统测试（表与自检 / 生成规则 / 折叠 / 五个生成点 / 存档 / 界面）★
+  run-save.mjs        存档编解码 + 升级池测试（数值卫生 / **字段顺序契约** / 校验 / 往返 / 接线形状）★
   skill.mjs           技能测试（三张表 / 每角色一棵树 / 折叠 / 两种战斗模式 / 默认档不变 / 接线形状）★
   render-check.mjs    渲染层校验（桩 canvas + 美术宪法 + 绘制预算）
   cache.mjs           缓存机制测试（命中 / 倍率 / 失效路径 / 条目与内存账目）★
@@ -795,11 +798,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 69 个 · 34037 行（另有 `types.d.ts` 3889 行） |
+| 模块 | 71 个 · 34263 行（另有 `types.d.ts` 3935 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 44 · `selfcheck.ts` 41 · `utils.ts` 29 |
-| 依赖最重的模块 | `ui.ts` 38 · `game.ts` 32 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 4108 · `ui.ts` 3043 · `sprites.ts` 1540 · `profile.ts` 1496 · `render.ts` 1416 · `dungeon.ts` 992 · `main.ts` 990 · `affixes.ts` 792 · `skills.ts` 729 |
+| 扇入最高的模块 | `registry.ts` 45 · `selfcheck.ts` 42 · `utils.ts` 30 |
+| 依赖最重的模块 | `ui.ts` 38 · `game.ts` 34 · `main.ts` 30 |
+| 超过 700 行的模块 | `game.ts` 3962 · `ui.ts` 3043 · `sprites.ts` 1540 · `profile.ts` 1496 · `render.ts` 1416 · `dungeon.ts` 992 · `main.ts` 990 · `affixes.ts` 792 · `skills.ts` 742 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -6208,9 +6211,9 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 | 维度 | 现状 |
 | --- | --- |
 | 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **52 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
+| 测试套件 | **53 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | 逐位不变：`8b90ed4f` / `08205e33` / `f4f27172`（纯重构的判据） |
-| 模块 | 69 个 · 34k 行（另有 `types.d.ts` 3.9k 行） |
+| 模块 | 71 个 · 34k 行（另有 `types.d.ts` 3.9k 行） |
 | 依赖环 | **0** |
 | 向上的边（低层认识高层） | **2 条**，都已逐条登记理由 |
 | 模块级可变状态 | 全部登记在 `test/persist.mjs` 的清单里（新增必须显式登记） |
@@ -6248,9 +6251,30 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 | --- | --- |
 | 无头环境**没有 `AudioContext`** | 音频的判据是"要排哪些音"，**不是**"声音真的出来了"。真出声只能靠人听 |
 | `test/perf.mjs` 的帧预算 | 是在本机量的，慢机器上可能假红 |
-| `game.ts` 仍有约 4.1k 行 / ~60 个公开成员 | 它是最"重"的模块（SOLID 体检的 [S] 节会列出来）。已拆出 `chamber` / `grid` / `impact` / `skills`，继续拆要动模拟层核心，属于独立任务 |
-| `src/` 还是平铺的 69 个文件 | 工具链**已经**改成目录无关（`tools/src-files.cjs` 会递归、`parity()` 会在有文件没被认领时变红），所以现在**可以**按层分目录而不会静默掉审计。只是还没做 |
-| `docs/skill-audit.md` 里 `game-feel` / `game-ai` 两张表还有几行"待审计确认" | 其余每行都有证据或测试 |
+| `game.ts` 仍有约 4.0k 行 / ~60 个公开成员 | 它是最"重"的模块（SOLID 体检的 [S] 节会列出来）。已拆出 `chamber` / `grid` / `impact` / `skills` / `run_save` / `levelup`，**下一刀见「还能拆什么」**（下面一段，带实测的闭包大小） |
+| `src/` 还是平铺的 71 个文件 | 工具链**已经**改成目录无关（`tools/src-files.cjs` 会递归、`parity()` 会在有文件没被认领时变红），所以现在**可以**按层分目录而不会静默掉审计。只是还没做 |
+
+**“还能拆什么” —— 一份量过的答案（不是感觉）**
+
+`game.ts` 是"上帝对象"的候选，但**拆它不能凭感觉**。本轮把剩下的大块逐块量了
+"要把它搬出去，得跟着搬走多少个本文件内的函数"（闭包大小 = 隐式接口宽度）：
+
+| 候选 | 要搬走的函数 | 代码行 | 结论 |
+| --- | --- | --- | --- |
+| **存档 / 读档**（`importRun` + `restoreFloor` + `applyRoomEntry`…） | **59 个** | 2141 | ❌ 它**就是**半个内核（`startWave` / `spawnEnemy` / `recalcStats` / `enterFloor` 全在里面）。搬它等于把模拟层复制一份，不是拆 |
+| **背包 / 合成 / 制造**（`addWeapon` + `combine` + `craft`…） | 23 个 | 511 | 🟡 可行，但会带走 `recalcStats` 与 `requireState`，而合成与制造的**账**已经在 `market.ts` / `camp.ts` / `craft.ts` 里 —— 再拆一次只是把同一件事切两半 |
+| **升级池** | 3 个 | ~120 | ✅ **本轮已做** → `levelup.ts`（纯数据 + 两条曲线计算） |
+| **存档编解码**（`exportRun` / `inspectRun` / 数值卫生） | 3 个 | ~150 | ✅ **本轮已做** → `run_save.ts`（并顺手让它们第一次有直测） |
+
+**这一轮改到的数**（`src/` 71 个模块 · 34263 行）：
+
+- `game.ts` 4108 → **3962** 行；新增 `run_save.ts` 226 行、`levelup.ts` 133 行
+- 顺带修出一个**真的存档格式洞**：`rerollCost` 在"还没开过商店"时是 `undefined`，
+  而 `JSON.stringify` 会把 undefined 字段**整条丢掉** —— 于是同一份存档在
+  "开商店之前存"与"开商店之后存"是**两种形状**。它由新测试的
+  "每个字段都能 JSON 往返"抓到（往返测试看不见它：读写用同一份代码）。
+- `skills.ts` 补上了 `SelfCheck.register` —— guard 体检的"没人守的家族"
+  从 **5 → 0**（技能 / 形 / 效 / 符文 / 技能树卡五张表此前没有任何守卫）。
 
 **C. 刻意不做（写了理由，避免下次又被当成"漏了"）**
 

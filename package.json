@@ -28,6 +28,7 @@
     "test:story": "node test/story.mjs",
     "test:synergy": "node test/synergy.mjs",
     "test:affixes": "node test/affixes.mjs",
+    "test:run-save": "node test/run-save.mjs",
     "test:art": "node test/art.mjs",
     "test:audio": "node test/audio.mjs",
     "art": "node tools/art-audit.mjs",

@@ -28,7 +28,9 @@ import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 import { Craft } from './craft.ts';
 import { Market } from './market.ts';
+import { Pool } from './levelup.ts';
 import { Profile } from './profile.ts';
+import { RunSave } from './run_save.ts';
 import { Skills } from './skills.ts';
 import { Stats } from './stats.ts';
 import { Synergy } from './synergy.ts';
@@ -418,6 +420,14 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
        读点（废料 / 商店价 / 敌人 / 受伤）只读结果，不每帧遍历道具。 */
     itemCost: Items.foldCosts([]),
     freeRerolls: 0,
+    /* 商店"刷新一次要多少钱"（`market.ts` 每次开商店会按波次与已刷次数重算它）。
+       这里必须给初值，理由不是"防 undefined 崩" —— 是**存档格式**：
+       `exportRun` 要写它，而"还没开过商店"时它是 `undefined`，
+       `JSON.stringify` 会把 undefined 字段**整条丢掉**，于是同一份存档
+       在"开商店之前存"与"开商店之后存"是**两种形状**。
+       0 = "还没算过"，`importRun` 读到的也是 `Math.max(0, …)`，两边一致。
+       它是 `test/run-save.mjs` 的 [2] 节"每个字段都能 JSON 往返"抓出来的。 */
+    rerollCost: 0,
     /* ---- 地牢（G 批）：地图由种子长出来，只有**进度**进存档 ---- */
     floor: 1,
     map: null,
@@ -1601,50 +1611,17 @@ function winRun() {
    升级 / 商店
    ========================================================= */
 /* =========================================================
-   升级池：**幅度与权重都是等级的曲线**（不是平表）
+   升级池：**声明表与曲线都在 `levelup.ts`**（L1 数据层），这里只掷骰子
    ---------------------------------------------------------
-   改造前这是一张固定幅度 + 固定权重的平表：第 1 级和第 40 级抽到的卡
-   强度一模一样。于是"玩家每级长多少"是一条**平线**，而怪的生命是指数
-   （第 39 间 ×27）—— 两边对不上，成长感全靠"多抽几张卡"。
-   现在两样都随等级走，各自有**数据表里的曲线**：
-     · `player.cardAmt`  —— 卡的**幅度**倍率（1.0 → 3.4）
-     · `player.cardPool` —— 池的**权重**：等级越高越偏向"站得住"
-   两处都在 `curves.ts`（唯一出处），而这里只声明"哪些属性在池里、
-   谁是防御向"。改数值去改曲线，改池子才改这张表。
+   搬出去的理由很简单：那张表是**数据**（哪些属性可以被抽到、谁是防御向），
+   两条计算是**纯函数** —— 它们不该住在一个 4100 行的模拟内核里，
+   否则"一次升级能长多少"这个问题要在内核代码里翻半天才答得上来。
+
+   留在这里的三件事恰好都是模拟层的职责：
+     · 写会话（`S.levelCards`）
+     · 消费会话的随机流（`S.rnd`）
+     · 发事件（`Game.events.emit('levelCards')`）
    ========================================================= */
-var UPGRADE_POOL: UpgradeEntryDef[] = [
-  { key: 'maxHp', amt: 3, w: 10, guard: true },
-  { key: 'maxHp', amt: 6, w: 4, guard: true },
-  { key: 'hpRegen', amt: 1, w: 5, guard: true },
-  { key: 'damage', amt: 0.05, w: 12 },
-  { key: 'damage', amt: 0.10, w: 4 },
-  { key: 'meleeDmg', amt: 3, w: 8 },
-  { key: 'rangedDmg', amt: 3, w: 8 },
-  { key: 'elementalDmg', amt: 3, w: 6 },
-  { key: 'attackSpeed', amt: 0.08, w: 10 },
-  { key: 'attackSpeed', amt: 0.16, w: 3 },
-  { key: 'critChance', amt: 0.04, w: 8 },
-  { key: 'armor', amt: 2, w: 8, guard: true },
-  { key: 'dodge', amt: 0.03, w: 6, guard: true },
-  { key: 'speed', amt: 0.06, w: 8 },
-  { key: 'luck', amt: 4, w: 6 },
-  { key: 'harvesting', amt: 4, w: 6 },
-  { key: 'pickupRange', amt: 6, w: 6 },
-  { key: 'range', amt: 0.06, w: 6 },
-  { key: 'lifesteal', amt: 0.03, w: 5, guard: true },
-  { key: 'engineering', amt: 4, w: 5 }
-];
-
-/** 一张升级卡在**当前等级**下的实际幅度（唯一读法；界面与模拟都走它） */
-function cardAmtAt(entry, level) {
-  var mul = Curves.at('player.cardAmt', level);
-  return entry.amt * mul;
-}
-
-/** 一张升级卡在**当前等级**下的抽中权重（防御向的随等级抬） */
-function cardWeightAt(entry, level) {
-  return entry.guard ? entry.w * Curves.at('player.cardPool', level) : entry.w;
-}
 
 /**
  * 抽 `LEVELUP_CARDS` 张互不重复的升级卡。
@@ -1657,14 +1634,12 @@ function rollLevelCards() {
   var used = {};
   var guard = 0;
   while (S.levelCards.length < LEVELUP_CARDS && guard++ < 200) {
-    var entry = U.pickWeighted(UPGRADE_POOL.map(function (e) {
-      return { w: cardWeightAt(e, lvl), e: e };
-    }), S.rnd).e;
-    var key = entry.key + ':' + entry.amt;
+    var entry = U.pickWeighted(Pool.weighted(lvl), S.rnd).e;
+    var key = Pool.cardId(entry);
     if (used[key]) continue;
     used[key] = true;
     S.levelCards.push({
-      key: entry.key, amt: cardAmtAt(entry, lvl), base: entry.amt,
+      key: entry.key, amt: Pool.amountAt(entry, lvl), base: entry.amt,
       level: lvl, guard: !!entry.guard
     });
   }
@@ -3471,107 +3446,25 @@ Game.newRun = function (charId, seed, danger, opening, smods, skillBuild) {
    只存"进度"，不存场上实体（怪/子弹/粒子/贴花）：那些是派生状态，
    恢复时由 startWave 重新铺开即可。代价是**随机数流不会接着原来的走** ——
    恢复的是进度，不是"同一局的未来"（那需要整局重放）。
+
+   ⚠ **编解码在 `run_save.ts`**（`RunSave`）。这里只做一件事：
+   把"哪几个字段属于存档"摊平传过去。为什么要素数摊平而不是把 `S` 递进去 ——
+   那样 `run_save.ts` 就得认识 `Session` 的 78 个字段里哪几个是存档，
+   而"哪几个是存档"正是这张实参表在回答的问题（它自己就是那份文档）。
    ========================================================= */
 Game.exportRun = function () {
   if (!S || !S.player) return null;
-  var p = S.player;
-  return {
-    char: S.charDef.id,
-    seed: S.seed,
-    danger: S.danger,          // 续玩必须带着难度，否则读档会静默降级成第 0 级
-    opening: S.opening,        // 天赋产物同理：不带着它，读档就把养成静默丢了
-    wave: Game.wave,
+  return RunSave.serialize({
+    sess: S,
+    waves: Game.wave,
     speed: Game.speed,
-    level: p.level,
-    xp: p.xp,
-    hp: Math.max(1, Math.round(p.hp)),
-    scrap: Math.round(p.scrap || 0),
-    upgrades: U.cloneObj(p.upgrades),
-    /* `p` = 为这一把付过多少废料（回收价的上限，见 data_weapons.ts 的 salvageOf）。
-       它必须进存档：不进的话"买一把 → 存档 → 读档 → 回收"就能把成本洗掉，
-       套利换个入口又回来了。老存档没有这个字段 → 0（当作捡来的，不受限）。
-       `a` = 词条（`Affixes.toSave` 的 `[id, 档, 值]` 三元组）—— 它同样是**这一局的
-       随机产物**：不存的话，读档会让每件装备的词条重滚一遍（玩家看着的装备变了，
-       而且"读档刷词条"会变成一条稳定的刷法）。 */
-    weapons: p.weapons.map(function (w) {
-      return { id: w.id, t: Weapons.tierOf(w), p: Math.floor(Number(w.paid) || 0), a: Affixes.toSave(w.affixes) };
-    }),
-    items: p.items.map(function (it) { return { id: it.def.id, a: Affixes.toSave(it.affixes) }; }),
-    totals: {
-      kills: S.stats_total.kills, scrap: Math.round(S.stats_total.scrap),
-      dmg: Math.round(S.stats_total.dmg), taken: Math.round(S.stats_total.taken),
-      healed: Math.round(S.stats_total.healed), waves: S.stats_total.waves
-    },
-    /* **营地不在一局存档里了**：设施 / 建造顺序 / 那笔钱现在都是**账号资产**
-       （`Profile.campOwned()` / `Profile.campRow()` / `Profile.wallet.material`），
-       它们本来就跨局活着，一局存档再存一份只会制造两个真相。
-       会话里与制造有关的只剩 `craftUsed`（这一波用过哪几条产线），见下面。 */
-    /* 本局打到多少材料（**只用于展示**；材料是即时进钱包的，不靠结算再发） */
-    materialEarned: Math.round(S.materialEarned || 0),
-    // 据点等级同理：它是开局修正的来源，不带着读档会静默降级成"没有据点"
     keep: S.keep,
-    /* **技能构筑**：与 keep/forge 同一理由 —— 存的是"这一局开局时的那一份"。
-       不带它，读档会把"我这一局带了什么技能"静默丢掉（技能栏空着，
-       而玩家记得自己点过）。 */
-    skillBuild: (S.skillBuildSource || []).slice(),
-    /** 图纸：同样是一局开局修正的来源（存的是**开局时**那一份，见 importRun） */
-    forge: Object.keys(S.forge || {}),    /* ---- 地牢进度 ----
-       地图**不进存档**（它由种子长出来，同一个种子必然同一张图），
-       存的是"走到哪了"：层号 / 当前房 / 打过的房 / 破过的墙 / 发现过几间密室。
-       这样存档小、且回放与成绩码仍然只需要种子。 */
-    floor: S.floor,
-    room: S.roomId,
-    roomsCleared: clearedIds(),
-    roomsSeen: seenIds(),
+    forge: Object.keys(S.forge || {}),
+    cleared: clearedIds(),
+    seen: seenIds(),
     walls: Object.keys(S.walls),
-    secretSeen: S.secretsFound || 0,
-    /** 打倒过哪几只 Boss（剧情碎片按 id 认；坏档里认不出的会在读档时丢掉） */
-    bossesDown: Object.keys(S.bossesDown || {}),
-    coreEarned: Math.max(0, Math.round(S.coreEarned || 0)),
-    /** 层间契约：已挑的那条 + 还没挑的候选（都是本局状态） */
-    boon: S.boon,
-    pendingBoons: S.pendingBoons.slice(),
-    packsOpened: S.packsOpened || 0,
-    packSpent: S.packSpent || 0,
-    /* ---- 商店的"此刻"（存档点就在商店里，所以这些必须跟着走）----
-       以前这些都不进存档，读档时 `openShop` 会**重掷一次货架**：
-       你看着的货变了、刷新价跌回最低（可以反复存读刷便宜刷新）、锁定的商店自己解锁。 */
-    offers: S.offers.map(function (o) {
-      return { t: o.type, id: o.def.id, price: o.price, sold: !!o.sold, tier: o.tier || 0,
-        /* 货架上的词条也要存：不存的话读档会把这一屏货**重滚一遍** ——
-           玩家看着的那件带"锋锐 T2"的匕首变成了别的词条（与"读档换货"同一类问题，
-           而这一条更隐蔽：货名、价格、档位全都没变）。 */
-        a: Affixes.toSave(o.affixes || null) };
-    }),
-    /** 合成了几次（本局统计 / 结算展示；读档不该把它清零） */
-    combineCount: S.combineCount || 0,
-    /** 这一间的房间效果（折出来的那一份）：商店房的「货架 +2 / 九折」就是它。
-        为什么不重算而是存下来 —— 房间内容里带着**一次性**的进门效果（回血/给废料），
-        读档时再跑一遍等于白送（`applyRoomEntry` 只在真进门时调用）。 */
-    roomFx: {
-      shopSlots: (S.roomFx && S.roomFx.shopSlots) || 0,
-      shopDiscount: (S.roomFx && S.roomFx.shopDiscount) || 0,
-      fastMul: (S.roomFx && S.roomFx.fastMul) || 0,
-      slowMul: (S.roomFx && S.roomFx.slowMul) || 0
-    },
-    /** 造了几件（同上） */
-    craftCount: S.craftCount || 0,
-    /** 这一波用掉的产线（存档点在商店里，所以它必须跟着走 —— 否则读档可以把产线刷回来） */
-    craftUsed: (S.craftUsed || []).slice(),
-    /** 本局累积的合金（合成产出；结算入账，**读档不该丢**） */
-    alloy: S.alloy || 0,
-    rerolls: S.rerolls || 0,
-    rerollCost: S.rerollCost,
-    shopLocked: !!S.shopLocked,
-    shopBonus: S.shopBonus || 0,
-    freeRerolls: S.freeRerolls || 0,
-    /** 随机流的状态：不带着它，读档后所有掷骰从种子起点重来 */
-    rndState: (S.rnd && S.rnd.state) ? S.rnd.state() : undefined,
-    /** 还没选的升级（存档点若正好压着一次升级，丢了就是白丢一级） */
-    pendingLevels: p.pendingLevels || 0,
-    /** 这一局在事件房见过的遭遇（剧情碎片按它记账） */
-    runEvents: (S.runEvents || []).slice()
-  };
+    bossesDown: Object.keys(S.bossesDown || {})
+  });
 };
 
 /** 这一层里已清 / 已发现的房间 id（存档用；地图本身由种子重建） */
@@ -3588,51 +3481,12 @@ function seenIds() {
   return out;
 }
 
-/**
- * 存档里的数值统一夹取：**非有限数一律归 0**，有限数封在 ±`MAX_SAFE_INTEGER` 内。
- *
- * 为什么必须在**入口一次**做掉：`JSON.parse('1e999')` 是合法 JSON，解析出来就是
- * `Infinity`；而每个字段各自只写了 `Math.max(0, …)` 这种**单侧**夹取，Infinity 一路穿过去，
- * 然后 `JSON.stringify(Infinity)` 是 `null` —— 数值在**下一次存档时被悄悄吃掉**
- * （废料 → null → 再读档变 0，静默丢进度）。更狠的是 `wave: 1e308`：它会进 `endWave`
- * 的奖励公式 `(8 + wave*3) * …`，一次结算就把 scrap / campPoints / 总统计全变成
- * Infinity（然后同样被存成 null）。写在一处而不是散在十几个 `Math.max` 旁边，
- * 因为这是"外部输入"的边界，不是某个字段自己的语义。
- *
- * 就地改写调用方传进来的那份（都是刚解析出来的存档），不额外分配。
- */
-function sanitizeSaveNumbers(v, depth) {
-  if (typeof v === 'number') {
-    if (!isFinite(v)) return 0;
-    return v > MAX_SAFE ? MAX_SAFE : (v < -MAX_SAFE ? -MAX_SAFE : v);
-  }
-  if (!v || typeof v !== 'object' || depth > 6) return v;
-  if (Array.isArray(v)) {
-    for (var i = 0; i < v.length; i++) v[i] = sanitizeSaveNumbers(v[i], depth + 1);
-    return v;
-  }
-  for (var k in v) {
-    if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
-    v[k] = sanitizeSaveNumbers(v[k], depth + 1);
-  }
-  return v;
-}
-var MAX_SAFE = Number.MAX_SAFE_INTEGER;
-
 /** 只看不取：校验一份存档能不能用（给"继续上一局"按钮判断用） */
 Game.inspectRun = function (data) {
-  if (!data || typeof data !== 'object') return null;
-  var def = Chars.BY_ID[data.char];
-  if (!def) return null;
-  var wave = Math.floor(Number(data.wave));
-  if (!isFinite(wave) || wave < 1) return null;
-  /* 上界不是"平衡"而是**数值卫生**：波次进 `endWave` 的 `(8 + wave*3)` 与难度插值，
-     1e308 这种"合法 JSON 的巨数"会把废料打成 Infinity（见 sanitizeSaveNumbers）。 */
-  if (wave > 9999) wave = 9999;
-  var lvl = Math.floor(Number(data.level));
-  if (!isFinite(lvl) || lvl < 1) lvl = 1;
-  if (lvl > 9999) lvl = 9999;
-  return { char: def.id, charName: def.name, wave: wave, level: lvl };
+  return RunSave.inspect(data, function (id) {
+    var def = Chars.BY_ID[id];
+    return def ? def.name : '';
+  });
 };
 
 /**
@@ -3644,7 +3498,7 @@ Game.inspectRun = function (data) {
 Game.importRun = function (data) {
   if (!data || typeof data !== 'object') return null;
   // 外部输入的第一道（也是唯一一道）卫生检查：非有限数不许进会话
-  sanitizeSaveNumbers(data, 0);
+  RunSave.sanitizeNumbers(data, 0);
   var info = Game.inspectRun(data);
   if (!info) return null;
 

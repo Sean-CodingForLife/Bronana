@@ -69,6 +69,8 @@ export const MODULES = {
   chamber: '../src/chamber.ts',
   impact:  '../src/impact.ts',
   market:  '../src/market.ts',
+  levelup: '../src/levelup.ts',
+  run_save: '../src/run_save.ts',
   scene:   '../src/scene.ts',
   storage: '../src/storage.ts',
   slots:   '../src/slots.ts',
@@ -85,6 +87,12 @@ export const MODULES = {
 export const SIM_MODULES = [
   'utils', 'registry', 'selfcheck', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves', 'economy', 'art_spec', 'affixes', 'synergy', 'weapons',
   'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
+  /* 从 `game.ts` 拆出去的两块（都是"数据 ↔ 数据"的变换，不推进任何状态）：
+     `levelup` = 升级池（声明表 + 两条随等级走的纯计算），
+     `run_save` = 一局存档的编解码。它们排在 `game` 之后只是顺读，
+     实际顺序无关 —— `game.ts` import 它们，加载器不做拓扑排序，
+     但 ESM 的依赖图会先解析被 import 的那一份。 */
+  'levelup', 'run_save',
   'art_tiles', 'art_shaders', 'art_parallax', 'music',
   /* 技能表只依赖 `chars` / `elems` / 注册表与自检，所以它与模拟层同批加载；
      它**不认识** `Game`（模拟层反过来读它的 `fold`），所以顺序无关紧要 ——

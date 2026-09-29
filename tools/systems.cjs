@@ -32,7 +32,18 @@ const SYSTEMS = [
     id: 'data', name: '数据表', level: 1,
     note: '纯数据 + 总账登记 + 自检；被模拟 / 界面 / 元进度三处读，自己不认识玩法',
     modules: ['data_tiers.ts', 'data_elems.ts', 'curves.ts', 'economy.ts', 'art_spec.ts', 'affixes.ts', 'data_weapons.ts', 'data_items.ts', 'data_chars.ts',
-      'enemies.ts', 'stats.ts']
+      'enemies.ts', 'stats.ts',
+      /* 升级池：一张声明表（哪些属性在池里、谁是防御向）+ 两条随等级走的纯计算。
+         它和 `data_weapons.ts` 是同一类东西 —— 数据，不是逻辑；掷骰子仍在 game.ts。 */
+      'levelup.ts',
+      /* `run_save.ts`（一局存档的编解码）挂在**数据层**，与 `affixes.ts` 同层的理由：
+         它是"数据 ↔ 数据"的变换，不推进任何状态、不认识模拟内核。
+         ⚠ 我第一版把它放到了 **L0**（想着"它不推进状态，所以最底"），
+         而它 import 了 `affixes.ts` / `data_weapons.ts`（都是 L1）——
+         于是架构门当场报出**两条新的向上边 `mech→data`**。
+         这条尺子在这件事上是对的：决定一个模块坐哪的**不是它的性质，是它的依赖**。
+         放 L1 之后 `game.ts`（L4）→ 它（L1）仍然是一条向下的边。 */
+      'run_save.ts']
   },
   {
     id: 'dungeon', name: '地牢与内容', level: 2,

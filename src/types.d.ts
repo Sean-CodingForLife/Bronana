@@ -3383,6 +3383,52 @@ interface SkillsApi {
   audit(): { ok: boolean; problems: string[]; counts: Record<string, number> };
 }
 
+/**
+ * 一局存档的编解码（`run_save.ts`）。
+ *
+ * ⚠ 它读的是**输入载荷**而不是会话对象：`game.ts` 在调用点把
+ * "哪几个字段属于存档"摊平传进来 —— 那张字段表**就是**答案，
+ * 而让本模块认识 `Session` 会把那个答案埋回 78 个字段里。
+ */
+interface RunSaveInput {
+  sess: Session;
+  /** 当前的间号（`Game.wave`）—— 模拟层的值，不由会话持有 */
+  waves: number;
+  /** 游戏速度（`Game.speed`）—— 同上 */
+  speed: number;
+  keep: Record<string, number>;
+  forge: string[];
+  cleared: string[];
+  seen: string[];
+  walls: string[];
+  bossesDown: string[];
+}
+
+interface RunSaveApi {
+  /** 外部输入的**数值卫生边界**：非有限数归 0、有限数封在 ±MAX_SAFE_INTEGER。
+   *  就地改写传入的对象（都是刚解析出来的存档）。 */
+  sanitizeNumbers(v: unknown, depth?: number): unknown;
+  /** 会话 → 纯数据。**字段顺序是契约的一部分**（见文件头）。 */
+  serialize(input: RunSaveInput): Record<string, unknown>;
+  /** 只看不取：校验一份存档能不能用。`charOf(id)` 返回角色名，空串 = 没有这个角色。 */
+  inspect(data: Record<string, unknown> | null | undefined,
+    charOf?: (id: string) => string): { char: string; charName: string; wave: number; level: number } | null;
+}
+
+/** 升级池（`levelup.ts`）：声明表 + 两条随等级走的纯计算 */
+interface UpgradePoolApi {
+  LIST: UpgradeEntryDef[];
+  /** 一条在当前等级下的实际幅度（唯一读法） */
+  amountAt(entry: UpgradeEntryDef, level: number): number;
+  /** 一条在当前等级下的抽中权重（防御向的随等级抬） */
+  weightAt(entry: UpgradeEntryDef, level: number): number;
+  /** 摊平成 `U.pickWeighted` 要的形状（`{ w, e }`），免得调用方自己算一遍 */
+  weighted(level: number): Array<{ w: number; e: UpgradeEntryDef }>;
+  /** 一张卡的稳定标识（同 key 同基准幅度 = 同一张） */
+  cardId(entry: UpgradeEntryDef): string;
+  audit(): { ok: boolean; problems: string[]; counts: Record<string, number> };
+}
+
 interface EmitApi {
   VIS_CAP: number; TEXT_CAP: number;
   /** 视觉强度（"减少动效"调低）：只影响画面，且**不得**消耗模拟随机数 */
