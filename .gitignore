@@ -87,3 +87,7 @@ ui-shots/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 曲线表的生成中间产物：由 tools/gen-curve-tables.py 写出，再贴进 src/curves.ts。
+# 它是**过程文件**不是产物 —— 入库只会多出一份会漂的第二来源。
+tools/_curve-tables.txt

@@ -4,7 +4,7 @@
 >
 > ## 为什么用 skill 当判据
 >
-> 这份仓库有自己的尺子（`pnpm verify` 的 13 道门），但它们量的是**内部一致性**
+> 这份仓库有自己的校验（`pnpm verify` 的 13 道门），但它们量的是**内部一致性**
 > （表 ↔ 运行时、家族有没有守卫、死代码…）。它们回答不了"**行业上这件事该怎么做**"。
 > skill 里的清单正好补这一半：它们是**外部判据**，而且刻意写成引擎无关。
 >
@@ -40,7 +40,7 @@
 | ⑤ | `game-feel` | 有命中/击杀/爆炸/受击的对反馈 | `game.ts` + `render.ts`（shake/flash/飘字） |
 | ⑥ | `procedural-gen` | 地图与掉落全靠种子生成 | `dungeon.ts` + `game.ts` 的 `S.rnd` |
 | ⑦ | `performance-optimization` | 有 300 怪压力场景与帧预算 | `test/perf.mjs` + `emit.ts` 的对象池 |
-| ⑧ | `roguelike` | **体裁判据**（按 roguelite 取适用面） | 整体 |
+| ⑧ | `roguelite` | **体裁判据**（战斗模块的类型 —— 本作是**实时动作 roguelite**，不是回合制 roguelike） | 整体 |
 | ⑨ | `game-ai` | 敌人决策 | `ai.ts` |
 
 ---
@@ -92,7 +92,7 @@
 | 一次性播放器正确释放 | ✅ | `osc.start(t0); osc.stop(t0 + dur + 0.04)` | — |
 | 自动播放被拦的兜底与提示 | ✅ | `Sfx.resume()` 返回是否 running 并置 `blocked`；`Input.onPadGesture` 覆盖**纯手柄玩家**（Gamepad API 不发 DOM 事件） | `blocked` 的界面提示文案仍靠 toast（没有常驻指示） |
 | 音频设置项齐全 | ✅ | `sound` / `music` / `volume` / **`sfxVolume`** / **`musicVolume`** 五项，UI 控件由 `test/registry.mjs` 的 `WIDGET_OF` 强制 | 没有"每类音效单独调"（本项目的音效数量还不需要） |
-| 自检 / 家族登记 | ✅ | `audio.ts` 与 `music.ts` 都补齐四件套（`LIST`/`audit`/`SelfCheck.register`/`Registry.family`） | — |
+| 自检 / 家族登记 | ✅ | `audio.ts` 与 `music.ts` 都补齐这四步（`LIST`/`audit`/`SelfCheck.register`/`Registry.family`） | — |
 | 排音行为有测试（不只是源码形状） | ✅ | `test/audio.mjs` [1c] **驱动真实调度器**按 16 格走：验补空隙真的多排音、换挡真的等满一小节、打击层真的分档 | 仍然验不到"真的出声"（无头环境没有 `AudioContext`） |
 
 ### ④ `save-systems`
@@ -143,7 +143,13 @@
 | 有工具量"花在谁身上" | ✅ | `tools/draw-census.mjs`（按调用来源与 phase 归类） | — |
 | 预算进 CI | ✅ | `pnpm test` 含 `perf.mjs`；CI 门 2 跑它 | — |
 
-### ⑧ `roguelike`（**按 roguelite 取适用面**）
+### ⑧ `roguelite`（**战斗模块的类型**：实时动作 roguelite，不是回合制 roguelike）
+
+> ⚠ 术语订正（2026-09）：这一节以前叫 `roguelike`，靠一句"按 roguelite 取适用面"
+> 打补丁。**本作的战斗模块是 roguelite** —— 实时动作、有元进度、有"继续这一局"的存档，
+> 而 roguelike 的三个标志（回合制 / 网格制 / 单局不可逆）它一个都不占。
+> 名字错了会带来一个具体的后果：底下那张表里"**回合制 / 网格制** ➖ 不适用"这一行
+> 本来是在为一个不属于本作的类型打分。名字改对之后，那一行才是诚实的。
 
 | 判据 | 状态 | 证据 | 差距 |
 | --- | --- | --- | --- |
@@ -170,7 +176,7 @@
 
 > **更新（收尾轮）**：批次 A 全部落地；批次 B 的 6 / 7 / 8 / 9 / 10 **全部落地**
 > （8 = 命中定帧做成设置项，默认关所以指纹不变；9 = 存档迁移链 v1→v2 + 旧档测试）。
-> 另加三把新尺子：`tools/hardcode-audit.cjs`（同一个概念写了几遍）、
+> 另加三把新校验：`tools/hardcode-audit.cjs`（同一个概念写了几遍）、
 > `tools/solid-audit.cjs`（SOLID 五条各自量成一个数）、
 > `tools/readme-stats.cjs`（README 存量表与实测对账）。
 > 逐条状态见下方标注。
@@ -189,7 +195,7 @@
    ✅ **已做**：`JITTER = {pitch:0.06, peak:0.08, when:0.003}` + `vary()`。
 3. **"减少屏幕抖动/闪烁"设置项**：`settings.ts` 加一项 + `render.ts` 读它。
    ✅ **已做**：`reduceMotion`（同时把抖动归零、粒子抽稀）。
-4. **`audio.ts` 补齐四件套** —— ✅ **已做**：`Sfx.LIST` / `audit` / `SelfCheck.register` / `Registry.family`。
+4. **`audio.ts` 补齐这四步** —— ✅ **已做**：`Sfx.LIST` / `audit` / `SelfCheck.register` / `Registry.family`。
 5. **超宽屏/窄屏进入界面截图用例** —— ⏳ 未做：`ui-shot` 已支持 `--sizes`，清单里仍只列 `1280x720`。
 
 ### 批次 B —— **会改行为**（要更新指纹基线 + 写 `CHANGELOG`）
@@ -209,7 +215,7 @@
     （用"上一层已经响过的音"补，所以在小调五声里不会跑调）；判据也换成了
     **驱动调度器数音数**的行为测试（`test/audio.mjs` [1c]），源码文本检查拦不住"换了个写法"。
 
-### 批次 C —— 收尾轮新增的三把尺子（都不是"加功能"，是"让质量可验证"）
+### 批次 C —— 收尾轮新增的三条校验（都不是"加功能"，是"让质量可验证"）
 
 11. **硬编码体检** —— `tools/hardcode-audit.cjs`。判据**不是**"源码里有几个数字"
     （那个数毫无意义：渲染层里 `6/8/12/16` 各出现几十次，因为它们是像素几何量），

@@ -7,6 +7,12 @@
 > **它不判定本作"好不好"** —— 判定在 `README.md` 的「全量测试」那一节，
 > 需要两边一起读。这里只保证一件事：**每个数字都能追到出处**，
 > 追不到的就写 `未验证`，不编。
+>
+> ⚠ **数值曲线另有三份专题**（调难度/成长曲线时看那三份，不是这份）：
+> · [`scaling-benchmarks.md`](scaling-benchmarks.md) —— **七款游戏的敌人生命/伤害涨幅横向对照**
+>   + 生命:伤害 比值 + 精英模型 + 阵亡分布 + Bronana 站在哪。**先看这份。**
+> · [`scaling-isaac-gungeon.md`](scaling-isaac-gungeon.md) —— 以撒 / 地牢明细
+> · [`scaling-ror2-vs-sts.md`](scaling-ror2-vs-sts.md) —— RoR2 / VS / 杀戮尖塔明细
 
 ## 怎么读标注
 

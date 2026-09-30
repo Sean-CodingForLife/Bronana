@@ -46,7 +46,7 @@ pnpm run guards        # 家族与模块守卫
 
 ---
 
-## 家法：每个概念都要"四件套齐全"
+## 家法：每个概念都要"四步（声明 · 注册 · 自检 · 测试）齐全"
 
 这是这个仓库最核心的约定。任何一个新概念（一种货币、一种设施、一种粒子、一条难度修正…）
 都要有下面四样，**缺任何一样都会被审计工具点名**：
@@ -200,13 +200,19 @@ devDependencies 宽松一些（构建期工具），但**加之前最好先开 i
 
 ## 文档在哪
 
+全部文档的索引在 [`docs/README.md`](docs/README.md)。按**读者**分：
+
 | 文件 | 写什么 |
 | --- | --- |
-| [`README.md`](README.md) | **主文档，非常长**。每个系统的设计取舍、失败史、踩过的坑 |
-| [`CHANGELOG.md`](CHANGELOG.md) | 玩家可感知的变化 + 已知问题 |
+| [`README.md`](README.md) | **门面**。玩法 / 操作 / 引擎与架构参考 / 性能 / 已知取舍 —— **只讲现在是什么样、为什么是这样** |
+| [`docs/history/`](docs/history/README.md) | **交付记录**。逐轮改了什么、踩了什么坑、量出了什么（README 从 6305 行瘦回 1800 行的原因在这里） |
+| [`docs/requirements.md`](docs/requirements.md) | **需求账本**。每一条需求 + 现状 + 证据；讨论在这里留痕 |
+| [`CHANGELOG.md`](CHANGELOG.md) | **变更史**。玩家可感知的变化（短，面向玩家） |
+| [`docs/external-benchmarks.md`](docs/external-benchmarks.md) | **外部参考**。同类游戏的公开设计数字（带来源强度标注） |
+| [`docs/skill-audit.md`](docs/skill-audit.md) | **自检**。按行业判据逐条体检本作 |
 | [`SECURITY.md`](SECURITY.md) | 安全模型与漏洞报告 |
-| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | 协作约定 |
-| `docs/external-benchmarks.md` | 外部同类游戏的公开设计数字（带来源强度标注） |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) | 协作约定（含 AI 生成内容那一节） |
 
-> `README.md` 有 **450KB**，请用编辑器的搜索而不是通读。
-> 章节标题是稳定的，可以直接跳。
+> `README.md` 现在有 **1800 行**，可以通读，开头有目录。
+> **不要再往它里面追加交付记录** —— 新的一轮追加到 `docs/history/` 的末尾（或另起一卷）。
+> 这条是硬约定：它曾经漂到 6305 行，其中 76.6% 都是逐轮的交付记录。
