@@ -160,6 +160,11 @@ console.log('\n[4] 合金的来源：回收旧装备 + 结算基础产出（**�
   ok(rep.growth === 0 && Profile.growth() === 0, '结算**不发**养成代币（产出点已搬进训练）', rep.growth + '/' + Profile.growth());
 
   Profile.addGrowth(999);
+  /* ⚠ **图纸现在是局内的**（M1）：`Game.forgeNode` 需要一个会话 ——
+     以前这一段走 `Profile.forgeNode`（账号侧），所以不用开局。
+     现在要起一局，并且**把成长点给到局内**（那是图纸的钱）。 */
+  Game.newRun('ranger', 4242, 0, null, null);
+  Game.getSession().growth = 999;
   const order = ['basic', 'recycle', 'extract', 'craft', 'fuse', 'quench', 'master', 'mass', 'furnace', 'myth'];
   /* 「神话图纸」是**唯一**要核心材料的那一张（养成那一侧的关键产出）。
      这条断头路是本轮补上的：核心材料能从关底 Boss 赚到、能进档案，
@@ -168,27 +173,28 @@ console.log('\n[4] 合金的来源：回收旧装备 + 结算基础产出（**�
      把它算成失败会让这条断言变成假的）。 */
   const firstFail = [];
   for (const id of order) {
-    if (!Profile.forgeNode(id).ok) firstFail.push(id);
+    if (!Game.forgeNode(id).ok) firstFail.push(id);
   }
   ok(firstFail.length === 1 && firstFail[0] === 'myth',
-    '没有核心材料时只有「神话图纸」点不了（其余 9 张照常）', firstFail.join(','));
-  const mythChk = Profile.canForge('myth');
-  ok(mythChk.ok === false && mythChk.core === 2 && /核心材料/.test(mythChk.reason) && /Boss/.test(mythChk.reason),
-    '「神话图纸」明确报"核心材料不够"，并指出只有关底 Boss 掉', mythChk.reason);
-  Profile.addCore(2);
-  const coreNow = Profile.core();
-  const fails = ['myth'].filter(id => !Profile.forgeNode(id).ok);
-  ok(fails.length === 0 && Profile.isForged('myth'), '给了核心材料之后「神话图纸」解锁成功', fails.join(','));
-  ok(Profile.core() === coreNow - 2 && Profile.core() === 0,
-    '点「神话图纸」真的扣了 2 个核心材料（' + coreNow + ' → ' + Profile.core() + '）');
-  const allForged = order.filter(id => !Profile.isForged(id));
+    '没有遗物时只有「神话图纸」点不了（其余 9 张照常）', firstFail.join(','));
+  const mythChk = Game.canForge('myth');
+  ok(mythChk.ok === false && mythChk.relic === 1 && /遗物/.test(mythChk.reason),
+    '「神话图纸」明确报"遗物不够"，并指出它由经营的关键建筑产出', mythChk.reason);
+  /* ⚠ **M4 改的语义**：「神话图纸」原来花 `core`（核心材料）—— 而 `core` 是
+     **战斗 → 经营**那一环，图纸属于**养成**，直接花它等于**跳过经营**。
+     现在它花 `relic`（遗物），而遗物由**经营的关键建筑**产出 —— 那条边才接上。 */
+  Game.getSession().relic = 1;
+  const fails = ['myth'].filter(id => !Game.forgeNode(id).ok);
+  ok(fails.length === 0 && Game.isForged('myth'), '给了遗物之后「神话图纸」解锁成功', fails.join(','));
+  ok(Game.relic() === 0, '点「神话图纸」真的扣掉了那 1 个遗物（1 → ' + Game.relic() + '）');
+  const allForged = order.filter(id => !Game.isForged(id));
   ok(allForged.length === 0, '全套 ' + order.length + ' 张图纸都在档案里', allForged.join(','));
   /* ⚠ **合并之后（R43）「熔炉」的 +25% 只作用于"合成与基础产出"那一段** ——
      "打得深"那一段不吃它（它只吃天赋的 `sporeMul`）。所以期望是
      `打得深 + round(合成 × 1.25)`，不是 `总数 × 1.25`。 */
   const combineBase = 3 + Math.floor(12 / 3) + 7;
-  ok(Profile.growthForRun(run) === fromDepth + Math.round(combineBase * 1.25),
-    '「熔炉」把**合成那条** +25%（' + base + ' → ' + Profile.growthForRun(run) + '）', Profile.growthForRun(run));
+  ok(Profile.growthForRun(run, Game.forgeMods()) === fromDepth + Math.round(combineBase * 1.25),
+    '「熔炉」把**合成那条** +25%（' + base + ' → ' + Profile.growthForRun(run, Game.forgeMods()) + '）', Profile.growthForRun(run, Game.forgeMods()));
 
   const perRun = 3 + 4 + 7;                       // 12 波 + 回收攒 7，不含熔炉
   const runs = Math.ceil(Forge.totalCost() / perRun);

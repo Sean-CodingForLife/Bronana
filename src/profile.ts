@@ -630,8 +630,8 @@ Profile.CODEX_MASTERED = CODEX_MASTERED;
    本轮只做"两笔钱合成一笔"，不动收入来源。
    ========================================================= */
 /** 这一局进账多少养成代币（两条来源之和） */
-Profile.growthForRun = function (run) {
-  return Profile.sporesForRun(run) + Profile.alloyForRun(run);
+Profile.growthForRun = function (run, mods) {
+  return Profile.sporesForRun(run) + Profile.alloyForRun(run, mods);
 };
 Profile.sporesForRun = function (run) {
   if (!run) return 0;
@@ -653,12 +653,15 @@ Profile.sporesForRun = function (run) {
        （参照 Dead Cells：细胞每局都给，只是打得深给得多）。
    结算倍率（熔炉）只放大**结算总额**，所以"合得多"永远比"点熔炉"更划算。
    ========================================================= */
-Profile.alloyForRun = function (run) {
+Profile.alloyForRun = function (run, mods) {
   if (!run) return 0;
   var wave = Math.max(0, num(run.wave));
   var base = 3 + Math.floor(wave / 3);
   var fromCombine = Math.max(0, Math.round(num(run.alloy)));
-  var mul = 1 + Math.max(0, num(Profile.forgeMods().alloyMul));
+  /* ⚠ **图纸的修正当参数收**（家法）：图纸现在是**局内**的（M1），
+     而 `Profile` 在 `game.ts` 下面、读不到会话。以前这里读 `Profile.forgeMods()`
+     ——账号那一份现在是**空的**，于是"熔炉"的加成永远不生效（一个安静的失效）。 */
+  var mul = 1 + Math.max(0, num(mods && mods.alloyMul));
   return Math.round((base + fromCombine) * mul);
 };
 /* =========================================================

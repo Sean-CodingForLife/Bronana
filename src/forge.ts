@@ -125,7 +125,12 @@ Forge.LIST = [
      所以抬档后的结果受图纸上限夹制（见 craft.ts 的 resultTier）：
      没有这张图纸，T4 就是你能造出来的最高一档。 */
   {
-    id: 'myth', tier: 4, cost: 40, core: 2, req: ['master'], mod: 'craftTier', value: 5,
+    /* ⚠ **它花的是 `relic`（遗物），不是 `core`**（M4，2026-09）。
+       `core` 是**战斗 → 经营**那一环，图纸属于养成 —— 直接花 `core` 就是
+       **跳过经营**把战斗的东西拿来用，而 v3 §5.2 的边是
+       **战斗 → 经营 → 养成 → 战斗**，一跳都不能省。
+       `relic` 由经营的关键建筑产出、在这里消费 —— 这条边这才算接上。 */
+    id: 'myth', tier: 4, cost: 40, relic: 1, req: ['master'], mod: 'craftTier', value: 5,
     name: '神话图纸', note: '打开 T5：淬火第一次能把顶档装备造出来（要核心材料）'
   }
 ];
@@ -208,17 +213,17 @@ Forge.reqsMet = function (owned, d) {
 /**
  * 能不能解锁这一张。
  * @param alloy 合金余额
- * @param core 核心材料余额（缺省 0 = 旧调用点的行为不变；只有声明了 `core` 的图纸才读它）
- * @returns { ok, reason, cost, core, locked }
+ * @param relic 遗物余额（**经营 → 养成**那一环，M4；只有声明了 `relic` 的图纸才读它）
+ * @returns { ok, reason, cost, core, relic, locked }
  *   locked = 前置没满足（与"合金不够"是两种不同的等待，界面必须分开说）
  */
-Forge.canUnlock = function (owned, id, growth, core) {
+Forge.canUnlock = function (owned, id, growth, core, relic) {
   var d = Forge.BY_ID[id];
-  if (!d) return { ok: false, reason: '没有这张图纸', cost: 0, core: 0, locked: true };
-  if (holds(owned, id)) return { ok: false, reason: '已经解锁', cost: d.cost, core: 0, locked: false };
+  if (!d) return { ok: false, reason: '没有这张图纸', cost: 0, core: 0, relic: 0, locked: true };
+  if (holds(owned, id)) return { ok: false, reason: '已经解锁', cost: d.cost, core: 0, relic: 0, locked: false };
   if (!Forge.reqsMet(owned, d)) {
     var names = d.req.map(function (r) { return Forge.BY_ID[r] ? Forge.BY_ID[r].name : r; }).join('、');
-    return { ok: false, reason: '前置图纸还没解锁：' + names, cost: d.cost, core: coreOf(d), locked: true };
+    return { ok: false, reason: '前置图纸还没解锁：' + names, cost: d.cost, core: coreOf(d), relic: relicOf(d), locked: true };
   }
   var have = Math.max(0, Number(growth) || 0);
   var needCore = coreOf(d);
@@ -228,11 +233,21 @@ Forge.canUnlock = function (owned, id, growth, core) {
   if (needCore > 0 && Math.max(0, Number(core) || 0) < needCore) {
     return { ok: false, reason: '核心材料不够（需要 ' + needCore + '，只有关底 Boss 掉）', cost: d.cost, core: needCore, locked: false };
   }
-  return { ok: true, reason: '', cost: d.cost, core: needCore, locked: false };
+  /* **遗物**（`relic`）：经营的关键建筑产出它，养成的关键能力在这里花它 ——
+     这是 v3 §5.2 那条 **经营 → 养成** 的边。
+     ⚠ 「神话图纸」原来是花 `core` 的 —— 那是**跳过经营**把战斗的东西直接拿来用。 */
+  var needRelic = relicOf(d);
+  if (needRelic > 0 && Math.max(0, Number(relic) || 0) < needRelic) {
+    return { ok: false, reason: '遗物不够（需要 ' + needRelic + '，经营的关键建筑产出）', cost: d.cost, core: needCore, relic: needRelic, locked: false };
+  }
+  return { ok: true, reason: '', cost: d.cost, core: needCore, relic: needRelic, locked: false };
 };
 
 /** 一张图纸要几个核心材料（没写就是 0） */
 function coreOf(d) { return d && d.core > 0 ? Math.floor(d.core) : 0; }
+
+/** 一张图纸要几个遗物（没写就是 0）。**经营 → 养成**那条边的价签。 */
+function relicOf(d) { return d && d.relic > 0 ? Math.floor(d.relic) : 0; }
 
 /** 一张图纸的效果，翻成人话（界面用） */
 Forge.nodeText = function (d) {
@@ -327,14 +342,15 @@ Forge.audit = function () {
   if (maxCraft < Tiers.MAX) {
     problems.push('图纸最高只开到 T' + maxCraft + '，而品级表有 T' + Tiers.MAX + ' 档：顶档没有图纸可达');
   }
-  /* **核心材料必须真的被花掉**（与据点那条同一理由，两边都要有）：
-     `economy.ts` 写着 `core → 经营 + 养成`，而全仓曾经没有一处调用
-     `Profile.spendCore` —— 也就是这条边在玩家那一侧是假的。
-     养成这一侧的落点就是"神话图纸"这一档。 */
-  var coreUsed = 0;
-  for (i = 0; i < Forge.LIST.length; i++) if (coreOf(Forge.LIST[i]) > 0) coreUsed++;
-  if (!coreUsed) {
-    problems.push('图纸树里没有一张要核心材料 —— "战斗 → 养成"这条边在玩家那一侧是断的（赚得到、花不掉）');
+  /* ⚠ **这条边现在是 `relic`**（M4）：图纸属于**养成**，而 `core` 是**战斗 → 经营**
+     那一环 —— 图纸直接花 `core` 等于**跳过经营**，而 v3 §5.2 的边是
+     **战斗 → 经营 → 养成 → 战斗**，一跳都不能省。
+     「神话图纸」原来花 `core`，现在花 `relic`（经营的关键建筑产出它）。
+     这里守的是"赚得到、也花得掉"：图纸树里必须**真的有一张**要遗物。 */
+  var relicUsed = 0;
+  for (i = 0; i < Forge.LIST.length; i++) if (relicOf(Forge.LIST[i]) > 0) relicUsed++;
+  if (!relicUsed) {
+    problems.push('图纸树里没有一张要遗物 —— "经营 → 养成"这条边在玩家那一侧是断的（赚得到、花不掉）');
   }
   return { ok: problems.length === 0, problems: problems, counts: { nodes: Forge.LIST.length, keys: Object.keys(Forge.MOD_KEYS).length, tiers: Forge.TIERS.length } };
 };

@@ -461,6 +461,16 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
        产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
     /** **经营代币余额**（局内）：每波由据点产出，盖设施时花掉 */
     capacity: 0,
+    /* ---- **核心素材**（跨模块，M4，2026-09）----
+       v3 §5.2 的三条边：**战斗 → 经营 → 养成 → 战斗**。
+       它们**不在任何账本里**（见 `link.ts`）：模块代币"产出与消费都在本模块"，
+       而核心素材的整个存在意义就是**跨模块**。
+       ⚠ 两处都落在 `Session`（v3 §二：三个模块全在局内）—— 这正是
+         `Link.PENDING` 当初等的那一步。 */
+    /** **遗物**：经营的关键建筑产出它，养成的关键能力（图纸）花它 */
+    relic: 0,
+    /** **徽记**：养成走通一条关键能力线产出它，回到战斗里花 */
+    sigil: 0,
     /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()` */
     talentFx: null,
     /** 本局造了几件（结算展示用；进存档） */
@@ -3879,6 +3889,9 @@ Game.importRun = function (data) {
   /* **产能**（M2）：与 `growth` 同一组 —— 局内的模块代币。
      ⚠ 只写不读的话 `flow` 门会报"存档不幂等"：读档后它归零，再存一次就与上一份不同。 */
   S.capacity = Math.max(0, Math.round(Number(data.capacity) || 0));
+  /* **核心素材**（M4）：与 `capacity` 同一组，**只写不读**会让 `flow` 门报"存档不幂等"。 */
+  S.relic = Math.max(0, Math.round(Number(data.relic) || 0));
+  S.sigil = Math.max(0, Math.round(Number(data.sigil) || 0));
   /* **工坊（局内）**：从存档恢复等级与建造顺序。
      老档没有这两个字段 → 空工坊（工坊以前在账号档案里，那一份不再被读）。 */
   S.camp = {};
@@ -4145,6 +4158,17 @@ Game.keepBuy = function (id) {
     return { ok: false, reason: '核心材料不够（需要 ' + chk.core + '）', cost: chk.cost, core: chk.core, toLevel: 0 };
   }
   S.keep[key] = chk.toLevel;
+  /* =========================================================
+     **核心素材的第一处产出：经营的关键建筑**（M4，2026-09）
+     ---------------------------------------------------------
+     判据是"这一级花了 `core`" —— `core` 是**战斗 → 经营**那一环的战利品，
+     而花掉它的那座建筑就是"经营把它变成自己的东西"的地方。
+     它产出的 `relic` 才是**经营 → 养成**那条边的通货。
+
+     ⚠ 这个判据不新开字段：`core` 已经在等级声明里了，多写一个"是不是关键建筑"
+       的布尔值等于把同一件事记两遍 —— 而两份一定会漂。
+     ========================================================= */
+  if (chk.core > 0) addRelic(1);
   refreshKeepFx();
   /* 顺手让**账号**记一份（离线产出与剧情 flag 要读 —— 它们是局外机制，
      读不到局内的 `S.keep`）。这不是"把状态写回账号"：写的是**快照**，
@@ -4168,7 +4192,7 @@ Game.forgeMods = function () { return forgeMods(); };
 /** 这张图纸现在能不能解锁（规则在 `Forge.canUnlock`，纯函数） */
 Game.canForge = function (id) {
   if (!S) return Forge.canUnlock({}, String(id || ''), 0, 0);
-  return Forge.canUnlock(S.forge, String(id || ''), growth(), Profile.core());
+  return Forge.canUnlock(S.forge, String(id || ''), growth(), Profile.core(), relic());
 };
 /** 解锁一张图纸。
  *
@@ -4179,13 +4203,20 @@ Game.canForge = function (id) {
 Game.forgeNode = function (id) {
   var key = String(id || '');
   if (!S) return { ok: false, reason: '还没开局', cost: 0, core: 0 };
-  var chk = Forge.canUnlock(S.forge, key, growth(), Profile.core());
+  var chk = Forge.canUnlock(S.forge, key, growth(), Profile.core(), relic());
   if (!chk.ok) return chk;
   if (chk.cost > 0 && !spendGrowth(chk.cost)) {
     return { ok: false, reason: '合金不够（需要 ' + chk.cost + '）', cost: chk.cost, core: chk.core || 0 };
   }
+  /* **遗物在这里扣**（M4）：它是**经营 → 养成**那条边的钱 ——
+     `core` 是战斗 → 经营那一环，图纸直接花它等于**跳过经营**。 */
+  if ((chk.relic || 0) > 0 && !spendRelic(chk.relic)) {
+    if (chk.cost > 0) addGrowth(chk.cost);   // 退回去，这一笔不算
+    return { ok: false, reason: '遗物不够（需要 ' + chk.relic + '）', cost: chk.cost, relic: chk.relic };
+  }
   if (chk.core > 0 && !Profile.spendCore(chk.core)) {
     if (chk.cost > 0) addGrowth(chk.cost);   // 退回去，这一笔不算
+    if (chk.relic > 0) addRelic(chk.relic);  // 遗物也退回去
     return { ok: false, reason: '核心材料不够（需要 ' + chk.core + '）', cost: chk.cost, core: chk.core };
   }
   S.forge[key] = true;
@@ -4311,6 +4342,33 @@ function spendGrowth(n) {
 }
 /** 这一局点过的天赋节点 */
 function talentsOf() { return (S && S.talents) || []; }
+/* 核心素材的读写（**局内**）。形状与模块代币一样 —— 只是它们跨模块。 */
+function relic() { return (S && S.relic) || 0; }
+function addRelic(n) {
+  if (!S) return 0;
+  S.relic = relic() + Math.max(0, Math.floor(Number(n) || 0));
+  return S.relic;
+}
+function spendRelic(n) {
+  var cost = Math.max(0, Math.floor(Number(n) || 0));
+  if (cost <= 0) return true;
+  if (!S || relic() < cost) return false;
+  S.relic = relic() - cost;
+  return true;
+}
+function sigil() { return (S && S.sigil) || 0; }
+function addSigil(n) {
+  if (!S) return 0;
+  S.sigil = sigil() + Math.max(0, Math.floor(Number(n) || 0));
+  return S.sigil;
+}
+function spendSigil(n) {
+  var cost = Math.max(0, Math.floor(Number(n) || 0));
+  if (cost <= 0) return true;
+  if (!S || sigil() < cost) return false;
+  S.sigil = sigil() - cost;
+  return true;
+}
 /** **经营代币余额**（局内）。未开局时 0。 */
 function capacity() { return (S && S.capacity) || 0; }
 function addCapacity(n) {
@@ -4377,6 +4435,14 @@ function refoldTalents() {
    所以余额与已点节点都住在 `Session`，`data.growth` 只剩**老档迁移**的用途。 */
 /* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
    v3 §8-2：产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
+/**
+ * **核心素材余额**（局内，M4）。
+ *
+ * 它们不在任何账本里（见 `link.ts`）—— 模块代币"产出与消费都在本模块"，
+ * 而核心素材的整个存在意义就是**跨模块**。
+ */
+Game.relic = function () { return relic(); };
+Game.sigil = function () { return sigil(); };
 /** **经营代币余额**（局内） */
 Game.capacity = function () { return capacity(); };
 /** 这一波的**产能产出**是多少（界面拿它显示"每波 +N"） */

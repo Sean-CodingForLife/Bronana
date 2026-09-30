@@ -1691,6 +1691,14 @@ interface SessionCraft {
   talks: Record<string, number>;
   /** **经营代币余额**（局内）：每波由据点产出，盖设施时花掉（M2） */
   capacity: number;
+  /* ---- **核心素材**（跨模块，M4）----
+     v3 §5.2 的三条边：**战斗 → 经营 → 养成 → 战斗**。它们**不在任何账本里**
+     （见 `link.ts`）—— 模块代币"产出与消费都在本模块"，而核心素材的存在意义
+     就是**跨模块**。 */
+  /** **遗物**：经营的关键建筑产出它，养成的关键能力（图纸）花它 */
+  relic: number;
+  /** **徽记**：养成走通一条关键能力线产出它，回到战斗里花 */
+  sigil: number;
   /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()`。
    *  没有它就只能整个重折一遍，那会把属性加两次。 */
   talentFx: { stats: Record<string, number>; econ: Record<string, number> } | null;
@@ -2450,7 +2458,7 @@ interface ProfileApi {
   /** 孢子产出倍率的**总量**上限（据点"菌床" + 天赋经济节点，相加后封顶） */
   SPORE_MUL_CAP: number;
   /** 这一局进账多少养成代币（两条来源之和：打得深 + 合成；R43） */
-  growthForRun(run: ProfileRunInput | null): number;
+  growthForRun(run: ProfileRunInput | null, mods?: Record<string, number> | null): number;
   /** 只看"打得深"那一条（合成那条在 `alloyForRun`） */
   sporesForRun(run: ProfileRunInput | null): number;
   /** 进养成代币（**账号侧**：老档迁移用） */
@@ -2592,12 +2600,12 @@ interface ProfileApi {
   spendMaterial(n: number): boolean;
   /** 这一局能结算多少合金（基础产出 + 局内合成 + 熔炉加成） */
   /** 只看"合成 + 基础产出"那一条（"打得深"那条在 `sporesForRun`） */
-  alloyForRun(run: ProfileRunInput | null): number;
+  alloyForRun(run: ProfileRunInput | null, mods?: Record<string, number> | null): number;
   /** 已解锁的图纸 id 列表 */
   forgeOwned(): string[];
   isForged(id: string): boolean;
   /** 能不能解锁这张图纸（前置、合金、核心材料三者分开说） */
-  canForge(id: string): { ok: boolean; reason: string; cost: number; core: number; locked: boolean };
+  canForge(id: string): { ok: boolean; reason: string; cost: number; core: number; relic?: number; locked: boolean };
   /** 解锁一张图纸（花合金；顶档那张还要核心材料） */
   forgeNode(id: string): { ok: boolean; reason: string; cost: number; core: number };
   /** 图纸的折叠修正（开局交给 Game.newRun） */
@@ -2701,6 +2709,8 @@ interface ForgeMods {
 interface ForgeNodeDef {  id: string; tier: number; cost: number; req: string[];
   /** 可选的第二价：**核心材料**（只有关底 Boss 掉，一局最多 3 个） */
   core?: number;
+  /** 可选的第二价：**遗物**（经营的关键建筑产出它 —— **经营 → 养成**那条边，M4） */
+  relic?: number;
   mod: keyof ForgeMods; value: number; name: string; note: string;
 }
 interface ForgeAudit { ok: boolean; problems: string[]; counts: { nodes: number; keys: number }; }
@@ -2719,8 +2729,8 @@ interface ForgeApi {
   modsFor(owned: unknown): ForgeMods;
   reqsMet(owned: unknown, d: ForgeNodeDef): boolean;
   /** `core` 单列出来：两种资源都不够时要分得清"去打 Boss"和"多拆几件装备" */
-  canUnlock(owned: unknown, id: string, growth: number, core?: number):
-    { ok: boolean; reason: string; cost: number; core: number; locked: boolean };
+  canUnlock(owned: unknown, id: string, growth: number, core?: number, relic?: number):
+    { ok: boolean; reason: string; cost: number; core: number; relic?: number; locked: boolean };
   nodeText(d: ForgeNodeDef): string;
   effectLines(mods: ForgeMods | null | undefined): string[];
   totalCost(): number;
@@ -4128,6 +4138,10 @@ interface GameApi {
      `growth` 由训练产（`Game.train`），由天赋与图纸花。 */
   /* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
      v3 §8-2：产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
+  /** **核心素材余额**（局内，M4）—— 它们**不在任何账本里**（见 `link.ts`） */
+  relic(): number;
+  /** **徽记**余额（局内） */
+  sigil(): number;
   /** **经营代币余额**（局内） */
   capacity(): number;
   /** 这一波的产能产出（界面拿它显示"每波 +N"） */
@@ -4193,7 +4207,7 @@ interface GameApi {
   /** 图纸折叠出来的修正（界面读它，不自己算） */
   forgeMods(): ForgeMods;
   /** 这张图纸现在能不能解锁（规则在 `Forge.canUnlock`，纯函数） */
-  canForge(id: string): { ok: boolean; reason: string; cost: number; core: number; locked: boolean };
+  canForge(id: string): { ok: boolean; reason: string; cost: number; core: number; relic?: number; locked: boolean };
   /** 解锁一张图纸。⚠ `合金` 与 `核心材料` 暂时仍从账号扣 —— 见实现里的说明。 */
   forgeNode(id: string): { ok: boolean; reason: string; cost: number; core?: number };
   /** 这一局往据点投了多少材料 */

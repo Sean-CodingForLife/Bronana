@@ -212,6 +212,11 @@ RunSave.serialize = function (input) {
     /* **产能**（M2）：局内的经营代币。与 `growth` 同一组 —— 不带它，读档会让
        玩家刚在据点界面看到的那笔钱**静默归零**（`flow` 门会当场报"进度漂移"）。 */
     capacity: sess.capacity || 0,
+    /* **核心素材**（M4）：跨模块，但**住在局内**（v3 §二）。
+       不带它们，读档会让玩家刚赚到的遗物/徽记静默归零 ——
+       与 `capacity` 那次同一个坑（`flow` 门会报"存档不幂等"）。 */
+    relic: sess.relic || 0,
+    sigil: sess.sigil || 0,
     rerolls: sess.rerolls || 0,
     rerollCost: sess.rerollCost,
     shopLocked: !!sess.shopLocked,
