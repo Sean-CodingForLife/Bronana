@@ -45,13 +45,15 @@ const SIZES = arg('sizes', '1280x720').split(',').map(s => s.split('x').map(Numb
 /* 每一屏怎么到达：从标题页开始按 data-act 点（`a>b` 表示连着点两下）。
    `-` 表示"停在标题页"。 */
 const SHOTS = arg('shots',
-  'title:-,chars:start,hub:hub,codex:codex,settings:settings,keep:keep,' +
+  'title:-,chars:start,station:start>confirm-char,hub:hub,codex:codex,settings:settings,keep:keep,' +
   'records:records,howto:howto,talents:start>talents,' +
-  // 入口间是安全房、一步就清完 → 点完"确认出发"等一会儿自己就进了商店；
+  // 开局先落**大厅（站）**：三个模块都在局内的一张图上，先过一道门才进战斗。
+  // querySelector 命中的是第一道门（出击门 → playing）；它的入口间是安全房、
+  // 一步就清完 → 点完门等一会儿自己就进了商店；
   // 暂停则用触屏那个按钮（鼠标设备上它是 display:none，但 .click() 照样派发）
-  'shop:start>confirm-char,pause:start>confirm-char>pause,' +
+  'shop:start>confirm-char>station-gate,pause:start>confirm-char>station-gate>pause,' +
   // 剩下几屏要用 main.ts 的 ?test= 钩子（它们没有"从标题点进去"的路径）
-  'camp:start>confirm-char>camp,levelup:?test=levelup,end:start>confirm-char>pause>quit>quit,' +
+  'camp:start>confirm-char>station-gate>camp,levelup:?test=levelup,end:start>confirm-char>station-gate>pause>quit>quit,' +
   'daily:?daily=1,pick:?test=demo,play:?test=play,hud:?test=play>next-wave,' +
   // 合成屏：一局里摆出"可合成的一对 + 几个不同品级"（按钮与色条只在有合成对象时出现，
   // 满配演示的六把不同武器永远拍不到它们）

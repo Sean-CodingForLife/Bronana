@@ -207,20 +207,25 @@ var Ch: ChamberApi = makeChamber({
      · UI.refresh() 缺 howto 分支 → 帮助浮层消失但游戏没恢复
    现在：合法转换写在表里，所有写入走 setState，UI 由 stateChange 事件驱动。
    ========================================================= */
-Game.STATES = ['title', 'chars', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
+Game.STATES = ['title', 'chars', 'station', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
 
 Game.TRANSITIONS = {
   title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
   // 注意：chars 不能直接进 playing —— 那样会出现"playing 但没有会话"的状态，
   // 模拟层访问 S 会直接崩。进入对局必须走 newRun（它用 force 建好会话再切状态）。
   chars: ['title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
-  playing: ['levelup', 'shop', 'paused', 'howto', 'title', 'end'],
+  /* ⚠ `station`（大厅）也在出边里：它是**局内**的一屏，走的是"暂停 → 回大厅"。
+     少了这条边，`UI.startRun` 里那句 `setState('station')` 会被状态机**直接拒绝** ——
+     表现是"点了出发，游戏开局了，但界面还停在选人页"。 */
+  playing: ['levelup', 'shop', 'paused', 'howto', 'title', 'end', 'station'],
   levelup: ['playing', 'paused', 'shop', 'end'],
   // 营地是商店旁边的一个可选去处（不是必经）：自动化跑局不会进它，
   // 所以行为指纹不受影响 —— 这也是把它做成"可选"而不是"必经一步"的原因之一。
   shop: ['playing', 'camp', 'paused', 'levelup', 'end'],
   camp: ['shop', 'playing', 'paused', 'end'],
-  paused: ['playing', 'levelup', 'shop', 'camp', 'title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub', 'end'],
+  /* ⚠ 大厅（`station`）是**局内**的：从战斗回大厅是**走回去**（暂停菜单里那条路），
+     不是"退出到主菜单"。所以进来的边挂在 `paused` 上，而不是 `chars` 上。 */
+  paused: ['playing', 'levelup', 'shop', 'camp', 'title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub', 'end', 'station'],
   // howto / settings / records / codex / talents 是"可返回覆盖层"：出边必须**包含全部可能的来处**，
   // 因为返回就是沿来处那条边回去（缺一条边 = 从那里进来就退不回去）。
   // 覆盖层之间**互不相通**：允许 A→B 就会出现"A 的来处被 B 改写"，
@@ -229,11 +234,18 @@ Game.TRANSITIONS = {
   settings: ['title', 'chars', 'paused', 'hub'],
   records: ['title', 'chars', 'paused', 'end', 'hub'],
   codex: ['title', 'chars', 'paused', 'end', 'hub'],
-  talents: ['title', 'chars', 'paused', 'hub', 'skills'],
+  talents: ['title', 'chars', 'paused', 'hub', 'skills', 'station'],
   /* 技能构筑与天赋是**并列的两个可返回覆盖层**（可以互相跳），
      所以两者的出边都包含对方 —— 缺一条就是「从这里进去退不回来」。 */
-  skills: ['title', 'chars', 'paused', 'hub', 'talents'],
-  keep: ['title', 'chars', 'paused', 'hub'],
+  skills: ['title', 'chars', 'paused', 'hub', 'talents', 'station'],
+  keep: ['title', 'chars', 'paused', 'hub', 'station'],
+  /* 大厅（站）：每一次开局的起点。三道门都**常开**（`station.ts` 的表 + 自检守着），
+     所以这里的出边与门一一对应：出击 → 回到这一局（`playing`）、
+     经营 → `keep`、养成 → `talents`。`title` 是"放下这一局回标题"
+     （档案里那一局的自动存档还在「继续上一局」下面）。
+     ⚠ **不许**有 `chars`：从大厅回选人 = 开新局，那条路只有 `newRun` 一条
+     （与 `chars → playing` 被拒同一个理由 —— 会话必须先存在）。 */
+  station: ['playing', 'keep', 'talents', 'skills', 'title'],
   /* 枢纽（N2）：**不是覆盖层**，而是与标题页平级的"家"。
      它是局与局之间的地方（Hades 那套），所以能去标题/选人/据点/图鉴，
      也能在局中从暂停过去，并且**能沿原路回到那一局的暂停** ——
@@ -302,7 +314,8 @@ function requireState(s, what) {
  * （只认 shop 的话，玩家在营地按下"下一波"会被告知"当前不在商店界面"）。
  */
 var STATE_LABEL: Record<string, string> = {
-  shop: '商店', camp: '营地', levelup: '升级', playing: '战斗中', chars: '选人', end: '结算'
+  shop: '商店', camp: '营地', levelup: '升级', playing: '战斗中', chars: '选人',
+  station: '大厅', end: '结算'
 };
 function requireStateIn(list, what) {
   if (list.indexOf(Game.state) >= 0) return true;

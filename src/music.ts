@@ -182,6 +182,9 @@ Music.get = function (id) { return id ? (Music.BY_ID[id] || null) : null; };
 Music.SCENE_TRACK = {
   title: 'title',
   chars: 'title',
+  /* 大厅（站）：**局内**的一屏，但它不是战斗 —— 站在站里选门时放标题那条曲子
+     （与枢纽 / 据点同一条：那是"停下来做决定"的场合，不是打起来的场合）。 */
+  station: 'title',
   playing: 'combat',
   levelup: 'combat',
   shop: 'shop',

@@ -368,7 +368,13 @@ var STATION_TINT: Record<string, string[]> = {
   mirror: ['#c8bce0', '#8f7fb0'],
   contract: ['#b0a48a', '#7a705a'],
   wall: ['#a8c49a', '#6f8f62'],
-  door: ['#c98a6a', '#8a5a3c']
+  door: ['#c98a6a', '#8a5a3c'],
+  /* 大厅（站）的四张 —— 三个模块的门各画各的样子（见 stationPortrait 末尾四个 case）。
+     三扇门长得一样的话，"选去哪块"这件事在画面上就不成立。 */
+  'gate-combat': ['#c47a5c', '#8a4434'],
+  'gate-manage': ['#b8a45c', '#7a6a2c'],
+  'gate-grow': ['#8fc47a', '#557f45'],
+  board: ['#d9c48a', '#9a8452']
 };
 
 function stationSkin(id) {
@@ -450,6 +456,33 @@ S.stationPortrait = function (id, size) {
         D.rect(x, -r * 0.46, -r * 0.68, r * 0.92, r * 1.6, c, D.O.ink2);
         D.rect(x, -r * 0.46, -r * 0.1, r * 0.92, r * 0.14, PAL.INK, D.O.none);
         D.circle(x, r * 0.28, r * 0.42, r * 0.1, PAL.GOLD, D.O.ink2);
+        break;
+      case 'gate-combat': // 出击门：地牢入口 —— 门里是往下走的台阶
+        D.rect(x, -r * 0.72, -r * 0.94, r * 1.44, r * 1.88, sh, D.O.ink3);
+        D.rect(x, -r * 0.52, -r * 0.74, r * 1.04, r * 1.64, c, D.O.ink2);
+        D.rect(x, -r * 0.44, -r * 0.52, r * 0.4, r * 0.16, PAL.INK, D.O.none);
+        D.rect(x, -r * 0.2, -r * 0.22, r * 0.4, r * 0.16, PAL.INK, D.O.none);
+        D.rect(x, r * 0.04, r * 0.08, r * 0.4, r * 0.16, PAL.INK, D.O.none);
+        break;
+      case 'gate-manage': // 经营门：一只齿轮（建造与产线）
+        D.poly(x, [[-r * 0.26, -r * 0.88], [r * 0.26, -r * 0.88], [r * 0.34, -r * 0.52],
+          [r * 0.88, -r * 0.34], [r * 0.88, r * 0.34], [r * 0.34, r * 0.52],
+          [r * 0.26, r * 0.88], [-r * 0.26, r * 0.88], [-r * 0.34, r * 0.52],
+          [-r * 0.88, r * 0.34], [-r * 0.88, -r * 0.34], [-r * 0.34, -r * 0.52]], c, D.O.ink3);
+        D.circle(x, 0, 0, r * 0.3, PAL.INK, D.O.none);
+        break;
+      case 'gate-grow':   // 养成门：一株顶出土的新芽
+        D.rect(x, -r * 0.11, -r * 0.24, r * 0.22, r * 1.02, c, D.O.ink3);
+        D.ellipse(x, -r * 0.42, -r * 0.3, r * 0.4, r * 0.2, -0.5, c, D.O.ink3);
+        D.ellipse(x, r * 0.42, -r * 0.54, r * 0.4, r * 0.2, 0.5, c, D.O.ink3);
+        D.rect(x, -r * 0.62, r * 0.74, r * 1.24, r * 0.2, sh, D.O.ink3);
+        break;
+      case 'board':       // 公告板：一块钉着纸条的板（读账的地方，不是门）
+        D.rect(x, -r * 0.86, -r * 0.72, r * 1.72, r * 1.42, sh, D.O.ink3);
+        D.rect(x, -r * 0.68, -r * 0.52, r * 0.56, r * 0.42, PAL.PAPER, D.O.ink2);
+        D.rect(x, r * 0.08, -r * 0.52, r * 0.56, r * 0.42, PAL.PAPER, D.O.ink2);
+        D.rect(x, -r * 0.68, -r * 0.02, r * 1.32, r * 0.42, PAL.PAPER, D.O.ink2);
+        D.rect(x, -r * 0.12, r * 0.7, r * 0.24, r * 0.52, c, D.O.ink2);
         break;
       default:            // 兜底：一块方牌（新站点没画之前不会变成空白）
         D.rect(x, -r * 0.8, -r * 0.8, r * 1.6, r * 1.6, c, D.O.ink3);

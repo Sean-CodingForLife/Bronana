@@ -43,6 +43,16 @@ var TABLE: Record<string, SceneDef> = {
     overlay: 'chars', sim: false, world: false, hud: false, strip: false, keys: 'start',
     note: '选人页：同上；从这里有且只有一条进对局的路（newRun）'
   },
+  station: {
+    /* 大厅（站）：**每一次开局的起点**。它归**局内**（不是菜单）——
+       从战斗回大厅是走回去，从大厅出击是回到这一局。
+       `sim:false`：站里不推进逻辑帧（波次不会在站里流走）；
+       `world:true`：身后画的是这一局的世界（与暂停/商店同一条规则）。
+       `keys:'none'`：站里没有热键（与结算页同一档）——
+       方向键选门、回车进门那套通用菜单操作**不经过按键组**，仍然能用。 */
+    overlay: 'station', sim: false, world: true, hud: false, strip: false, keys: 'none',
+    note: '大厅（站）：这一局的起点；三道常开的门通向三个模块（出击 / 经营 / 养成）'
+  },
   playing: {
     overlay: null, sim: true, world: true, hud: true, strip: true, keys: 'battle',
     note: '战斗中：唯一推进逻辑帧的场景'
@@ -108,7 +118,10 @@ var REFRESH: Record<string, string> = {
      （有意为之：放弃不删档），按钮却停在上一次的"没有存档"状态，续玩入口看不见也点不到。 */
   title: 'title',
   shop: 'shop', camp: 'camp', levelup: 'cards', settings: 'settings', records: 'records',
-  paused: 'pause', codex: 'codex', talents: 'talents', skills: 'skills', keep: 'keep', hub: 'hub'
+  paused: 'pause', codex: 'codex', talents: 'talents', skills: 'skills', keep: 'keep', hub: 'hub',
+  /* 大厅也要重画：三道门是**按表**画的，公告板上的账与"下一步"是**从这一局读出来的** ——
+     不登记它，进站第二眼看到的就是上一次的账。 */
+  station: 'station'
 };
 
 /* =========================================================
@@ -134,7 +147,31 @@ var SCREEN_ACTS: Record<string, GameStateName> = {
   'keep': 'keep',
   'hub': 'hub',
   'camp-back': 'shop',       // 营地是"局内商店旁边的一间"，回营地就是回商店
-  'hub-go': 'chars'          // 枢纽的门口 = 出发（选人页）
+  'hub-go': 'chars',         // 枢纽的门口 = 出发（选人页）
+  /* 暂停菜单里的「回大厅」：这也是**唯一**一条从局内走回大厅的路
+     （三扇门全在 `station.ts` 的表里，界面不自己造门）。 */
+  'to-station': 'station'
+};
+
+/* =========================================================
+   1c. 模块 ⇄ 屏幕：大厅那三道门**通向哪一屏**
+   ---------------------------------------------------------
+   为什么需要这一张小表（而不是在 ui.ts 里 `if (site.to === 'combat')`）：
+
+     · `station.ts` 的表只认识**模块名**（`combat` / `manage` / `grow`）——
+       它是对的：那是经济循环的语言，不是界面的语言
+     · 界面只认识**状态名**（`playing` / `keep` / `talents`）
+     · 两者之间**必须有人翻译**，而翻译表写错一个字母的表现是
+       "点了那扇门什么也没发生" —— 所以它放在这里（定义期就能查目标状态存不存在），
+       并且进总账（`Registry` 会查"这个模块真的存在吗"）。
+
+   ⚠ 其中"战斗 → playing"指的是**回到手里这一局**，不是新开一局
+     （新开一局只有 `newRun` 一条路，见 game.ts 的 TRANSITIONS 注释）。
+   ========================================================= */
+var MODULE_SCREENS: Record<string, GameStateName> = {
+  combat: 'playing',
+  manage: 'keep',
+  grow: 'talents'
 };
 
 /* =========================================================
@@ -189,6 +226,15 @@ Scene.validate = function () {
     }
   }
 
+  // 模块 → 屏幕：同一件事（大厅那三道门靠它落地）
+  for (var mod in MODULE_SCREENS) {
+    if (!Object.prototype.hasOwnProperty.call(MODULE_SCREENS, mod)) continue;
+    if (Game.STATES.indexOf(MODULE_SCREENS[mod]) < 0) {
+      problems.push('模块 ' + mod + ' 指向不存在的界面：' + MODULE_SCREENS[mod] +
+        '（那扇门点下去什么也不会发生）');
+    }
+  }
+
   /* 与其它模块的 `audit()` 同一形状（返回 `{ok, problems}` 而不是抛）：
      于是它既能被启动期自检统一收集，也能被测试直接读问题清单。
      "抛不抛"由调用方决定 —— 本模块自己在加载时抛（状态机必须比谁都早）。 */
@@ -218,6 +264,9 @@ Scene.keyGroup = function (state) { return Scene.of(state).keys; };
 /** 这个按钮动作是不是"去某个界面"（不是就返回 null） */
 Scene.screenActOf = function (act) { return SCREEN_ACTS[act] || null; };
 Scene.screenActNames = function () { return Object.keys(SCREEN_ACTS); };
+/** 大厅的门通向哪一屏（模块名 → 状态名；不在表里就返回 null，调用方不许瞎猜） */
+Scene.moduleScreenOf = function (mod) { return MODULE_SCREENS[mod] || null; };
+Scene.moduleScreenNames = function () { return Object.keys(MODULE_SCREENS); };
 /** 所有用到的覆盖层名字（ui.ts 用它建元素引用） */
 Scene.overlayNames = function () {
   var out = [];
@@ -283,6 +332,28 @@ Registry.family('screenAct', {
     for (var a in SCREEN_ACTS) {
       if (!Object.prototype.hasOwnProperty.call(SCREEN_ACTS, a)) continue;
       out.push({ id: a, refs: [{ field: 'to', value: SCREEN_ACTS[a], family: 'state' }] });
+    }
+    return out;
+  }
+});
+/* 模块 → 屏幕：**两边的名字都要真的存在**（左 = 经济循环的三个模块，
+   右 = 状态机里的状态）。写错任一边的表现都是"大厅里那扇门点不开"。 */
+Registry.family('moduleScreen', {
+  note: '模块（combat / manage / grow）通向哪一屏 —— 大厅那三道门的翻译表', owner: 'scene.ts',
+  entries: function () {
+    var out = [];
+    /* 名单从公开读口拿（而不是直接遍历私有变量）：总账登的就是
+       "表里有哪些模块"这件事本身，两边不会各数一遍。 */
+    var names = Scene.moduleScreenNames();
+    for (var i = 0; i < names.length; i++) {
+      var m = names[i];
+      out.push({
+        id: m,
+        refs: [
+          { field: 'screen', value: MODULE_SCREENS[m], family: 'state' },
+          { field: 'module', value: m, family: 'ledgerSystem' }
+        ]
+      });
     }
     return out;
   }

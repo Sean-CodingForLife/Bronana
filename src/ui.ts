@@ -14,6 +14,7 @@ import { Challenges } from './challenges.ts';
 import { Daily } from './daily.ts';
 import { Danger } from './danger.ts';
 import { Dungeon } from './dungeon.ts';
+import { Economy } from './economy.ts';
 import { Items } from './data_items.ts';
 import { Tiers } from './data_tiers.ts';
 import { Weapons } from './data_weapons.ts';
@@ -36,6 +37,7 @@ import { Storage } from './storage.ts';
 import { Tutorial } from './tutorial.ts';
 import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
+import { Station } from './station.ts';
 import { Story } from './story.ts';
 import { Synergy } from './synergy.ts';
 import { Skills } from './skills.ts';
@@ -176,6 +178,11 @@ UI.init = function () {
   el.hubGuide = q('hub-guide');
   el.hubTalk = q('hub-talk');
   el.hubNews = q('hub-news');
+  /* 大厅（站）——**局内**的那一屏。前缀 `station-` 与枢纽那套（`hub-`）刻意分开：
+     两者名字像、性质相反（局内起点 vs 局外之家），只是复用同一套样式。 */
+  el.stationStatus = q('station-status');
+  el.stationGates = q('station-gates');
+  el.stationBoard = q('station-board');
   el.toastWrap = q('toast-wrap');
   el.codexStory = q('codex-story');
   el.codexAffixes = q('codex-affixes');
@@ -258,6 +265,9 @@ var RENDERERS: Record<string, () => void> = {
   camp: function () { renderCamp(); },
   keep: function () { renderKeep(); },
   hub: function () { renderHub(); },
+  /* 大厅：三道门 + 公告板都是**从这一局读出来的**（门表 + 账 + 下一步），
+     所以进站必须重画 —— 不重画就会停在上一次进来时的账。 */
+  station: function () { renderStation(); },
   pause: function () { UI.renderPause(); }
 };
 /** 已注册的重画名（契约测试用它对着 scene.ts 的 REFRESH 比一遍） */
@@ -637,6 +647,96 @@ function hubSay() {
   return true;
 }
 
+/* =========================================================
+   大厅（站）——**局内**的起点，不是菜单
+   ---------------------------------------------------------
+   用户的设想（这一屏存在的全部理由）：「点击开始游戏选择角色存档，
+   进入游戏大厅，然后选择去往各个不同的游戏模块地图进行游玩」
+   （挺进地牢 / 深岩银河那一类）。
+
+   三块内容，各自有各自的"为什么"：
+     · 状态带 —— 这一局攒下了什么（四本账），一横条，永不折字
+     · 三道门 —— 出击 / 经营 / 养成。门表在 `station.ts`，界面**不自己造门**
+       （加一道门不用改这里）；"门 → 哪一屏"的翻译在 `scene.ts` 的 MODULE_SCREENS
+     · 公告板 —— 三个核心素材的进度 + "下一步该去哪"（`Game.guide()` 的软引导）。
+       引导指向哪扇门，那扇门就带 `sel` 高亮 —— 这是"路径指引"在画面上的那一半
+
+   ⚠ 大厅**归局内**（见 scene.ts 的 station 一档）：没有会话时什么都不画，
+     而不是抛异常。界面的三张表（RENDERERS / REFRESH / ACTIONS）会在测试里
+     被当成"任意状态都能渲染"逐个走一遍 —— 抛异常等于整条链路断在那里。
+   ========================================================= */
+
+/** 状态带：这一局攒下了什么（四本账 + 战斗代币；核心素材归公告板） */
+function stationStatusHtml(sess: Session) {
+  var rows: { k: string; v: string; warn?: boolean }[] = [
+    { k: '材料', v: Game.material() + '（全局货币：三个模块的行动成本）' },
+    { k: '战斗', v: Math.round(sess.player.scrap) + '（战斗代币：只在本模块花）' },
+    { k: '产能', v: Game.capacity() + '（经营代币）' },
+    { k: '成长', v: Game.growth() + '（养成代币）' }
+  ];
+  /* 材料见底 = 三个模块都推不动（Guide 的第一条规则），所以这里要显眼 */
+  if (Game.material() < 10) rows.push({ k: '提示', v: '材料见底了 —— 出击打一波', warn: true });
+  var html = '';
+  rows.forEach(function (r) {
+    html += '<span class="hs-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
+  });
+  return html;
+}
+
+function renderStation() {
+  var sess = Game.getSession();
+  /* 软引导（v3 §8-15）：下一步该去哪。`null` 不是"没有建议" ——
+     那是**循环转起来了**，换个说法（与枢纽的公告板同一条规矩）。 */
+  var gd = sess ? Game.guide() : null;
+
+  if (el.stationStatus) el.stationStatus.innerHTML = sess ? stationStatusHtml(sess) : '';
+
+  if (el.stationGates) {
+    U.clear(el.stationGates);
+    if (sess) {
+      /* 门按**表**画。`Station.LIST` 里除了三道门还有公告板（kind:'board'）——
+         它不是门、不换屏，只是把这一局的账读出来，所以动作是另一条。 */
+      Station.LIST.forEach(function (site) {
+        var b = U.el('button', 'btn station' + (gd && gd.to === site.id ? ' sel' : ''));
+        /* 两道分支各写一行（而不是三元）：界面契约测试按"赋一个**字符串字面量**
+           给 dataset.act"这个形状收集动态按钮动作，三元会让这两个动作
+           被判成"动作表里有、界面上没有按钮"（而且注释里也不许写那个形状的
+           例子 —— 语料是**整份源码文本**，注释会被一起扫到）。 */
+        if (site.kind === 'portal') b.dataset.act = 'station-gate';
+        else b.dataset.act = 'station-board';
+        b.dataset.station = site.id;
+        if (site.to) b.dataset.module = site.to;
+        // 长说明挂在 title 上（悬停可读）；卡片上是短名 + 去处
+        b.title = site.name + '：' + site.note;
+        b.appendChild(stationCanvas(site.id, 68, 'st-cv'));
+        b.appendChild(U.el('div', 'st-nm', site.name));
+        var sys = site.to ? Economy.SYSTEMS[site.to] : null;
+        b.appendChild(U.el('div', 'st-role', sys ? ('去 ' + sys.name) : '读这一局的账'));
+        el.stationGates.appendChild(b);
+      });
+    }
+  }
+
+  if (el.stationBoard) {
+    if (!sess) {
+      el.stationBoard.textContent = '';
+    } else {
+      /* 三个核心素材是**钥匙不是钱**（不在任何账本里，见 link.ts），
+         所以它们与四本账分开摆：左边是"有多少"，右边是"该去哪儿"。 */
+      var links = '核心素材：核心 ' + Profile.core() + ' · 遗物 ' + Game.relic() +
+        ' · 徽记 ' + Game.sigil();
+      var wb = Game.waveBudget();
+      var budget = wb
+        ? ('这一波还剩 —— 出击：实时 · 工坊产线 ' + wb.craftLines + ' 条 · 训练 ' +
+           wb.trainLeft + ' 次 · 相处 ' + wb.talkLeft + ' 次')
+        : '';
+      el.stationBoard.textContent = links + '　｜　' +
+        (gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推') +
+        (budget ? '　｜　' + budget : '');
+    }
+  }
+}
+
 /**
  * **词条图鉴**（`词 条` 那一页）。
  *
@@ -914,7 +1014,9 @@ function renderCamp() {
   var lines = Game.craftLines();
   var free = Game.craftFreeLines();
 
-  var head = setRow('材料', String(mats) + '（出击打出来的，**带得出局**；建产线与制造都花这一笔）');
+  /* ⚠ 这里是**纯文本**，不是 markdown —— 以前写着 `**带得出局**`，玩家看到的就是四个星号
+     （`ui-shot` 的"文案可疑"那一栏抓的就是这一类：它扫渲染出来的文本里的 `**`）。 */
+  var head = setRow('材料', String(mats) + '（出击打出来的，带得出局；建产线与制造都花这一笔）');
   head += setRow('产线', used + ' / ' + opts.slots + ' 座设施' +
     (Game.forgeMods().lines > 0 ? ' + 图纸 ' + Game.forgeMods().lines + ' 条' : '') +
     ' → 共 ' + lines + ' 条，这一波还空着 ' + free.length + ' 条' +
@@ -936,7 +1038,7 @@ function renderCamp() {
     }).join(' / ') + '）');
   var effTxt = Camp.effectLines(fx);
   head += setRow('制造效果', effTxt.length ? effTxt.join(' · ') : '（无）');
-  head += setRow('设施是**跨局**的', '盖好就一直有；换一局不用重盖（这也是它和商店最大的区别）');
+  head += setRow('设施是「跨局」的', '盖好就一直有；换一局不用重盖（这也是它和商店最大的区别）');
   head += setRow('和商店的分工', '造 = 便宜但要图纸 + 占一条产线的一波；货架 = 应急成品（贵）与回收（回收产合金）');
   el.campHead.innerHTML = head;
   renderDoors(el.campDoors, sess);   // 工坊也能直接挑门走
@@ -1638,6 +1740,12 @@ UI.startRun = function () {
        图纸（`forge`）暂时仍然是账号资产，M3 搬。 */
     { owned: {}, forge: Game.forgeOwned() },
     Profile.skillBuild(UI.selectedChar));
+  /* **开局落在大厅（站）**，不是直接落进战斗里：三个模块都在**局内**的
+     一张图上，玩家从大厅的门去各个模块（用户的设计原话见 station.ts 顶部）。
+     ⚠ 这是**界面层**的决定：`Game.newRun` 自己仍然落 `playing` ——
+        挑战 / CLI / 无头测试那几条路直接吃 `newRun`，不该被界面的设计拖着走
+        （`test/persist.mjs` / `smoke.mjs` / 行为指纹都在那几条路上）。 */
+  Game.setState('station');
 };
 
 var ACT_CHARS: ActMap = {
@@ -1650,8 +1758,9 @@ var ACT_CHARS: ActMap = {
       return;
     }
     UI.startRun();
-    UI.toast('出发！第 1 波开始' +
-      (UI.selectedDanger > 0 ? '（难度 ' + UI.selectedDanger + ' · ' + Danger.name(UI.selectedDanger) + '）' : ''), 'good');
+    UI.toast('进入大厅' +
+      (UI.selectedDanger > 0 ? '（难度 ' + UI.selectedDanger + ' · ' + Danger.name(UI.selectedDanger) + '）' : '') +
+      '：三道门通向三个模块', 'good');
   },
 };
 
@@ -1884,6 +1993,33 @@ var ACT_HUB: ActMap = {
   'hub-say': function () { hubSay(); },
 };
 
+/* =========================================================
+   大厅（站）：三道门 + 公告板
+   ---------------------------------------------------------
+   门表在 `station.ts`（模块名），屏幕在 `scene.ts`（状态名），
+   翻译由 `Scene.moduleScreenOf` 做 —— 这里**不按模块名写分支**：
+   加一道门（或改它的去处）不用动这个文件。
+   ========================================================= */
+var ACT_STATION: ActMap = {
+
+  'station-gate': function (t) {
+    var mod = (t.dataset && t.dataset.module) || '';
+    var scr = Scene.moduleScreenOf(mod);
+    /* 查不到 = 那张翻译表被改坏了。定义期自检会先报出来，这里是运行期的兜底：
+       给一句人话，而不是"点了没反应"。 */
+    if (!scr) { UI.toast('这扇门没有去处：' + (mod || '（没写模块名）'), 'warn'); return; }
+    Game.setState(scr);
+  },
+
+  /* 公告板：把这一局的账再读一遍 + 把"下一步"说出来。
+     ⚠ 它**不是门**（`station.ts` 里 kind:'board' 且没有 `to`）—— 不进任何模块。 */
+  'station-board': function () {
+    renderStation();
+    var gd = Game.guide();
+    UI.toast(gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推', 'good');
+  },
+};
+
 var ACT_CODEX: ActMap = {
 
   'codex-tab': function (t) {
@@ -1947,6 +2083,7 @@ var ACT_GROUPS: Record<string, ActMap> = {
   talents: ACT_TALENTS,
   keep: ACT_KEEP,
   hub: ACT_HUB,
+  station: ACT_STATION,
   codex: ACT_CODEX,
   challenge: ACT_CHALLENGE
 };

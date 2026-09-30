@@ -15,6 +15,8 @@
    撞墙应当发生在**模块内部**（缺核心素材 → 关键建筑升不上去），
    不是在门口。所以现在守的是：**每一道门都不许收费、不许有前置**。
    ========================================================= */
+import fs from 'node:fs';
+import path from 'node:path';
 import { loadAll, SIM_MODULES } from './_load.mjs';
 
 await loadAll(SIM_MODULES);
@@ -157,6 +159,72 @@ console.log('\n[6] 总账');
     '总账里的站点数与表一致（' + R.ids('stationSite').length + '）');
   ok(R.audit().ok, '总账整体仍然自洽（门通向的模块名都真的存在）',
     (R.audit().missing || []).slice(0, 3).join(' | '));
+}
+
+/* =========================================================
+   [7] 接线：三道门真的通到界面（"表是对的" ≠ "玩家点得到"）
+   ---------------------------------------------------------
+   前面六节验的是**表本身**。这一节验**线** —— 状态 / 场景 / 界面分散在
+   三个文件里（game.ts / scene.ts / ui.ts + index.html），写错任何一边的表现
+   都是"点了出发，游戏开局了，界面却还停在选人页"或"点了那扇门什么也没发生"：
+
+     · 状态机里有 `station`，而且它与 `playing` **互通**（局内的来回）
+     · 场景表把它登记成局内一屏（world:true / sim:false）
+     · 模块 → 屏幕的翻译表（scene.ts 的 MODULE_SCREENS）三个都在
+     · index.html 里有那一屏与三块内容（id 是界面契约的一部分）
+     · ui.ts 里有渲染函数、两道门动作，以及"开局落在大厅"那一步
+   ========================================================= */
+console.log('\n[7] 接线（状态 → 场景 → 界面）');
+{
+  const ROOT = path.resolve(import.meta.dirname, '..');
+  const { Game, Scene } = globalThis;
+
+  ok(Game.STATES.indexOf('station') >= 0, '状态机里有 station（大厅是状态机里的一等公民）');
+  ok(Scene.has('station'), '场景表里有 station（缺了它 Scene.of 会抛错）');
+  ok(Scene.refreshOf('station') === 'station',
+    'station 登记了重画（不登记 = 进站第二眼看到的是上一次的账）');
+  ok(Scene.of('station').world === true && Scene.of('station').sim === false,
+    'station 归**局内**：画世界（world:true）但不推进逻辑帧（sim:false）');
+  ok(Scene.of('station').overlay === 'station', 'station 的覆盖层是它自己');
+
+  /* 模块 → 屏幕：三道门的翻译表（写错一个字母 = 那扇门点下去没反应） */
+  const SCREENS = { combat: 'playing', manage: 'keep', grow: 'talents' };
+  for (const mod of Object.keys(SCREENS)) {
+    ok(Scene.moduleScreenOf(mod) === SCREENS[mod],
+      '门「' + mod + '」通向 ' + SCREENS[mod], Scene.moduleScreenOf(mod));
+  }
+  ok(Scene.moduleScreenOf('noSuchModule') === null, '未知模块 → null（调用方不许瞎猜）');
+
+  /* 转换：大厅 ↔ 战斗是**局内**的来回；选人页仍然进不去大厅 */
+  Game.newRun('ranger', 99);
+  ok(Game.state === 'playing', 'newRun 仍然落 playing（大厅是界面层的设计，不绑架模拟层）', Game.state);
+  ok(Game.canSetState('station') === true, 'playing → station 合法（开局落在大厅 / 从暂停回大厅）');
+  Game.setState('station', true);
+  ok(Game.state === 'station', '切进大厅成功');
+  ok(Game.canSetState('playing') === true, 'station → playing 合法（出击门回到手里这一局）');
+  ok(Game.canSetState('keep') === true && Game.canSetState('talents') === true,
+    'station → keep / talents 合法（经营门 / 养成门）');
+  ok(Game.canSetState('chars') === false,
+    'station → chars 被拒（回选人页 = 开新局，那条路只有 newRun 一条）');
+  Game.setState('title', true);
+
+  /* 界面三块：id、渲染函数、两个动作 */
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+  for (const id of ['scr-station', 'station-status', 'station-gates', 'station-board']) {
+    ok(html.indexOf('id="' + id + '"') >= 0, 'index.html 里有 #' + id);
+  }
+  ok(html.indexOf('data-act="to-station"') >= 0,
+    '暂停菜单里有「回大厅」按钮（局内 → 局内那条路）');
+
+  const uiSrc = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
+  ok(uiSrc.indexOf('function renderStation') >= 0, 'ui.ts 里有 renderStation（那一屏真的画得出来）');
+  ok(/station:\s*function \(\) \{ renderStation\(\); \}/.test(uiSrc),
+    '渲染表把 scene.ts 要的重画名（station）接上了');
+  ok(/dataset\.act = 'station-gate'/.test(uiSrc) && /dataset\.act = 'station-board'/.test(uiSrc),
+    '门与公告板各自有动作（门换屏、公告板只读账）');
+  const startM = /UI\.startRun = function[\s\S]*?\n};/.exec(uiSrc);
+  ok(!!startM && /Game\.setState\('station'\)/.test(startM[0]),
+    'UI.startRun 把开局落在**大厅**（而不是直接落进战斗）');
 }
 
 console.log(failures ? '\n  \x1b[31m' + failures + ' 项失败 ✘\x1b[0m' : '\n  全部通过 ✔');

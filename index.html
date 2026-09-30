@@ -40,7 +40,6 @@
             <button class="btn" data-act="settings">设 置</button>
             <button class="btn" data-act="records">战 绩</button>
             <button class="btn" data-act="codex">图 鉴 与 挑 战</button>
-            <button class="btn wide" data-act="keep">据 点</button>
           </div>
         </div>
       </div>
@@ -59,8 +58,6 @@
       </div>
       <div class="row center">
         <button class="btn" data-act="hub">枢 纽</button>
-        <button class="btn" data-act="talents">天 赋</button>
-        <button class="btn" data-act="skills">技 能</button>
         <button class="btn" data-act="back-title">返回</button>
         <button class="btn big" id="btn-confirm-char" data-act="confirm-char">确 认 出 发</button>
       </div>
@@ -128,6 +125,12 @@
       <div class="pause-stats" id="pause-stats"></div>
       <div class="menu row">
         <button class="btn big" data-act="resume">继 续</button>
+        <!-- 大厅是**局内**的：从战斗回大厅是"走回去"（暂停菜单里这条），
+             不是"退出到主菜单"。见 src/station.ts 与 scene.ts 的 station 一档。
+             「据点」按钮也在这儿 —— 它是局内那一半（v3 §二：据点属于经营模块的建造），
+             所以不该出现在标题菜单里。 -->
+        <button class="btn" data-act="to-station">回 大 厅</button>
+        <button class="btn" data-act="keep">据 点</button>
         <button class="btn" data-act="daily">每 日 挑 战</button>
         <button class="btn" data-act="weekly">每 周 挑 战</button>
         <button class="btn" data-act="settings">设 置</button>
@@ -361,9 +364,33 @@
       </div>
     </section>
 
+    <!-- 大厅（站）——**局内**的一屏，不是菜单。
+         用户的设想（这一屏存在的全部理由）：「点击开始游戏选择角色存档，进入游戏大厅，
+         然后选择去往各个不同的游戏模块地图进行游玩」（挺进地牢 / 深岩银河那一类）。
+
+         所以这一屏里只有三样东西：
+           · 状态带 —— 这一局攒下了什么（四本账）
+           · 三道门 —— 出击 / 经营 / 养成（门表在 src/station.ts，界面不自己造门）
+           · 公告板 —— 三个核心素材的进度 + "下一步该去哪"（Game.guide 的软引导）
+         ⚠ 与下面那个「枢纽」别混：枢纽是局与局之间的家（**局外**），
+           大厅是这一局的起点（**局内**），从战斗回大厅是走回去。
+         三块内容复用枢纽那套样式（hub-room / hub-status / hub-stations / station /
+         danger-info），所以这里不新增任何 CSS 类。 -->
+    <section id="scr-station" class="screen dim">
+      <h2 class="scr-h">大 厅</h2>
+      <div class="hub-room">
+        <div class="hub-status" id="station-status"></div>
+        <div class="hub-stations" id="station-gates"></div>
+        <div class="danger-info" id="station-board"></div>
+      </div>
+      <div class="menu row">
+        <button class="btn big" data-act="back-title">回 标 题</button>
+      </div>
+    </section>
+
     <!-- 枢纽（局与局之间的"家"）——
          参照 Hades 的"家"：那里不是一份菜单，而是**一间房 + 若干站点**
-         （镜面=天赋、承包商=据点、纪念品柜=配装、记录墙=图鉴），NPC 站在房里，
+          （镜面=天赋、承包商=据点、纪念品柜=配装、记录墙=图鉴），NPC 站在房里，
          谁有新话谁头上挂个气泡。所以这里是"状态带 + 站点网格 + 对话框"三块，
          而不是一行行文字（文字列表读起来像设置页，不像一个地方）。 -->
     <section id="scr-hub" class="screen dim">

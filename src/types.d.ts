@@ -3436,6 +3436,9 @@ interface SceneApi {
   SCREEN_ACTS: Record<string, GameStateName>;
   screenActOf(act: string): GameStateName | null;
   screenActNames(): string[];
+  /** 大厅那三道门的翻译表：模块名（combat / manage / grow）→ 状态名（哪一屏） */
+  moduleScreenOf(mod: string): GameStateName | null;
+  moduleScreenNames(): string[];
   overlayNames(): string[];
   describe(): string;
 }
@@ -4058,7 +4061,7 @@ interface UIApi {
   replayStep?: (x: number, y: number, frame: number) => void;
 }
 
-type GameStateName = 'title' | 'chars' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'skills' | 'keep' | 'hub' | 'end';
+type GameStateName = 'title' | 'chars' | 'station' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'skills' | 'keep' | 'hub' | 'end';
 
 /** 这一间的一扇门（"玩家自己选房间"的数据来源，见 Game.doors()） */
 interface DoorInfo {

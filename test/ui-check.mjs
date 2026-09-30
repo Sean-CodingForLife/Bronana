@@ -505,7 +505,7 @@ if (loadErr) { console.log('\n\x1b[31m无法继续\x1b[0m\n'); process.exit(1); 
   console.log('    · 动作分布：' + gnames.map(g => g + ' ' + groups[g].length).join('  ·  '));
 }
 
-const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger } = g;
+const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger, Station } = g;
 
 /* =========================================================
    1c. 文案的单源检查（"别散落到各处"）
@@ -1091,13 +1091,38 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   const enabled3 = levelBtns().filter(b => !b.disabled).length;
   ok(enabled3 === 4, '解锁到第 3 级后 0-3 可选', enabled3);
 
-  // 端到端：选的难度真的进了这一局
+  /* 端到端：选的难度真的进了这一局 —— 而**开局落在大厅（站）**，不是直接落进战斗。
+     用户的设想：点开始 → 选角色 → 进大厅 → 从大厅的门去三个模块（全都在局内）。 */
   UI.selectedDanger = 2;
   clickAct('confirm-char');
-  ok(Game.state === 'playing', '确认出发进入对局', Game.state);
+  ok(Game.state === 'station', '确认出发进入大厅（站）——三个模块都在局内的一张图上', Game.state);
   const sess = Game.getSession();
+  ok(!!sess, '开局建好了会话（大厅是**局内**的一屏，不是菜单）');
   ok(sess && sess.danger === 2, '开局带上了选中的难度等级', sess ? sess.danger : 'null');
   ok(sess && sess.dmods.enemyHp === 1.08 * 1.08, '难度 2 的敌人生命倍率已折进会话', sess && sess.dmods.enemyHp);
+
+  /* 大厅：三道门按**表**画出来（界面不自己造门），点「出击门」回到手里这一局 */
+  const gates = registry['station-gates'].children;
+  ok(gates.length === Station.LIST.length,
+    '大厅把站点表里的 ' + Station.LIST.length + ' 个站点都画出来', gates.length);
+  ok(gates.filter(c => !c.dataset.act).length === 0, '每个站点都可点（都带 data-act）');
+  const combatGate = gates.find(c => c.dataset.module === 'combat');
+  ok(!!combatGate, '出击门画出来了（它通向一个不存在的模块时这条就红）');
+  clickEl(combatGate);
+  ok(Game.state === 'playing', '点出击门 → 回到手里这一局', Game.state);
+  ok(Game.getSession() === sess, '回的是**同一个会话**（大厅不是"开新局"的入口）');
+
+  /* 从战斗走回大厅：暂停菜单里那条（局内 → 局内，不是"退出到主菜单"） */
+  Game.pause();
+  clickAct('to-station');
+  ok(Game.state === 'station', '暂停菜单能回大厅（走回去）', Game.state);
+  ok(Game.getSession() === sess, '回大厅不会把这一局丢掉');
+
+  /* 公告板：读账，不换屏（它不是门 —— station.ts 里 kind:'board' 且没有 `to`） */
+  const board = registry['station-gates'].children.find(c => !c.dataset.module);
+  ok(!!board && board.dataset.act === 'station-board', '公告板是另一条动作（它不通向任何模块）');
+  clickEl(board);
+  ok(Game.state === 'station', '公告板只是把账读出来（点它不换屏）', Game.state);
 
   Game.setState('title', true);
   Profile.reset();
