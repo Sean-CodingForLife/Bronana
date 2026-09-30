@@ -1559,6 +1559,7 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 | `index.html` / `src/ui.ts` | 「开始游戏」→ `chars`；槽位只在 `data-act="slot-prev / slot-next"`（设置里）；`data-act="talents" / "skills"` 的入口只在**局内**那几屏（大厅的养成门 / 枢纽的镜面 / 彼此互跳），标题页与选人页没有 |
 | `node tools/verify.mjs --quick` | ✅ **16 / 16 门**（32.7s） |
 | `node tools/verify.mjs`（全量） | ✅ **17 / 17 门**（116.3s，其中 `test` 那道 **57 套 / 80.7s**）。⚠ 第一次全量跑出过"1 套测试失败"，那条**套件名被输出截断没抓到**（PowerShell 管道只留了尾部 40 行）；`node tools/run-suites.cjs` 复跑 **57 / 57 ✔**、随后全量再跑 **17 / 17 ✔** —— 与 `test/perf.mjs` 自己写的那条注释同源：这台机器是共享的，那一轮 169.6s 的慢行更像抖动，不是回归 |
+| `git push` / CI | ✅ `2841adf..03bea4b` · **completed / success**（[run 36761343948](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36761343948)）。⚠ 推送这条路**被重置了 4 次**（`Recv failure` / `Empty reply` / `Could not connect`），第 5 次才过；`api.github.com` 全程可达，只有 `github.com:443` 抽风 —— 下次遇到别急着改 remote，先重试 |
 
 ⚠ 与 §六 / §九 同一套写法：R50 现在是**已登记、待确认**，不是"已经开工"。
 上面五条谈定（或用户逐条回答）之后，才进入 §一 那张五步表的第 4 步。
