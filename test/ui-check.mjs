@@ -1137,13 +1137,26 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
      · 站点的条数与去处由 story.ts 的表决定（界面不自己数人、不按 id 分支）
      · 点人会选中他、点设施会走上去（走的是同一条委托点击路径）
      · 对话是"说一句 → 下一句顶上来"，而不是一次倒完
+   外加一条（2026-09 改动）：枢纽**归局内** —— 入口在大厅底栏，出去走回大厅，
+   而标题页 / 选人页那对局外入口已经删掉（上面那条"玩家真走的路"就是从标题点过来的）。
    ========================================================= */
 {
   Profile.reset();
   Game.setState('title', true);
+  UI.refresh();
+  /* 枢纽的入口在**局内**（2026-09 用户拍板）：标题页 / 选人页都没有它，
+     要先进大厅 —— 也就是玩家真走的那条路：开始 → 选角色 → 确认出发 → 大厅。 */
+  clickAct('start');
+  ok(Game.state === 'chars', '「开始游戏」进选人页', Game.state);
+  clickEl(registry['char-grid'].children.find(c => c.dataset.char === 'ranger'));
+  clickAct('confirm-char');
+  ok(Game.state === 'station', '确认出发 → 大厅（枢纽的入口在这一屏）', Game.state);
   clickAct('hub');
   ok(Game.state === 'hub' && registry['scr-hub']._classes.has('active'),
-    '标题页能进枢纽', Game.state);
+    '大厅底栏能进枢纽（枢纽也归局内）', Game.state);
+  ok(registry['hub-news'].hidden === !Profile.hasStoryNews(),
+    '"有人想说新话"的角标跟着大厅那个「枢纽」按钮走',
+    String(registry['hub-news'].hidden));
 
   const stations = Profile.stationsFor();
   ok(registry['hub-stations'].children.length === stations.length,
@@ -1153,7 +1166,7 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   ok(noPortrait.length === 0, '屋里每一站都有画法（站点 id ⇄ 头像 id）', noPortrait.join(','));
   ok(String(registry['hub-status'].innerHTML).indexOf('材料') >= 0 &&
      String(registry['hub-status'].innerHTML).indexOf('走过') >= 0,
-    '状态带报出"局外攒了什么"');
+    '状态带报出"档案里攒了什么"');
 
   // 每一个站点按钮都真的带得动动作（不是画出来好看的空壳）
   const deadStations = registry['hub-stations'].children.filter(c => !c.dataset.act);
@@ -1174,6 +1187,15 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   clickEl(registry['hub-talk'].children[1].children.find(c => c.dataset.act === 'hub-say'));
   ok(Profile.linesFor('mother').length === beforeCount - 1,
     '点"继续说"把这一句记成说过了', beforeCount + ' → ' + Profile.linesFor('mother').length);
+
+  /* 出门：底栏两条路都通向大厅 —— 「去大厅」是门，「返回」沿来处走回去。
+     这是"枢纽归局内"在界面上的那一半：出去不是回主菜单。 */
+  clickAct('hub-go');
+  ok(Game.state === 'station', '枢纽底栏的「去大厅」走回大厅（局内 → 局内）', Game.state);
+  clickAct('hub');
+  clickAct('hub-back');
+  ok(Game.state === 'station', '「返回」沿来处走：从大厅进来的就回大厅', Game.state);
+  clickAct('hub');
 
   // 点设施：走上去（进入那个界面）。去处来自表里的 screen，不是界面里写死的 id 分支
   const contract = registry['hub-stations'].children.find(c => c.dataset.station === 'contract');

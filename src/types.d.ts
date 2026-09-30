@@ -2955,7 +2955,7 @@ interface StoryStationDef {
   role: string;
   /** 这一站是哪位 NPC 站在那儿（没解锁就不出现；设施站没有） */
   npc?: string;
-  /** 走上去进入哪个界面（状态名；门口是 'chars'） */
+  /** 走上去进入哪个界面（状态名；门口是 'station' —— 枢纽归局内，出去走回大厅） */
   screen?: string;
 }
 interface StoryFragmentDef { id: string; from: string; title: string; text: string; }

@@ -37,7 +37,7 @@ var WHEN = {
   'low-hp': '第一次掉到半血以下',
   'first-boss': '第一次遇到关底 Boss',
   'first-craft': '第一次打开工坊（能造东西了）',
-  'first-meta': '第一次回到枢纽（局外）'
+  'first-meta': '第一次到枢纽（这一局的家）'
 };
 
 var LIST: TutorialHintDef[] = [
@@ -79,7 +79,7 @@ var LIST: TutorialHintDef[] = [
   {
     id: 'meta', when: 'first-meta',
     text: '这里是枢纽：据点是经营（产能与容量），天赋是养成（永久成长）',
-    note: '局外两块的名字必须在这里出现，否则玩家永远找不到它们'
+    note: '两块的名字必须在这里出现（枢纽是这一局的家，从这里能走到那两块）'
   }
 ];
 

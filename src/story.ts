@@ -81,7 +81,10 @@ var STATIONS: StoryStationDef[] = [
   { id: 'mirror', name: '镜面', role: '天赋 · 永久成长', screen: 'talents' },
   { id: 'contract', name: '契约台', role: '据点 · 花孢子', screen: 'keep' },
   { id: 'wall', name: '档案墙', role: '图鉴 · 挑战', screen: 'codex' },
-  { id: 'door', name: '门口', role: '出发 · 再下一局', screen: 'chars' }
+  /* ⚠ 门口通向**大厅**（2026-09：枢纽也归局内之后，`hub → chars` 已经非法 ——
+     写 `chars` 的话这一站走上去是"点了没反应"；出去 = 走回这一局的传送门房间，
+     开新局只有 `newRun` 一条路）。test/hub.mjs [10] 盯着"去处枢纽真的走得过去"。 */
+  { id: 'door', name: '门口', role: '去大厅 · 传送门房间', screen: 'station' }
 ];
 
 /* =========================================================

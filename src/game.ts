@@ -210,10 +210,12 @@ var Ch: ChamberApi = makeChamber({
 Game.STATES = ['title', 'chars', 'station', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
 
 Game.TRANSITIONS = {
-  title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
+  /* ⚠ 标题页 / 选人页**没有** `hub`：枢纽是局内的一间（见下面 hub 那一档），
+     局外菜单不摆局内的门 —— 它的入口在大厅与暂停里。 */
+  title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
   // 注意：chars 不能直接进 playing —— 那样会出现"playing 但没有会话"的状态，
   // 模拟层访问 S 会直接崩。进入对局必须走 newRun（它用 force 建好会话再切状态）。
-  chars: ['title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'hub'],
+  chars: ['title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
   /* ⚠ `station`（大厅）也在出边里：它是**局内**的一屏，走的是"暂停 → 回大厅"。
      少了这条边，`UI.startRun` 里那句 `setState('station')` 会被状态机**直接拒绝** ——
      表现是"点了出发，游戏开局了，但界面还停在选人页"。 */
@@ -241,16 +243,20 @@ Game.TRANSITIONS = {
   keep: ['title', 'chars', 'paused', 'hub', 'station'],
   /* 大厅（站）：每一次开局的起点。三道门都**常开**（`station.ts` 的表 + 自检守着），
      所以这里的出边与门一一对应：出击 → 回到这一局（`playing`）、
-     经营 → `keep`、养成 → `talents`。`title` 是"放下这一局回标题"
+     经营 → `keep`、养成 → `talents`。`hub` 是"回家里看看"（枢纽也是**局内**的一间，
+     见下面那一档）。`title` 是"放下这一局回标题"
      （档案里那一局的自动存档还在「继续上一局」下面）。
      ⚠ **不许**有 `chars`：从大厅回选人 = 开新局，那条路只有 `newRun` 一条
      （与 `chars → playing` 被拒同一个理由 —— 会话必须先存在）。 */
-  station: ['playing', 'keep', 'talents', 'skills', 'title'],
-  /* 枢纽（N2）：**不是覆盖层**，而是与标题页平级的"家"。
-     它是局与局之间的地方（Hades 那套），所以能去标题/选人/据点/图鉴，
-     也能在局中从暂停过去，并且**能沿原路回到那一局的暂停** ——
-     否则"暂停 → 枢纽"会变成一次性丢掉这一局（存档点还在，但手里的局没了）。 */
-  hub: ['title', 'chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep', 'paused'],
+  station: ['playing', 'keep', 'talents', 'skills', 'title', 'hub'],
+  /* 枢纽（N2）：**这一局的"家"**（NPC 对话推进剧情；不推进模拟）。
+     ⚠ 它归**局内**（2026-09 用户拍板）：不是"局与局之间的地方"，也不该出现在
+     局外菜单里 —— 标题页 / 选人页那一对入口已经删掉，连"有人想说新话"的角标
+     都搬到了大厅的「枢纽」上。进来的边是**大厅 / 暂停**（都在这局里），
+     出去按原路走回去：否则"暂停 → 枢纽"会变成一次性丢掉这一局
+     （存档点还在，但手里的局没了）。`title` 只当兜底出口 —— 与大厅的
+     "回标题"同一条纪律：放下这一局。 */
+  hub: ['title', 'paused', 'station', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
   end: ['chars', 'title', 'records', 'codex', 'hub']
 };
 

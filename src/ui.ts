@@ -179,7 +179,8 @@ UI.init = function () {
   el.hubTalk = q('hub-talk');
   el.hubNews = q('hub-news');
   /* 大厅（站）——**局内**的那一屏。前缀 `station-` 与枢纽那套（`hub-`）刻意分开：
-     两者名字像、性质相反（局内起点 vs 局外之家），只是复用同一套样式。 */
+     两者**都归局内**（大厅是这一局的起点 / 传送门房间，枢纽是这一局的家），
+     只是复用同一套样式。 */
   el.stationStatus = q('station-status');
   el.stationGates = q('station-gates');
   el.stationBoard = q('station-board');
@@ -494,7 +495,7 @@ function renderCodex() {
 }
 
 /* =========================================================
-   枢纽（N2：局与局之间的"家"）
+   枢纽（N2：这一局的"家"—— 入口在大厅底栏 / 暂停菜单，出去走回大厅）
    ---------------------------------------------------------
    为什么把它做成一个**屏幕**而不是一段弹窗：这一层要回答的是
    "我为什么又回来了" —— Hades 那套"死亡也推进剧情"必须有个**地方**发生。
@@ -511,7 +512,7 @@ function renderCodex() {
    ========================================================= */
 var _hubNpc = '';          // 当前选中的 NPC（界面状态，不进档案）
 
-/** 状态带：先回答"我在局外攒了什么"（一横条，每项 nowrap，永不折字） */
+/** 状态带：先回答"档案里攒了什么"（一横条，每项 nowrap，永不折字） */
 function hubStatusHtml() {
   var s = Profile.storySnapshot();
   var freePoints = 0;
@@ -631,9 +632,9 @@ function renderHub() {
       el.hubTalk.appendChild(body);
     }
   }
-
-  // 标题页那个"!"：有任何人想说新话就亮
-  if (el.hubNews) el.hubNews.hidden = !Profile.hasStoryNews();
+  /* 「有人想说新话」的角标（`hub-news`）不画在这一屏 —— 它挂在**大厅**底栏的
+     「枢纽」按钮上（枢纽的入口搬进局内之后就是这么摆的），由 renderStation 更新。
+     这里不再重复一份：同一个元素两个写入处 = 迟早有一处忘了跟着改。 */
 }
 
 /** 让当前选中的 NPC 说一句（说过的不再出现）—— 由"说下去"按钮调用 */
@@ -660,6 +661,8 @@ function hubSay() {
        （加一道门不用改这里）；"门 → 哪一屏"的翻译在 `scene.ts` 的 MODULE_SCREENS
      · 公告板 —— 三个核心素材的进度 + "下一步该去哪"（`Game.guide()` 的软引导）。
        引导指向哪扇门，那扇门就带 `sel` 高亮 —— 这是"路径指引"在画面上的那一半
+     · 底栏 ——「枢纽」（这一局的**家**：NPC / 剧情那几站，枢纽也归局内）与「回标题」。
+       "有人想说新话"的角标跟着「枢纽」走（角标 id 还是 `hub-news`，只是位置搬了）
 
    ⚠ 大厅**归局内**（见 scene.ts 的 station 一档）：没有会话时什么都不画，
      而不是抛异常。界面的三张表（RENDERERS / REFRESH / ACTIONS）会在测试里
@@ -685,6 +688,9 @@ function stationStatusHtml(sess: Session) {
 
 function renderStation() {
   var sess = Game.getSession();
+  /* 枢纽的入口在这一屏的底栏（枢纽也**归局内**）：有人想说新话的角标跟着它走。
+     ⚠ 角标 id 仍然是 `hub-news`（界面契约按 id 认元素），只是位置从标题页搬到了这里。 */
+  if (el.hubNews) el.hubNews.hidden = !Profile.hasStoryNews();
   /* 软引导（v3 §8-15）：下一步该去哪。`null` 不是"没有建议" ——
      那是**循环转起来了**，换个说法（与枢纽的公告板同一条规矩）。 */
   var gd = sess ? Game.guide() : null;
@@ -1975,11 +1981,13 @@ var ACT_KEEP: ActMap = {
 
 var ACT_HUB: ActMap = {
 
-  /* ---- 枢纽（N2）：人、话、出发 ---- */
+  /* ---- 枢纽（N2）：人、话、出门 ---- */
   'hub-back': function () {
-    /* 从暂停过来的就回暂停（那一局还在手里），否则回标题页。
-       这一条是"枢纽是家、不是单向门"的具体体现。 */
-    Game.setState(Game._hubFrom === 'paused' ? 'paused' : 'title');
+    /* 从哪来就回哪去：枢纽是**局内**的一间（大厅 / 暂停都走得进来），不是单向门。
+       来处缺失、或已经不可达（测试里强制跳进来那类路径）才退回标题页 ——
+       发一个必被拒绝的转换会让按钮看起来"点了没反应"。 */
+    var from = Game._hubFrom;
+    Game.setState(from && Game.canSetState(from) ? from : 'title');
   },
   'hub-station': function (t) {
     /* 站点：有人站着就选中他（说他的下一句），是设施就直接走上去。
@@ -3372,10 +3380,8 @@ function refreshContinueButton() {
     var span = q('continue-info');
     if (span) span.textContent = '（' + info.charName + ' · 第 ' + info.wave + ' 波 · Lv.' + info.level + '）';
   }
-  // 标题页那个"枢纽有人想说新话"的角标：与"继续上一局"同一条路径更新
-  //（两个都是"从档案里读出来的标题页状态"，放一起就不会漏掉一处）
-  var news = q('hub-news');
-  if (news) news.hidden = !Profile.hasStoryNews();
+  /* ⚠ 「枢纽有人想说新话」的角标（`hub-news`）**不在这里**：标题页已经没有枢纽的
+     入口了（枢纽归局内），角标跟着大厅底栏那个按钮走，由 renderStation 更新。 */
 }
 UI.refreshContinueButton = refreshContinueButton;
 UI.renderSettings = renderSettings;

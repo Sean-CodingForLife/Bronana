@@ -45,7 +45,8 @@ const SIZES = arg('sizes', '1280x720').split(',').map(s => s.split('x').map(Numb
 /* 每一屏怎么到达：从标题页开始按 data-act 点（`a>b` 表示连着点两下）。
    `-` 表示"停在标题页"。 */
 const SHOTS = arg('shots',
-  'title:-,chars:start,station:start>confirm-char,hub:hub,codex:codex,settings:settings,keep:keep,' +
+  // 枢纽也归**局内**：从标题点不进去，得先过大厅（与玩家真走的那条路一致）
+  'title:-,chars:start,station:start>confirm-char,hub:start>confirm-char>hub,codex:codex,settings:settings,keep:keep,' +
   'records:records,howto:howto,talents:start>talents,' +
   // 开局先落**大厅（站）**：三个模块都在局内的一张图上，先过一道门才进战斗。
   // querySelector 命中的是第一道门（出击门 → playing）；它的入口间是安全房、

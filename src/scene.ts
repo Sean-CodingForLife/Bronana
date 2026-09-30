@@ -102,8 +102,11 @@ var TABLE: Record<string, SceneDef> = {
     note: '据点：跨局经营（花孢子解锁功能，永久）'
   },
   hub: {
-    overlay: 'hub', sim: false, world: true, hud: false, strip: false, keys: 'menu',
-    note: '枢纽：局与局之间的"家"（NPC 对话推进剧情；不推进模拟）'
+    /* ⚠ 按键组是 `none`（2026-09 改动）：枢纽归局内之后，`menu` 那档的
+       "回车开新局（`chars`）"不再合法，留着会变成"按了没反应"的键。
+       与大厅同一档：屋里没有热键，方向键 + 回车走焦点机制（按钮照旧点得到）。 */
+    overlay: 'hub', sim: false, world: true, hud: false, strip: false, keys: 'none',
+    note: '枢纽：这一局的"家"（NPC 对话推进剧情；不推进模拟）—— 从大厅 / 暂停走过去'
   },
   end: {
     overlay: 'end', sim: false, world: true, hud: false, strip: false, keys: 'none',
@@ -147,7 +150,7 @@ var SCREEN_ACTS: Record<string, GameStateName> = {
   'keep': 'keep',
   'hub': 'hub',
   'camp-back': 'shop',       // 营地是"局内商店旁边的一间"，回营地就是回商店
-  'hub-go': 'chars',         // 枢纽的门口 = 出发（选人页）
+  'hub-go': 'station',       // 枢纽的门口 = 去大厅（这一局的传送门房间）
   /* 暂停菜单里的「回大厅」：这也是**唯一**一条从局内走回大厅的路
      （三扇门全在 `station.ts` 的表里，界面不自己造门）。 */
   'to-station': 'station'

@@ -272,7 +272,15 @@ console.log('\n[9] 契约：枢纽这个新屏幕接齐了五处');
   ok(html.indexOf('id="scr-hub"') >= 0 && html.indexOf('id="hub-status"') >= 0 &&
     html.indexOf('id="hub-stations"') >= 0 && html.indexOf('id="hub-talk"') >= 0,
     '② index.html 里有枢纽的"状态带 + 站点网格 + 对话框"三块');
-  ok(html.indexOf('id="hub-news"') >= 0, '标题页有"枢纽有人想说新话"的角标');
+  /* 枢纽**归局内**（2026-09 用户拍板）：入口在**大厅**底栏，"有人想说新话"的
+     角标跟着那个按钮走；局外菜单（标题页 / 选人页）里没有它的门。 */
+  const stationAt = html.indexOf('id="scr-station"');
+  const hubAt = html.indexOf('id="scr-hub"');
+  const newsAt = html.indexOf('id="hub-news"');
+  ok(newsAt >= 0 && newsAt > stationAt && newsAt < hubAt,
+    '「枢纽」入口与"有人想说新话"的角标在大厅的底栏（枢纽归**局内**）');
+  ok(html.slice(0, stationAt).indexOf('data-act="hub"') < 0,
+    '局外菜单（标题页 / 选人页）里没有枢纽的入口');
   const ui = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
   const missHub = await uiMissingActs(['hub', 'hub-back', 'hub-go', 'hub-station', 'hub-say']);
   ok(/renderHub\(\)/.test(ui) && missHub.length === 0,
@@ -283,15 +291,24 @@ console.log('\n[9] 契约：枢纽这个新屏幕接齐了五处');
   ok(Story.npcsFor(Profile.storyCtx()).length >= 1, '⑤ story.ts 的表能独立算出该出现谁');
   // 状态 ⇄ 场景 ⇄ 覆盖层：三处一一对应（registry 也会查，这里给一条更直白的）
   ok(Scene.has('hub'), '场景表里有 hub（否则 UI.show 会抛）');
-  // 可从标题 / 暂停进，也能原路回
+  /* 可从**大厅 / 暂停**进（两者都在这一局里），也能原路回；
+     标题页 / 选人页那一对局外入口已经删掉了。 */
   Game.newRun('ranger', 1, 0);
   Game.setState('title', true);
-  ok(Game.setState('hub') === true, '标题页能进枢纽');
-  ok(Game.setState('title') === true, '枢纽能回标题页');
-  Game.setState('paused', true);
+  ok(Game.canSetState('hub') === false, '标题页进不了枢纽（它不再挂在局外菜单上）');
+  ok(Game.setState('chars') === true && Game.canSetState('hub') === false,
+    '选人页也进不了枢纽（局外菜单不摆局内的门）');
+  Game.setState('playing', true);                       // 测试里强制摆回这一局
+  ok(Game.setState('station') === true, '大厅是局内的一站（从这一局走回去）');
+  ok(Game.setState('hub') === true, '大厅能进枢纽');
+  ok(Game._hubFrom === 'station', '记下了来处（大厅）', String(Game._hubFrom));
+  ok(Game.setState('station') === true, '枢纽能走回大厅（底栏那条「去大厅」）');
+  ok(Game.setState('playing') === true, '大厅能回到手里这一局（出击门）');
+  Game.pause();
   ok(Game.setState('hub') === true, '局中暂停也能进枢纽');
-  ok(Game._hubFrom === 'paused', '记下了来处', String(Game._hubFrom));
+  ok(Game._hubFrom === 'paused', '记下了来处（暂停）', String(Game._hubFrom));
   ok(Game.setState('paused') === true, '能沿原路回到那一局的暂停（不会把这一局丢掉）');
+  ok(Game.setState('title') === true, '枢纽仍然留着回标题的兜底出口（放下这一局）');
 }
 
 /* ---------------- 10. 站点表：屋里有什么、谁站哪儿、走上去通向哪里 ---------------- */
@@ -314,6 +331,13 @@ console.log('\n[10] 枢纽站点（屋里站着的人与摆着的设施）');
   // 设施站：指向的状态必须真的存在（由总账查，这里给一条更直白的）
   const bad = stations.filter(s => s.screen && Game.STATES.indexOf(s.screen) < 0);
   ok(bad.length === 0, '设施站通向的界面都在状态机里', bad.map(s => s.id + '→' + s.screen).join(','));
+  /* ⚠ "状态存在" ≠ "走得到"：真正决定点了走不走得过去的是**转换表**。
+     里屋那站的去处如果不在 `hub` 的出边里，表现就是"走上去什么都不会发生"
+     （门口那站原先通向 `chars` —— 枢纽归局内之后那条边已经非法）。 */
+  const hubOut = Game.TRANSITIONS.hub || [];
+  const deadEnds = stations.filter(s => s.screen && hubOut.indexOf(s.screen) < 0);
+  ok(deadEnds.length === 0, '屋里每一站的去处枢纽真的走得过去（不在出边里 = 点了没反应）',
+    deadEnds.map(s => s.id + '→' + s.screen).join(','));
   // 记录官要捡到第一片碎片才出现 → 他的站点跟着出现
   ok(!stations.some(s => s.npc === 'archivist'), '新档：记录官不在屋里');
   Profile.awardFragment('boss:warden');
