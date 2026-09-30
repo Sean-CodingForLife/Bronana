@@ -819,7 +819,9 @@ function hotkeys() {
      手柄的 dpad 映射成方向键、A 映射成 enter，所以这一段同时就是手柄的菜单操作 ——
      改造前手柄能移动、能暂停，却选不了升级卡，等于半个手柄。
      战斗中不接管方向键：那里方向键是移动。 */
-  if (group !== 'battle') {
+  /* 战斗中不接管方向键（那里方向键是移动）；大厅 / 枢纽同理 ——
+     那两屏是**能走的房间**，方向键必须留给角色，而不是菜单焦点。 */
+  if (group !== 'battle' && group !== 'hall') {
     var fx = 0, fy = 0;
     if (Input.once('arrowright') || Input.once('d')) fx = 1;
     else if (Input.once('arrowleft') || Input.once('a')) fx = -1;
@@ -843,6 +845,24 @@ function hotkeys() {
     Settings.set('speed', Settings.get('speed') >= 2 ? 1 : 2);
     if (UI.renderSettings) UI.renderSettings();
     UI.toast('游戏速度 ' + Game.speed + 'x', '');
+  }
+
+  if (group === 'hall') {
+    /* 屋里：Esc / 手柄 Start 暂停（暂停菜单里有"回大厅"），
+       E / 回车 / 空格 = 与面前的人或公告板交互。
+       ⚠ 走门**不用按键**：走进传送门就换屏（与地牢里走进门换房同一条规矩），
+       所以这里只处理"面前的东西"。 */
+    if (pauseKeyPressed(pauseThird)) {
+      Game.pause();
+      UI.renderPause();
+      return;
+    }
+    if (Input.once('e') || Input.once('enter') || Input.once('space')) {
+      /* 面前的交互由模拟层回答，并通过 `hallTalk` / `hallBoard` 广播给界面层
+         （接入层只管把按键送进去，不替界面决定画什么）。 */
+      Game.hallAct();
+    }
+    return;
   }
 
   if (group === 'pause') {
@@ -961,6 +981,10 @@ function frame() {
   }
 
   if (Scene.showsHud(Game.state)) UI.updateHud();
+  /* 屋里（大厅 / 枢纽）：HUD 要跟着**玩家的位置**收放 —— 走到公告板前按 E 才摊开
+     这一局的账，走开一步就收起来；站在谁面前才有谁的对话框。所以它是每显示帧
+     同步的，不是"进屏刷一次"（那样对话框会留在屏幕上，又变成一份常驻面板）。 */
+  if (Scene.keyGroup(Game.state) === 'hall') UI.hallSync();
 
   /* 背景音乐：**每个显示帧调一次 `update`**，由它按场景决定放什么。
      为什么不让界面各自调 `Music.play`：那样"哪个界面放哪首"会散到十几处，

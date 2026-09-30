@@ -65,6 +65,7 @@ export const MODULES = {
   link:    '../src/link.ts',
   economy: '../src/economy.ts',
   station: '../src/station.ts',
+  hall:    '../src/hall.ts',
   art_spec: '../src/art_spec.ts',
   art_tiles: '../src/art_tiles.ts',
   art_shaders: '../src/art_shaders.ts',
@@ -105,7 +106,7 @@ export const MODULES = {
 export const SIM_MODULES = [
   'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
   /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
-  'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station',
+  'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station', 'hall',
   'exchange', 'guide', 'art_spec', 'affixes', 'synergy', 'weapons',
   'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'training', 'bonds', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
   /* 从 `game.ts` 拆出去的两块（都是"数据 ↔ 数据"的变换，不推进任何状态）：

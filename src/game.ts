@@ -22,6 +22,9 @@ import { Emit } from './emit.ts';
 import { Enemies } from './enemies.ts';
 import { Fold } from './fold.ts';
 import { Forge } from './forge.ts';
+/* 大厅 / 枢纽那两间**能走的房**：墙、站点、出生点与碰撞都在那边，
+   这里只管"人在这间房里走到哪了"（见文件里的 `stepHall`）。 */
+import { Hall } from './hall.ts';
 import { makeChamber } from './chamber.ts';
 import { makeGrid } from './grid.ts';
 import { makeImpact } from './impact.ts';
@@ -160,6 +163,14 @@ var Game = ({
    都必须在 7 个分组里声明过）—— 谎言的护栏不能只是注释。 */
 var S: Session = null as unknown as Session;
 
+/* 玩家现在在哪间**能走的屋子**里走到哪了（大厅 / 枢纽）。
+   ---------------------------------------------------------
+   它**不在 `Session` 里**（理由见 types.d.ts 的 HallState 注）：屋子里的
+   位置不影响任何玩法数值，也不进存档 —— 回到哪一屏就站在哪个门口，
+   这件事由 `hall.ts` 的 `spawnAt` 表达。放在会话之外还有一个好处：
+   换局（newRun）不用记得清掉它，`setState` 离开屋子时会自己丢。 */
+var hallRoom: HallState | null = null;
+
 /* =========================================================
    拆出去的两块：**房间层**（`chamber.ts`）与**空间网格**（`grid.ts`）
    ---------------------------------------------------------
@@ -248,7 +259,7 @@ Game.TRANSITIONS = {
      （档案里那一局的自动存档还在「继续上一局」下面）。
      ⚠ **不许**有 `chars`：从大厅回选人 = 开新局，那条路只有 `newRun` 一条
      （与 `chars → playing` 被拒同一个理由 —— 会话必须先存在）。 */
-  station: ['playing', 'keep', 'talents', 'skills', 'title', 'hub'],
+  station: ['playing', 'keep', 'talents', 'skills', 'title', 'hub', 'paused'],
   /* 枢纽（N2）：**这一局的"家"**（NPC 对话推进剧情；不推进模拟）。
      ⚠ 它归**局内**（2026-09 用户拍板）：不是"局与局之间的地方"，也不该出现在
      局外菜单里 —— 标题页 / 选人页那一对入口已经删掉，连"有人想说新话"的角标
@@ -301,10 +312,21 @@ Game.setState = function (to, force) {
   // 暂停的"来处"只记**真实对局状态**：从帮助/设置/战绩退回暂停时不能覆盖它，
   // 否则再点"继续"会被送回那个覆盖层（实测：暂停 → 设置 → 返回 → 继续 = 又进了设置）。
   // 覆盖层同样记住来处，但只记真实屏幕，免得两个覆盖层互相改写、来回弹。
-  if (to === 'paused') { if (RUN_STATES[from] || !Game._pauseFrom) Game._pauseFrom = from; }
+  /* 大厅 / 枢纽也是"真实屏幕"：从屋里暂停，继续时要回到屋里那一张
+     （不然在枢纽里按 Esc 再继续会被送回上一次的战斗）。 */
+  if (to === 'paused') {
+    if (RUN_STATES[from] || from === 'station' || from === 'hub' || !Game._pauseFrom) {
+      Game._pauseFrom = from;
+    }
+  }
   else if (to === 'hub') { Game._hubFrom = from; }
   else if (RETURN_STATES[to]) { if (!RETURN_STATES[from]) Game._returnFrom[to] = from; }
   Game.state = to;
+  /* ---- 屋里进屋 / 出屋 ----
+     进屋：按 `spawnAt` 站在"从哪来"的那扇门口（第一次进用默认出生点）。
+     出屋：把这份走到哪了丢掉 —— 下次进来会按新的来处重新落点。 */
+  if (to === 'station' || to === 'hub') enterHall(to, from);
+  else if (hallRoom) hallRoom = null;
   Game.events.emit('stateChange', { from: from, to: to });
   return true;
 };
@@ -2662,8 +2684,143 @@ function recordPrev() {
   snapPrev(S.turrets);
 }
 
+/* =========================================================
+   大厅 / 枢纽：**能走的局内世界**（模拟层这一半）
+   ---------------------------------------------------------
+   用户的原始要求（这一整块存在的理由）：
+     "我需要的是一个玩家真实可交互可游玩的局内世界，而不是什么文字冒险，
+      我需要真实可以玩可以探索的世界，而不是给我几个按钮和选项就完了"
+
+   改造前这两屏是**整屏覆盖层 + 一排按钮卡**：世界在背后当背景图，
+   玩家点的其实是菜单。现在它们是两间**手写的房子**（数据在 `hall.ts`）：
+
+     · WASD / 方向键 / 手柄推动角色（加速式，与战斗里同一条 `U.approach`）
+     · 墙是轴对齐矩形，圆 vs 矩形的推出用 `Hall.slide`（贴墙走不抖、不卡角）
+     · 走进传送门 / 设施 = 直接换屏（与地牢里"走进门就换房"同一条规矩）
+     · 走到人 / 公告板面前按 E = 说话 / 读账（`Game.hallAct`）
+
+   ⚠ 这里**不碰波次**：`S.waveT` / 刷怪 / 命中全都按兵不动 —— 站里没有敌人。
+     但 `S.time` 照走：世界只有一口钟，状态机测试也拿它当"这一屏推不推进"的判据
+     （见 test/states.mjs 的 [8]：sim 列必须与实测一致）。
+   ⚠ 移动速度**不用角色属性**：站里没有战斗 buff，见 `hall.ts` 的注释。
+   ========================================================= */
+
+/** 这一间现在该出现哪些站：大厅的门常驻；枢纽的人跟着剧情解锁走 */
+function hallLive(roomId: string): string[] | null {
+  if (roomId !== 'hub') return null;
+  /* 人在剧情里解锁（`Profile.stationsFor` 已经按 ctx 过滤过）——
+     摆位不变，只是"现在屋里有没有这个人"。 */
+  return Profile.stationsFor().map(function (s) { return s.id; });
+}
+
+/**
+ * 进屋：按"从哪来"站在对应的门口（第一次进用默认出生点）。
+ * 落点由 `hall.ts` 的 `spawnAt` 说了算 —— 状态机只交一个来处字符串，
+ * 不认门口在哪（自检守着"落点不许站在触发圈里"，否则一回来就被再送出去）。
+ */
+function enterHall(roomId: string, from: string | null): HallState | null {
+  var def = Hall.BY_ID[roomId];
+  if (!def) { hallRoom = null; return null; }
+  var at = Hall.spawnFor(roomId, from) || { x: def.spawn.x, y: def.spawn.y };
+  hallRoom = {
+    room: roomId, def: def,
+    x: at.x, y: at.y, px: at.x, py: at.y,
+    vx: 0, vy: 0, r: Hall.R,
+    aim: Math.PI / 2, fx: 0, animT: 0, moveBlend: 0,
+    spots: Hall.liveSpots(roomId, hallLive(roomId)),
+    near: null
+  };
+  return hallRoom;
+}
+
+/** 屋里的一步：移动 → 撞墙 → 站名单 → 走上去就过门 → 算"站在谁面前" */
+function stepHall(dt: number, input: { x: number; y: number }) {
+  var h = hallRoom;
+  if (!h) h = enterHall(Game.state, null);
+  if (!h) return;
+  if (S) S.time = (S.time || 0) + dt;       // 世界同一口钟（见上面那段注）
+
+  h.px = h.x; h.py = h.y;
+  var ix = input.x || 0, iy = input.y || 0;
+  var il = Math.sqrt(ix * ix + iy * iy);
+  if (il > 1) { ix /= il; iy /= il; }
+
+  var tvx = ix * Hall.SPEED, tvy = iy * Hall.SPEED;
+  h.vx = U.approach(h.vx, tvx, Hall.SPEED * Hall.ACCEL * dt);
+  h.vy = U.approach(h.vy, tvy, Hall.SPEED * Hall.ACCEL * dt);
+
+  var sl = Hall.slide(h.room, h.x + h.vx * dt, h.y + h.vy * dt, h.r);
+  if (sl.hitX) h.vx = 0;
+  if (sl.hitY) h.vy = 0;
+  h.x = sl.x; h.y = sl.y;
+
+  var speed = Math.sqrt(h.vx * h.vx + h.vy * h.vy);
+  h.moveBlend = U.clamp(speed / Hall.SPEED, 0, 1);
+  h.animT = (h.animT || 0) + dt;
+  if (il > 0.01) { h.aim = Math.atan2(iy, ix); h.fx = ix; }
+
+  /* 站名单每步重算：枢纽里的人会因为剧情/换档变化（屋里的人越站越多），
+     而大厅的门永远都在。重算的代价是几十次数组过滤，与"每帧渲染"无关。 */
+  h.spots = Hall.liveSpots(h.room, hallLive(h.room));
+
+  /* 走进门 / 设施 = 换屏（自动，不用按键 —— 与地牢同一条规矩）。 */
+  var hit = Hall.touch(h.spots, h.x, h.y, h.r);
+  if (hit && hit.screen) {
+    if (Game.setState(hit.screen as GameStateName)) return;
+  }
+  h.near = Hall.near(h.spots, h.x, h.y, h.r);
+}
+
+/* ---- 公开读口（界面层只读这两样，模拟层不反向认识界面） ---- */
+
+/** 玩家现在在哪间屋里走到哪了（不在屋里就是 null）。 */
+Game.hall = function () { return hallRoom; };
+
+/**
+ * 在站里按 E：**面前有什么就做什么**。
+ *
+ * 返回值给界面层用（它决定画哪一句话）：
+ *   · `talk`  —— 面前是 NPC（`id` = 人在 story.ts 里的 id）
+ *   · `board` —— 面前是公告板（读这一局的账，不换屏）
+ *   · `enter` —— 面前是门 / 设施（`Game.setState` 已经切过去了；
+ *                `id` = 要去的那一屏，界面不用猜）
+ * 面前没有人也没有东西（或不在屋里）→ null。
+ *
+ * ⚠ 说话**不在这里说**：台词记账归档案层（`Profile.say`），而这句"要不要现在说"
+ * 是界面的显示决策（对话框只画一句）。模拟层只回答"你面前站着谁"。
+ */
+Game.hallAct = function () {
+  var h = hallRoom;
+  if (!h || !h.near) return null;
+  var s = h.near;
+  if (s.kind === 'npc') {
+    /* 广播"玩家按了 E、面前是谁" —— 界面层订阅它去显示/推进对话。
+       模拟层不画对话框（与 `sfx` 同一条路：模拟层广播意图，表现层消费）。 */
+    Game.events.emit('hallTalk', { id: s.npc || '', spot: s });
+    return { act: 'talk', spot: s, id: s.npc || '' };
+  }
+  if (s.kind === 'board') {
+    Game.events.emit('hallBoard', { spot: s });
+    return { act: 'board', spot: s, id: s.id };
+  }
+  if (s.screen) {
+    var screen = s.screen;
+    if (Game.setState(screen as GameStateName)) {
+      return { act: 'enter', spot: s, id: screen };
+    }
+    return null;
+  }
+  return null;
+};
+
 function step(dt, input) {
   Game.time += dt;
+  /* 大厅 / 枢纽：**真的在走的世界**。它们也推进 `S.time`（世界同一口钟），
+     所以场景表的 `sim:true` 与实测一致；但这一支**不碰**波次、刷怪、命中。 */
+  if (Game.state === 'station' || Game.state === 'hub') {
+    stepHall(dt, input || { x: 0, y: 0 });
+    return;
+  }
   if (Game.state !== 'playing') return;
   if (!S) return;              // 防御：没有会话时绝不推进（避免访问 null 崩溃）
   S.time = (S.time || 0) + dt;
@@ -4783,9 +4940,11 @@ Game.summary = function () { return buildSummary(true); };
 Game.healPlayer = healPlayer;
 Game.damageEnemy = damageEnemy;
 
-/** 暂停：只能从进行中的界面进入；来处由 setState 记录 */
+/** 暂停：能从进行中的界面进入；来处由 setState 记录。
+    大厅 / 枢纽也在名单里 —— 屋里按 Esc 该看到暂停菜单（菜单里有"回大厅"），
+    而不是"按了没反应"。 */
 Game.pause = function () {
-  if (['playing', 'levelup', 'shop'].indexOf(Game.state) < 0) return false;
+  if (['playing', 'levelup', 'shop', 'station', 'hub'].indexOf(Game.state) < 0) return false;
   return Game.setState('paused');
 };
 Game.resume = function () {
@@ -4855,7 +5014,10 @@ Game._internals = {
     return true;
   },
   /** 钉住这一间不自动结束（房间制下"清空即过"会让短测试意外推进状态） */
-  holdRoom: function (sess) { if (sess) sess.roomHold = true; }
+  holdRoom: function (sess) { if (sess) sess.roomHold = true; },
+  /* **进屋 / 走到哪**（只给测试与实验台）：界面走的是 setState 与按键，
+     但"大厅真的能走"这件事要在无头环境里直接驱动 —— 见 test/station.mjs。 */
+  enterHall: enterHall
 };
 
 /* 注册到扩展点总账：状态名与场景表必须一一对应（场景表在 scene.ts 里反向引用这里） */

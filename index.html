@@ -362,49 +362,44 @@
       </div>
     </section>
 
-    <!-- 大厅（站）——**局内**的一屏，不是菜单。
+    <!-- 大厅（站）——**局内**的一屏，而且是一间**能走的房**，不是菜单。
          用户的设想（这一屏存在的全部理由）：「点击开始游戏选择角色存档，进入游戏大厅，
-         然后选择去往各个不同的游戏模块地图进行游玩」（挺进地牢 / 深岩银河那一类）。
+         然后选择去往各个不同的游戏模块地图进行游玩」（挺进地牢 / 深岩银河那一类）；
+         2026-10 又补了两句更硬的：「我需要的是一个玩家真实可交互可游玩的局内世界……
+         不是给我几个按钮和选项就完了」「完全没必要再显示这个了」。
 
-         所以这一屏里只有三样东西：
-           · 状态带 —— 这一局攒下了什么（四本账）
-           · 三道门 —— 出击 / 经营 / 养成（门表在 src/station.ts，界面不自己造门）
-           · 公告板 —— 三个核心素材的进度 + "下一步该去哪"（Game.guide 的软引导）
-         ⚠ 与下面那个「枢纽」别混：大厅是这一局的**传送门房间**，
+         所以这一屏是：`render.ts` 画的那间房（地面 / 墙 / 三道传送门 / 公告板 / 玩家），
+         HTML 只剩**底栏那两个按钮**（枢纽 / 回标题）—— 它们的去处不在这间屋里。
+         ⚠ 站点卡（出击 / 经营 / 养成 / 公告板那四张）**已经删掉**：屋里有的东西
+           不再在 HUD 里摆一份一模一样的按钮列表。公告板的账与本区的指引
+           是**走到板子前按 E** 才摊开的（`hall-read`，走开自动收）。
+         ⚠ 连"WASD 走 · 按 E 交互"那行常驻提示也**删掉了**（2026-10 用户第二轮：
+           「底部只剩一行操作提示 不需要」）。怎么操作不再靠屏幕底下那行字 ——
+           走近门 / 人 / 板子时 `render.ts` 会在**那个东西头上**写一行
+           （"走进出击门 · 或按 E" / "按 E 与菌母说话"），说明页里也有全表。
+           屋里已经有门、有人、有板子的时候，屏幕底下再解释一遍就是噪音。 -->
+         <!-- ⚠ 与下面那个「枢纽」别混：大厅是这一局的**传送门房间**，
            枢纽是这一局的**家**（NPC 那几站）——
-           **两者都在局内**，从大厅走过去；从战斗回大厅是"走回去"，不是退出到主菜单。
-         三块内容复用枢纽那套样式（hub-room / hub-status / hub-stations / station /
-         danger-info），所以这里不新增任何 CSS 类。 -->
-    <section id="scr-station" class="screen dim">
-      <h2 class="scr-h">大 厅</h2>
-      <div class="hub-room">
-        <div class="hub-status" id="station-status"></div>
-        <div class="hub-stations" id="station-gates"></div>
-        <div class="danger-info" id="station-board"></div>
-      </div>
+           **两者都在局内**，从大厅走过去；从战斗回大厅是"走回去"，不是退出到主菜单。 -->
+    <section id="scr-station" class="screen hall-hud">
+      <div class="hall-read" id="station-board" hidden></div>
       <div class="menu row">
         <!-- 枢纽的入口在**局内**的底栏（它也是这一局的一间 —— 见 src/station.ts）：
              "有人想说新话"的角标（`hub-news`）跟着这个按钮走，标题页不再有它的入口。 -->
         <button class="btn hub-btn" data-act="hub">枢 纽 <span id="hub-news" hidden>!</span></button>
-        <button class="btn big" data-act="back-title">回 标 题</button>
+        <button class="btn" data-act="back-title">回 标 题</button>
       </div>
     </section>
 
-    <!-- 枢纽（这一局的"家"）——
-         参照 Hades 的"家"：那里不是一份菜单，而是**一间房 + 若干站点**
-          （镜面=天赋、承包商=据点、纪念品柜=配装、记录墙=图鉴），NPC 站在房里，
-         谁有新话谁头上挂个气泡。所以这里是"状态带 + 站点网格 + 对话框"三块，
-         而不是一行行文字（文字列表读起来像设置页，不像一个地方）。
-         它是**局内**的：入口在大厅 / 暂停菜单里，出去走回大厅。 -->
-    <section id="scr-hub" class="screen dim">
-      <h2 class="scr-h">枢 纽</h2>
-      <div class="hub-room">
-        <div class="hub-status" id="hub-status"></div>
-        <div class="hub-stations" id="hub-stations"></div>
-        <!-- 公告板（v3 §8-15）：撞墙提示 + 路径指引。见 src/guide.ts。 -->
-        <div class="danger-info" id="hub-guide"></div>
-        <div class="hub-talk-box" id="hub-talk" hidden></div>
-      </div>
+    <!-- 枢纽（这一局的"家"）——参照 Hades 的"家"，但同样**不是一份菜单**：
+         它是一间能走的房（镜面=天赋、契约台=据点、档案墙=图鉴、门口=回大厅），
+         NPC 站在屋里，走到谁面前按 E 才开口。它是**局内**的：
+         入口在大厅的南门 / 暂停菜单里，出去走回大厅。
+         与大厅同一条纪律：站点卡（四位 NPC + 四件设施那八张）**已经删掉**，
+          控制提示也不再常驻 —— 人在屋里站着，设施在地上摆着，
+          走到跟前就是交互本身；HUD 只剩说话时才出现的对话框（`hall-read`）。 -->
+    <section id="scr-hub" class="screen hall-hud">
+      <div class="hall-read" id="hub-talk" hidden></div>
       <div class="menu row">
         <button class="btn big" data-act="hub-go">去 大 厅</button>
         <button class="btn" data-act="hub-back">返 回</button>

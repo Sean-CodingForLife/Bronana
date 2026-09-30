@@ -183,8 +183,15 @@ console.log('\n[7] 接线（状态 → 场景 → 界面）');
   ok(Scene.has('station'), '场景表里有 station（缺了它 Scene.of 会抛错）');
   ok(Scene.refreshOf('station') === 'station',
     'station 登记了重画（不登记 = 进站第二眼看到的是上一次的账）');
-  ok(Scene.of('station').world === true && Scene.of('station').sim === false,
-    'station 归**局内**：画世界（world:true）但不推进逻辑帧（sim:false）');
+  /* ⚠ 2026-10："大厅是一间能走的房"之后，sim 从 false 改成 true ——
+     推进的是**屋里的人**（Game.step 走 stepHall），**不碰波次**。 */
+  ok(Scene.of('station').world === true && Scene.of('station').sim === true,
+    'station 归**局内**：画世界，而且真的在走（sim:true —— 逻辑帧推进的是屋里的人）');
+  ok(Scene.of('station').keys === 'hall',
+    '大厅的按键组是 hall（方向键 = 走路，不是菜单焦点）');
+  ok(Station.BY_ID['gate-combat'].screen === 'playing',
+    '门表自己写着去处（screen 从 scene.ts 搬回了门表这一边）',
+    Station.BY_ID['gate-combat'].screen);
   ok(Scene.of('station').overlay === 'station', 'station 的覆盖层是它自己');
 
   /* 模块 → 屏幕：三道门的翻译表（写错一个字母 = 那扇门点下去没反应） */
@@ -206,13 +213,65 @@ console.log('\n[7] 接线（状态 → 场景 → 界面）');
     'station → keep / talents 合法（经营门 / 养成门）');
   ok(Game.canSetState('chars') === false,
     'station → chars 被拒（回选人页 = 开新局，那条路只有 newRun 一条）');
+
+  /* ---- 这一节真正要证明的事：大厅不是"一排按钮"，是一间**能走的房** ----
+     用户的原话是"我需要真实可以玩可以探索的世界，而不是给我几个按钮和选项"。
+     所以这里不满足于"表里有三道门"，而是真的推输入走两步：
+       · 推输入 → 位置真的变（房间不是背景图）
+       · 撞墙   → 停住，再推也不穿、也不抖（墙不是画上去的）
+       · 走进门 → 真的换屏（门是过道，不是卡片上的字） */
+  ok(!!Game.hall() && Game.hall().room === 'station',
+    '进屋就有一份"走到哪"的状态（Game.hall()，而不是菜单焦点）');
+  const hall = Game.hall();
+  const hx = hall.x, hy = hall.y;
+  ok(Math.abs(hx - 300) < 1,
+    '从 playing 回来站在出击门口（spawnAt 按"从哪来"落点）', hx);
+  for (let i = 0; i < 30; i++) Game.step(Game.cfg.fixedDt, { x: 1, y: 0 });
+  ok(hall.x > hx + 20,
+    '按住"右"真的会走（30 帧位移 ' + Math.round(hall.x - hx) + 'px）');
+  ok(Math.abs(hall.y - hy) < 1, '横着走不会漂到另一条轴上');
+  for (let i = 0; i < 240; i++) Game.step(Game.cfg.fixedDt, { x: 0, y: -1 });
+  const wallStop = hall.y;
+  ok(Math.abs(wallStop - 245) < 2,
+    '撞上控制台真的会停住（y=' + Math.round(wallStop) + '；墙的下沿在 230）');
+  for (let i = 0; i < 30; i++) Game.step(Game.cfg.fixedDt, { x: 0, y: -1 });
+  ok(Math.abs(hall.y - wallStop) < 0.5, '贴着墙继续推不会穿过去、也不会抖');
+  /* 重新落在出击门口，往上走：门心 (300,320) r=46，走进去 = 换屏 */
+  Game._internals.enterHall('station', 'playing');
+  let wentOut = false;
+  for (let i = 0; i < 120; i++) {
+    Game.step(Game.cfg.fixedDt, { x: 0, y: -1 });
+    if (Game.state === 'playing') { wentOut = true; break; }
+  }
+  ok(wentOut, '走进出击门真的换屏（回到手里这一局）', Game.state);
+  ok(Game.hall() === null, '离开屋就把"走到哪"丢掉（下次按来处重新落点）');
+  /* 枢纽门在南墙中间：从大厅走回枢纽也是"走过去"，不是点菜单 */
+  Game.setState('station', true);
+  Game._internals.enterHall('station', 'hub');
+  let wentHub = false;
+  for (let i = 0; i < 120; i++) {
+    Game.step(Game.cfg.fixedDt, { x: 0, y: 1 });
+    if (Game.state === 'hub') { wentHub = true; break; }
+  }
+  ok(wentHub && !!Game.hall() && Game.hall().room === 'hub',
+    '穿过南墙的门洞真的走进枢纽（局内 → 局内，不是回主菜单）', Game.state);
   Game.setState('title', true);
 
-  /* 界面三块：id、渲染函数、两个动作 */
+  /* 界面：房间是主体，HUD 只剩底栏那两个按钮（提示也删了，见下一条） */
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  for (const id of ['scr-station', 'station-status', 'station-gates', 'station-board']) {
+  for (const id of ['scr-station', 'station-board', 'hub-news']) {
     ok(html.indexOf('id="' + id + '"') >= 0, 'index.html 里有 #' + id);
   }
+  /* ⚠ 站点卡**不许长回来**（2026-10：用户把整块底栏圈红说"完全没必要再显示这个了"）：
+      屋里摆着三道门与公告板，屏幕底下不许再复制一份一模一样的按钮列表。
+      账归公告板 —— 走到跟前按 E 才摊开（`hallBoard` → `renderBoard`）。
+      ⚠ 常驻控制提示也**不许长回来**（用户第二轮："底部只剩一行操作提示 不需要"）：
+      "按 E 读账 / 走进那扇门"由 render.ts 写在**那件东西头上**（`drawHallPrompt`），
+      屏幕底下不再解释一遍。 */
+  ok(html.indexOf('id="station-gates"') < 0 && html.indexOf('id="station-status"') < 0,
+    '大厅 HUD 里没有站点条 / 状态带（屋里有的东西不在屏幕底下复制一份）');
+  ok(html.indexOf('id="station-hint"') < 0,
+    '大厅 HUD 里也没有常驻的控制提示（操作提示归画面里，不归屏幕底下那行字）');
   ok(html.indexOf('data-act="to-station"') >= 0,
     '暂停菜单里有「回大厅」按钮（局内 → 局内那条路）');
 
@@ -220,8 +279,10 @@ console.log('\n[7] 接线（状态 → 场景 → 界面）');
   ok(uiSrc.indexOf('function renderStation') >= 0, 'ui.ts 里有 renderStation（那一屏真的画得出来）');
   ok(/station:\s*function \(\) \{ renderStation\(\); \}/.test(uiSrc),
     '渲染表把 scene.ts 要的重画名（station）接上了');
-  ok(/dataset\.act = 'station-gate'/.test(uiSrc) && /dataset\.act = 'station-board'/.test(uiSrc),
-    '门与公告板各自有动作（门换屏、公告板只读账）');
+  ok(uiSrc.indexOf("G.on('hallBoard'") >= 0 && /function renderBoard\(\)/.test(uiSrc),
+    '公告板的账走"按 E"那条路（hallBoard 事件 → renderBoard）');
+  ok(!/station-gate'/.test(uiSrc) && uiSrc.indexOf('function hallSync') >= 0,
+    '大厅没有"点一下就去某个模块"的动作了；账与对话框靠 hallSync 跟着位置收放');
   const startM = /UI\.startRun = function[\s\S]*?\n};/.exec(uiSrc);
   ok(!!startM && /Game\.setState\('station'\)/.test(startM[0]),
     'UI.startRun 把开局落在**大厅**（而不是直接落进战斗）');

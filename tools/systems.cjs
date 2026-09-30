@@ -80,7 +80,10 @@ const SYSTEMS = [
   {
     id: 'dungeon', name: '地牢与内容', level: 2,
     note: '地图与叙事是**纯函数**（同种子必得同图），所以能脱离对局单测',
-    modules: ['dungeon.ts', 'art_tiles.ts', 'arena.ts', 'story.ts']
+    /* `hall.ts`（大厅/枢纽两间能走的房）与 `arena.ts` 同类：手写地图数据 +
+       纯几何/纯函数，只 import registry / selfcheck / station / story / utils，
+       不认识对局内核也不认识界面 —— 所以它坐在地牢层，不是界面层。 */
+    modules: ['dungeon.ts', 'art_tiles.ts', 'arena.ts', 'story.ts', 'hall.ts']
   },
   {
     id: 'meta', name: '局外成长（元进度）', level: 3,

@@ -960,6 +960,17 @@ interface StationSiteDef {
   kind: 'portal' | 'board';
   /** 通向哪个模块（`board` 这一档是 null） */
   to: string | null;
+  /**
+   * 走进去进入哪一屏（状态名；`board` 这一档是 null）。
+   *
+   * ⚠ 这一格是 **2026-10 从 `scene.ts` 搬过来的**（原先叫 `MODULE_SCREENS`）：
+   * 那道门通向哪一屏本来就是**门自己的属性**，而"玩家走进去"这件事发生在
+   * `game.ts` 的模拟层里（走进传送门就换模块）—— 模拟层不能 import `scene.ts`
+   * （`scene.ts` 反过来 import `game.ts`，那是环形依赖，架构门会红）。
+   * 于是表挪到门表这一边，**校验留在 `scene.ts`**（只有它认识全部状态名）：
+   * 写错一个字母仍然是定义期就抛，而不是等谁走上去发现没反应。
+   */
+  screen: string | null;
   /** **建成它要花多少全局货币「材料」**（0 = 出生就开着） */
   cost: number;
   /** 前置站点 id：先盖起它们才谈得上这一扇 */
@@ -971,6 +982,8 @@ interface StationSiteDef {
 interface StationApi {
   LIST: StationSiteDef[];
   BY_ID: Record<string, StationSiteDef>;
+  /** 模块名 → 状态名（由站点表**派生**；`scene.ts` 拿它做校验） */
+  screenOf(mod: string): string | null;
   /** 出生就开着的站点（`cost` 为 0 且没有前置） */
   defaultOpen(): string[];
   /** 这道门现在能不能开（三种"不行"分得清：已开 / 前置没开 / 材料不够） */
@@ -1640,6 +1653,134 @@ interface ArenaData {
   cracks: Array<{ pts: number[][]; w: number }>;
   /** 场景装饰物（白骨 / 晶簇 / 菌伞 / 余烬 / 冰棱 —— 种类由主题决定） */
   props: Array<{ x: number; y: number; rot: number; s: number; kind: string }>;
+}
+
+/* ---------------- 大厅 / 枢纽：**能走的两间房**（hall.ts） ----------------
+   这两间房改造前是整屏覆盖层 + 一排按钮卡（世界在后面当背景图）。
+   现在它们是**真的房间**：地面、墙、货箱、站在地上的门与人。
+   玩家用 WASD 走，走进传送门换模块，走到人面前按 E 说话 ——
+   所以这一组类型描述的是"一间房长什么样"，不是"一屏界面画什么"。 */
+/** 一面墙：**轴对齐矩形**。这个项目的碰撞体只有圆（见 collide.ts），
+ *  而"圆 vs 轴对齐矩形"的推出有闭式解 —— 贴着墙走不会抖。 */
+interface HallWallDef { x: number; y: number; w: number; h: number; }
+/** 一件纯装饰（箱子 / 桶 / 柱子 / 管道 / 菌子 / 火堆 / 路牌）—— **不挡路** */
+interface HallPropDef { x: number; y: number; kind: string; s: number; rot: number; }
+/**
+ * 一个站点：走上去就换屏的门 / 站在那儿的人 / 读账的公告板。
+ * `id` 就是 `Station.LIST`（大厅）或 `Story.STATIONS`（枢纽）里的那个 id ——
+ * 界面与自检都按它回表，这里不另起一套名字。
+ */
+interface HallSpotDef {
+  /** 站点 id（门洞 `to-hub` 是 hall.ts 自己的：它不是模块门） */
+  id: string;
+  /** 提示里念出来的名字（与站点表对不上时 `Hall.audit` 会报） */
+  name: string;
+  kind: 'portal' | 'device' | 'npc' | 'board' | 'door';
+  x: number; y: number;
+  /** 触发半径：走进去就换屏（门 / 设施）。人是"站在面前按 E"，不走进去也说话 */
+  r: number;
+  /** 走上去进入哪一屏（状态名）；公告板没有（它不是门） */
+  screen?: string;
+  /** 门通向哪个模块（`StationSiteDef.to` 的副本；自检守着两边一致） */
+  module?: string;
+  /** 站在那儿的人（枢纽的 NPC 站有；`Story.STATIONS` 是唯一出处） */
+  npc?: string;
+  /** 朝向：1 面向右 / -1 面向左 / 0 面向下（只影响画法） */
+  face: number;
+}
+/** 一间房：尺寸、四面墙、装饰、站点、出生点 */
+interface HallRoomDef {
+  /** 房间 id = 状态名（station / hub）—— 进来的那一刻就是这一个 */
+  id: string;
+  name: string;
+  w: number; h: number;
+  /** 默认出生点（`spawnAt` 里没有那一档时用它） */
+  spawn: { x: number; y: number };
+  /**
+   * 从哪一屏**回来**就站在哪个门口（键 = 状态名）。
+   * 为什么按状态名而不是按门口 id：调用方（`Game.setState`）手里只有"从哪来"，
+   * 让它去认门口 id 等于把房间的摆位泄进状态机。
+   */
+  spawnAt?: Record<string, { x: number; y: number }>;
+  walls: HallWallDef[];
+  props: HallPropDef[];
+  /** 地面配色（渲染层唯一的地面调色来源，与 arena 的 pal 同一种写法） */
+  floor: { base: string; alt: string; edge: string; rug: string; lit: string };
+  /** 摆在这一间里的站点（枢纽的人要解锁 —— 由 `Hall.liveSpots` 过滤） */
+  spots: HallSpotDef[];
+  /** 灯（纯表现：画在地面上的一圈暖色） */
+  lamps: Array<{ x: number; y: number; r: number }>;
+}
+/**
+ * 玩家在屋里走到哪了（**会话之外的一份状态**）。
+ *
+ * 为什么不进 `Session`：它不影响任何玩法数值 —— 波次、掉落、掉落概率、
+ * 存档全都不读它。放进会话会让每次存档多背一个"上次站在哪"，
+ * 而"回到哪一屏就站在哪个门口"这件事已经由 `spawnAt` 表达了。
+ */
+interface HallState {
+  room: string;
+  def: HallRoomDef | null;
+  x: number; y: number;
+  /** 上一逻辑帧的位置（渲染层插值用） */
+  px: number; py: number;
+  vx: number; vy: number;
+  r: number;
+  /** 朝向（弧度；画角色用） */
+  aim: number;
+  /** 这一帧的行进方向（-1..1；只用于画"面向哪边"） */
+  fx: number;
+  animT: number;
+  moveBlend: number;
+  /** 这一间里现在真的摆着哪些站（枢纽的人要解锁） */
+  spots: HallSpotDef[];
+  /** 站到谁面前了（每步算一次；没有就是 null）—— 提示与 E 都读它 */
+  near: HallSpotDef | null;
+}
+interface HallApi {
+  ROOMS: HallRoomDef[];
+  BY_ID: Record<string, HallRoomDef>;
+  /** 墙的厚度（画法与碰撞共用一份，所以它只写一次） */
+  WALL: number;
+  /** 玩家的碰撞半径 / 脚程 / 加速度（站里没有战斗 buff，见 hall.ts） */
+  R: number;
+  SPEED: number;
+  ACCEL: number;
+  /** 走到多近算"站在它面前"（在站半径之外还要走这么近） */
+  REACH: number;
+  inRect(r: HallWallDef, x: number, y: number, pad?: number): boolean;
+  /** 哪面墙压住了这个圆（没有就 null）—— 自检用 */
+  hitWall(roomId: string, x: number, y: number, r: number): HallWallDef | null;
+  /** 这个圆是否站在房间的可行区里 */
+  inside(roomId: string, x: number, y: number, r?: number): boolean;
+  /** 把圆推出所有挡路的矩形（两遍推出，见 hall.ts） */
+  slide(roomId: string, x: number, y: number, r: number):
+    { x: number; y: number; hitX: boolean; hitY: boolean };
+  /** 这一间现在真的摆着哪些站（`live` 为 null = 表里的全都在） */
+  liveSpots(roomId: string, live: string[] | null): HallSpotDef[];
+  /** 站在哪一站面前（取最近的；太远返回 null） */
+  near(spots: HallSpotDef[], x: number, y: number, r: number): HallSpotDef | null;
+  /** 走进去会触发的那一站（自动门 / 传送门 / 设施；人不算） */
+  touch(spots: HallSpotDef[], x: number, y: number, r: number): HallSpotDef | null;
+  /** 从某一屏回来时站在哪 */
+  spawnFor(roomId: string, from: string | null): { x: number; y: number } | null;
+  /** 这一间里有哪些站通向哪一屏 */
+  exits(roomId: string): Array<{ id: string; screen: string; kind: string }>;
+  /** 格键（连通性检查用；测试也读它） */
+  gridKey(x: number, y: number): string;
+  /** 从出生点洪水填充出"走得到"的格子集合 */
+  reachable(room: HallRoomDef): Record<string, boolean>;
+  /** 这个站点走得到吗（把站点半径 + 提示距离内的格子都算上） */
+  spotReachable(room: HallRoomDef, spot: HallSpotDef, seen?: Record<string, boolean>): boolean;
+  audit(): { ok: boolean; problems: string[]; counts: { rooms: number; spots: number; walls: number } };
+}
+/** `Game.hallAct()` 的回答：面前是什么、该做什么（界面据此画提示 / 对话框） */
+interface HallActResult {
+  /** talk = 面前是 NPC；board = 公告板；enter = 门 / 设施（已经换屏） */
+  act: 'talk' | 'board' | 'enter';
+  spot: HallSpotDef;
+  /** talk 是 NPC id；enter 是目标状态名；board 是公告板自己的 id */
+  id: string;
 }
 
 /* =========================================================
@@ -3416,7 +3557,7 @@ interface SceneDef {
   /** 武器条是否可见 */
   strip: boolean;
   /** 按键组：main.ts 按它派发热键 */
-  keys: 'menu' | 'start' | 'battle' | 'cards' | 'shop' | 'camp' | 'pause' | 'back' | 'none';
+  keys: 'menu' | 'start' | 'battle' | 'cards' | 'shop' | 'camp' | 'pause' | 'back' | 'hall' | 'none';
   note: string;
 }
 
@@ -4034,6 +4175,14 @@ interface UIApi {
   updateHud(): void;
   toast(msg: string, kind?: string): void;
   renderPause(): void;
+  /* ---- 大厅 / 枢纽：世界里按 E 的回答走 Game.events 广播（hallTalk / hallBoard），
+     不再占用界面对象的公开成员 —— 界面订阅事件，见 ui.ts 的 wireEvents。 ---- */
+  /**
+   * 屋里（大厅 / 枢纽）的**每显示帧同步**：站在公告板前按过 E 才摊开这一局的账、
+   * 站在谁面前才有他的对话框 —— 走开一步就收起来（面板是交互的产物，不是常驻菜单）。
+   * 由 main.ts 的显示帧循环调用；只在 hall 那两屏有实际作用。
+   */
+  hallSync(): void;
   /** 说一次某个时机的提示（规则在 tutorial.ts）；返回说了几条 */
   say(when: string): number;
   /** 按 settings 表填设置面板的值 */
@@ -4127,6 +4276,11 @@ interface GameApi {
   newRun(charId: string, seed?: number, danger?: number, opening?: OpeningLoadout | null, smods?: { owned?: Record<string, number>; forge?: string[] | Record<string, unknown> | null } | null, skillBuild?: Array<{ card: string; option: string }> | null): Session;
   step(dt: number, input: { x: number; y: number }): void;
   getSession(): Session | null;
+  /* ---- 大厅 / 枢纽：**能走的两间屋**（hall.ts 的几何 + 这里的一步） ---- */
+  /** 玩家现在在哪间屋里走到哪了（不在屋里 = null） */
+  hall(): HallState | null;
+  /** 在站里按 E：面前有什么就做什么（说话 / 读账 / 走进门） */
+  hallAct(): HallActResult | null;
   /** 换技能构筑（技能构筑屏打了卡之后立刻生效；见 `game.ts` 里那段取舍） */
   refreshSkills(build: Array<{ card: string; option: string }> | null): boolean;
   chooseLevelCard(i: number): boolean;
@@ -4335,6 +4489,12 @@ interface GameApi {
     breakWall(from: string, to: string, x?: number, y?: number): boolean;
     /** 直接挪到某一间房（测试用：房间制下"哪一间"决定了刷什么怪、有没有门） */
     warpTo(roomId: string): boolean;
+    /**
+     * **进屋 / 走到哪**（只给测试与实验台）。
+     * 界面走的是 `setState`，但"大厅真的能走"这件事要在无头环境里直接驱动：
+     * 进屋 → 推几步输入 → 看位置变没变 / 有没有撞墙 / 有没有走进门。
+     */
+    enterHall(roomId: string, from: string | null): HallState | null;
     /** 直接设一条契约（只给实验台与测试用；正常路径是打完 Boss 抽签再挑） */
     setBoon(id: string): boolean;
     /** 钉住这一间不自动结束（测试用） */

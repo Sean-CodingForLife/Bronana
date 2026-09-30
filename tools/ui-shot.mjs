@@ -48,13 +48,11 @@ const SHOTS = arg('shots',
   // 枢纽也归**局内**：从标题点不进去，得先过大厅（与玩家真走的那条路一致）
   'title:-,chars:start,station:start>confirm-char,hub:start>confirm-char>hub,codex:codex,settings:settings,keep:keep,' +
   'records:records,howto:howto,talents:start>talents,' +
-  // 开局先落**大厅（站）**：三个模块都在局内的一张图上，先过一道门才进战斗。
-  // querySelector 命中的是第一道门（出击门 → playing）；它的入口间是安全房、
-  // 一步就清完 → 点完门等一会儿自己就进了商店；
-  // 暂停则用触屏那个按钮（鼠标设备上它是 display:none，但 .click() 照样派发）
-  'shop:start>confirm-char>station-gate,pause:start>confirm-char>station-gate>pause,' +
-  // 剩下几屏要用 main.ts 的 ?test= 钩子（它们没有"从标题点进去"的路径）
-  'camp:start>confirm-char>station-gate>camp,levelup:?test=levelup,end:start>confirm-char>station-gate>pause>quit>quit,' +
+  // 开局先落**大厅（站）**：三个模块都在局内的一张图上，门要**走过去**才进 ——
+  // 量尺只会点按钮，所以下面这几屏改走 main.ts 的 ?test= 钩子（不是绕近路，
+  // 而是"点不动一扇门"这件事本身：门已经不在 HUD 上了）。
+  'shop:?test=shop,pause:?test=play>pause,' +
+  'camp:?test=shop>camp,levelup:?test=levelup,end:?test=end,' +
   'daily:?daily=1,pick:?test=demo,play:?test=play,hud:?test=play>next-wave,' +
   // 合成屏：一局里摆出"可合成的一对 + 几个不同品级"（按钮与色条只在有合成对象时出现，
   // 满配演示的六把不同武器永远拍不到它们）
@@ -263,17 +261,27 @@ const PROBE = `(() => {
     const e = document.getElementById(id);
     if (e) out.hudText[id] = (e.textContent || '').trim().slice(0, 24);
   });
-  const g = (sel) => document.querySelector(sel);
-  out.hub = act.id === 'scr-hub' ? {
-    room: box(g('.hub-room')), status: box(g('#hub-status')), stations: box(g('#hub-stations')),
-    firstCard: box(g('.station')), talk: box(g('#hub-talk')),
-    perRow: (() => {
-      const cards = [...document.querySelectorAll('.station')];
-      if (!cards.length) return 0;
-      const top = Math.round(cards[0].getBoundingClientRect().top);
-      return cards.filter(c => Math.abs(c.getBoundingClientRect().top - top) < 3).length;
-    })(),
-    cards: document.querySelectorAll('.station').length
+  /* ⚠ 只在**这一屏里**找：document.querySelector 命中的是文档里第一个同名元素，
+     而大厅与枢纽的 HUD 长着同一套类名（.hall-read / .menu.row）——
+     量枢纽时会量到大厅那一份（它在文档里在前，而且藏着），读数恒为 0×0。
+     这正是"量尺自己骗自己"的那一类：数字有、看着像结论，其实量的是别人。 */
+  const g = (sel) => act.querySelector(sel);
+  /* 大厅 / 枢纽只该有**一样** HUD 东西（2026-10 两轮：站点卡全删 + 常驻提示也删）：
+     底栏那排按钮；读账卡（.hall-read）只在该在的时候在。这里量的是
+     "贴底那一条没有把房间糊住、也没有把自己挤出视口"，以及读账卡收着的时候
+     确实是 0 高（hidden 的小抄：收着看不见才算收着）。 */
+  const room = act.id === 'scr-station' ? 'station' : (act.id === 'scr-hub' ? 'hub' : null);
+  out.hall = room ? {
+    room: room,
+    read: box(g('.hall-read:not([hidden])')),
+    readHidden: box(g('.hall-read[hidden]')),
+    menu: box(g('.menu.row')),
+    hudH: (() => {
+      const kids = [...act.children].filter(e => e.getBoundingClientRect().height > 0);
+      if (!kids.length) return 0;
+      const top = Math.min(...kids.map(e => e.getBoundingClientRect().top));
+      return Math.round(innerHeight - top);
+    })()
   } : null;
   return out;
 })()`;
@@ -480,12 +488,12 @@ async function main() {
         log('      HUD 读数：' + Object.keys(probe.hudText)
           .map(k => k + '=' + probe.hudText[k]).join('  '));
       }
-      if (probe.hub) {        const hb = probe.hub;
-        log('      枢纽: 房 ' + (hb.room ? hb.room.w + '×' + hb.room.h : '—') +
-          ' · 每行 ' + hb.perRow + ' 站 × 共 ' + hb.cards +
-          ' · 卡 ' + (hb.firstCard ? hb.firstCard.w + '×' + hb.firstCard.h : '—') +
-          ' · 状态带 ' + (hb.status ? hb.status.h : '—') + ' · 对话框 ' + (hb.talk ? hb.talk.h : '—') +
-          (hb.room && hb.room.overY ? '  [房内滚动]' : ''));
+      if (probe.hall) {
+        const hb = probe.hall;
+        log('      ' + (hb.room === 'hub' ? '枢纽' : '大厅') + ' HUD: 贴底 ' + hb.hudH + 'px' +
+          ' · 读账卡 ' + (hb.read ? hb.read.w + '×' + hb.read.h +
+            (hb.read.overY ? '(可滚 ' + hb.read.scrollH + ')' : '') : '收着') +
+          ' · 底栏按钮 ' + (hb.menu ? hb.menu.w + '×' + hb.menu.h : '—'));
       }
     }
     report.sizes.push(entry);

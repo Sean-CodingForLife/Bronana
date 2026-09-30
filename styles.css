@@ -120,7 +120,7 @@ html[data-touch="1"] .layer{touch-action:pinch-zoom;}
 }
 .screen > *{flex:none;}
 /* 列表 / 大面板：可以缩、可以滚（顺序很重要：这条必须在 .screen > * 之后） */
-.codex-wrap,.hub-room,#settings,.pause-stats,.end-body,.howto,.shop-cols,
+.codex-wrap,#settings,.pause-stats,.end-body,.howto,.shop-cols,
 .shop-foot,.char-detail,.codex-list{flex:0 1 auto;min-height:0;}
 .codex-wrap,.settings{overflow-y:auto;}
 /* 据点页有**两份**清单（设施 + 图纸）：让整屏滚，而不是每份清单各自缩成一个小滚动框。
@@ -140,18 +140,18 @@ html[data-touch="1"] .layer{touch-action:pinch-zoom;}
 /* ---------------- 滚动条 ----------------
    默认的系统滚动条是亮白的一竖条，压在牛皮纸面板上很出戏。
    改成"墨线 + 纸底"，与美术规范同源（不是新语言，只是同一套颜色的复用）。 */
-.screen,.codex-wrap,.codex-list,.hub-room,.settings,.howto,.end-body{
+.screen,.codex-wrap,.codex-list,.hall-read,.settings,.howto,.end-body{
   scrollbar-width:thin;
   scrollbar-color:var(--ink) rgba(0,0,0,.12);
 }
 .screen::-webkit-scrollbar,.codex-wrap::-webkit-scrollbar,.codex-list::-webkit-scrollbar,
-.hub-room::-webkit-scrollbar,.settings::-webkit-scrollbar,.howto::-webkit-scrollbar,
+.hall-read::-webkit-scrollbar,.settings::-webkit-scrollbar,.howto::-webkit-scrollbar,
 .end-body::-webkit-scrollbar{width:11px;height:11px;}
 .screen::-webkit-scrollbar-track,.codex-wrap::-webkit-scrollbar-track,.codex-list::-webkit-scrollbar-track,
-.hub-room::-webkit-scrollbar-track,.settings::-webkit-scrollbar-track,.howto::-webkit-scrollbar-track,
+.hall-read::-webkit-scrollbar-track,.settings::-webkit-scrollbar-track,.howto::-webkit-scrollbar-track,
 .end-body::-webkit-scrollbar-track{background:rgba(0,0,0,.12);border-radius:6px;}
 .screen::-webkit-scrollbar-thumb,.codex-wrap::-webkit-scrollbar-thumb,.codex-list::-webkit-scrollbar-thumb,
-.hub-room::-webkit-scrollbar-thumb,.settings::-webkit-scrollbar-thumb,.howto::-webkit-scrollbar-thumb,
+.hall-read::-webkit-scrollbar-thumb,.settings::-webkit-scrollbar-thumb,.howto::-webkit-scrollbar-thumb,
 .end-body::-webkit-scrollbar-thumb{background:var(--ink);border:2px solid var(--paper);border-radius:6px;}
 
 /* ---------------- 标题页 ----------------
@@ -786,80 +786,77 @@ html[data-touch="1"] .layer{touch-action:pinch-zoom;}
      一通到底的高度：标题 40 + 间隙 48 + 房 425 + 菜单 110 + 内边距 40 ≈ 663 / 720
    四列而不是"能塞几列塞几列"：8 站刚好 4+4 两行；少一个人（记录官）时
    末行 3 张**居中**，看上去仍然是"摆好的"，而不是"少了一张"。 */
-.hub-room{
-  width:min(1040px,95vw);
-  overflow-y:auto;
-  background:var(--paper);
-  border:var(--line) solid var(--ink);
-  border-radius:12px;
-  box-shadow:5px 5px 0 0 var(--ink);
-  padding:9px 13px 11px;
-  display:flex;flex-direction:column;gap:9px;
+/* ---------------- 大厅 / 枢纽：局内两间能走的房 ----------------
+   这两屏与别的 .screen **不是一类东西**：别的屏幕是"菜单"（一整块不透明的
+   纸面盖住一切），这两屏是**局内的房间** —— render.ts 画的地面/墙/传送门/
+   NPC/玩家才是主体，这里的 HTML 只剩一圈**贴底按钮**。
+
+   ⚠ 2026-10 改动（用户："完全没必要再显示这个了"）：**站点卡片全部删掉**。
+   改造前这两屏底下摆着"出击 / 经营 / 养成 / 公告板"（枢纽是"四个人 + 四件设施"）
+   的一排按钮卡 —— 那是旧菜单的残留：屋里已经有的东西，HUD 里又摆了一份
+   一模一样的列表。现在：
+     · 屋里有什么、能去哪儿，只在**画面里**（门 / 设施 / 人 / 走位）
+     · 唯一的"面板"是 .hall-read（公告板读账 / NPC 说话）—— 它是**交互的产物**，
+       走到跟前按 E 才摊开，走开自动收起（ui.ts 的 hallSync），不是常驻菜单
+     · **常驻控制提示也删了**（2026-10 第二轮：「底部只剩一行操作提示 不需要」）——
+       "按 E 读账 / 走进那扇门"由 render.ts 在**那件东西头上**写，不再在屏幕底下
+       解释一遍。说明页（`说明` 那一屏）里有完整的键位表。
+   于是三条纪律：
+     · .screen.hall-hud 透明且不吃鼠标（pointer-events:none）—— 房间不被盖住
+     · 内容贴底（justify-content:flex-end）—— 玩家站在房间中心时永远看得见
+     · 贴底那一圈仍然不铺满 —— 房间要看得见，按钮是房间之外的东西 */
+.screen.hall-hud{
+  justify-content:flex-end;
+  gap:8px;
+  padding:0 0 10px;
+  overflow:hidden;
+  background:linear-gradient(to top,rgba(20,13,9,.5) 0%,rgba(20,13,9,.14) 24%,rgba(20,13,9,0) 44%);
+  pointer-events:none;
 }
-/* 状态带：一横带，每项 nowrap —— 它在一屏宽里，永远不该折字 */
-.hub-status{
+.screen.hall-hud > *{pointer-events:auto;}
+/* 读账 / 说话：**交互的产物**。同一张卡片，两种内容：
+     · #station-board —— 公告板（四本账 + 核心素材 + 下一步 + 这一波还剩）
+     · #hub-talk      —— 对话框（头像 + 名牌 + 这一句 + "继续说"）
+   它比旧的整屏面板矮得多，而且只在"人站在跟前"的时候存在。 */
+.hall-read{
+  width:min(880px,95vw);
+  max-height:46vh;
+  overflow-y:auto;
+  border:var(--line) solid var(--ink);
+  border-radius:10px;
+  background:var(--paper);
+  box-shadow:4px 4px 0 0 var(--ink);
+  padding:9px 14px 11px;
+}
+.hall-read[hidden]{display:none;}
+#hub-talk{display:flex;gap:11px;align-items:flex-start;}
+.hall-read .tx-cv{flex:0 0 auto;}
+.hall-read .tx-body{flex:1;min-width:0;}
+.hall-read .tx-name{
+  font-size:13.5px;font-weight:700;letter-spacing:.08em;
+  display:flex;align-items:baseline;gap:8px;
+}
+.hall-read .tx-name .tx-role{font-size:11px;font-weight:400;opacity:.62;letter-spacing:0;}
+.hall-read .tx-line{font-size:14px;line-height:1.5;word-break:break-word;margin-top:5px;}
+.hall-read .tx-next{margin-top:7px;letter-spacing:.06em;}
+.hall-read .tx-quiet{font-size:13px;opacity:.6;line-height:1.5;margin-top:5px;}
+/* 账目带（公告板里的四本账 / 档案那一带）：一横带，每项 nowrap ——
+   在一屏宽里永远不该折字 */
+.acct-band{
   display:flex;flex-wrap:wrap;gap:5px 15px;
   font-size:12.5px;
   border-bottom:2px dashed rgba(0,0,0,.2);
   padding-bottom:7px;
+  margin-top:6px;
 }
-.hub-status b{font-size:14px;}
-.hub-status .hs-item{white-space:nowrap;opacity:.85;}
-.hub-status .hs-item.warn{opacity:1;color:#8a4a2a;font-weight:700;}
-/* 站点网格：每个站点一张卡（头像 + 名字 + 职能 + 新话角标）。
-   四列 + 末行居中：flex 换行而不是 grid —— grid 的末行靠左，看着像漏了一张。 */
-.hub-stations{
-  display:flex;flex-wrap:wrap;justify-content:center;gap:9px;
+.acct-band b{font-size:14px;}
+.acct-band .acct-item{white-space:nowrap;opacity:.85;}
+.acct-band .acct-item.warn{opacity:1;color:#8a4a2a;font-weight:700;}
+/* 公告板那张卡的小标题（"公 告 板"） */
+.acct-head{
+  font-size:13px;font-weight:700;letter-spacing:.24em;
+  opacity:.6;white-space:nowrap;
 }
-/* 站点是 .btn（于是键盘/手柄的方向键天然能选中它：焦点只在 .btn 里找），
-   但外形要像"屋里的东西"：竖排、居中、四列 */
-.station{
-  flex:0 1 calc(25% - 7px);
-  min-width:132px;max-width:236px;
-  display:flex;flex-direction:column;align-items:center;gap:2px;
-  background:var(--paper);
-  border-radius:10px;
-  box-shadow:3px 3px 0 0 var(--ink);
-  padding:6px 8px 7px;
-  letter-spacing:normal;
-  text-align:center;
-  position:relative;
-}
-.station:hover{background:var(--cream);transform:translateY(-1px);}
-.station.sel{background:var(--cream);box-shadow:0 0 0 2px var(--ink) inset,3px 3px 0 0 var(--ink);}
-.station canvas{display:block;image-rendering:pixelated;}
-.station .st-nm{font-size:14.5px;letter-spacing:.05em;line-height:1.25;}
-.station .st-role{font-size:11px;font-weight:400;opacity:.68;line-height:1.25;}
-.station .st-news{
-  position:absolute;top:-7px;right:-7px;
-  width:19px;height:19px;border-radius:50%;
-  background:var(--danger);color:var(--cream);
-  font-size:12px;font-weight:700;line-height:19px;text-align:center;
-  border:2px solid var(--ink);
-  letter-spacing:0;
-}
-/* 对话框：头像 + 名牌 + 台词（只在该说话的时候出现）。
-   整块可点 = 往前走一句；里面那个小按钮是给键盘/手柄用的同一条路。 */
-.hub-talk-box{
-  display:flex;gap:11px;align-items:flex-start;
-  border:var(--line) solid var(--ink);
-  border-radius:10px;
-  background:var(--cream);
-  box-shadow:3px 3px 0 0 var(--ink);
-  padding:8px 13px;
-  cursor:pointer;
-}
-.hub-talk-box[hidden]{display:none;}
-.hub-talk-box .tx-cv{flex:0 0 auto;}
-.hub-talk-box .tx-body{flex:1;min-width:0;}
-.hub-talk-box .tx-name{
-  font-size:13.5px;font-weight:700;letter-spacing:.08em;
-  display:flex;align-items:baseline;gap:8px;margin-bottom:3px;
-}
-.hub-talk-box .tx-name .tx-role{font-size:11px;font-weight:400;opacity:.62;letter-spacing:0;}
-.hub-talk-box .tx-line{font-size:14.5px;line-height:1.5;word-break:break-word;}
-.hub-talk-box .tx-next{margin-top:6px;letter-spacing:.06em;}
-.hub-talk-box .tx-quiet{font-size:13px;opacity:.6;line-height:1.5;}
 
 /* 标题页菜单上的"枢纽"入口与它的新话角标（与枢纽屏内的角标同源） */
 .hub-btn{position:relative;}

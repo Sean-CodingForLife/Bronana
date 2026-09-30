@@ -62,12 +62,14 @@ var Station = {} as StationApi;
 var SITES: StationSiteDef[] = [
   {
     id: 'gate-combat', name: '出击门', to: 'combat', kind: 'portal',
+    screen: 'playing',
     cost: 0, req: [],
     note: '通向地牢 —— 这一局的材料、核心材料、孢子全靠它',
     why: '它是最要紧的一条路："一条路走到黑"必须从第一秒就通'
   },
   {
     id: 'gate-manage', name: '经营门', to: 'manage', kind: 'portal',
+    screen: 'keep',
     cost: 0, req: [],
     note: '通向经营 —— 建造（布局 / 设施 / 升级）+ 经营（产能 / 供需 / 效率）',
     why: '**它不许收费**：v3 §4-规则2"玩家任何时候可以去任何模块"。' +
@@ -76,6 +78,7 @@ var SITES: StationSiteDef[] = [
   },
   {
     id: 'gate-grow', name: '养成门', to: 'grow', kind: 'portal',
+    screen: 'talents',
     cost: 0, req: [],
     note: '通向养成 —— 角色成长、NPC 羁绊、能力解锁（叙事线也在这边，但它不产经济资源）',
     why: '同上，不许有前置：把"先有经营才谈得上养成"写成**门的锁**，' +
@@ -87,6 +90,7 @@ var SITES: StationSiteDef[] = [
        为什么值得一行：四本账的余额与三个核心素材的进度如果没有一个地方能一次看全，
        "循环"在玩家那一侧就是不可见的。它不花任何东西（不进门 = 不要代价）。 */
     id: 'board', name: '公告板', to: null, kind: 'board',
+    screen: null,
     cost: 0, req: [],
     note: '把这一局的账摆出来：四本账各有多少、三个核心素材各差几次必出、下一步该去哪',
     why: '循环要**看得见**才算循环。v3 §9-建议7 还要求"软引导：撞墙提示 + 路径指引"——' +
@@ -100,6 +104,19 @@ Station.BY_ID = (function () {
   for (var i = 0; i < SITES.length; i++) m[SITES[i].id] = SITES[i];
   return m;
 })();
+
+/**
+ * 模块名 → 状态名。**从站点表派生**（而不是另写一张表）：门表里那三道门
+ * 各自声明"走进去是哪一屏"，这里只是把它翻成"按模块名查"的形状 ——
+ * 于是"出击门通向 playing"这件事全项目只有一处写下过。
+ * 目标状态是不是真的存在由 `scene.ts` 校验（只有它认识全部状态名）。
+ */
+Station.screenOf = function (mod) {
+  for (var i = 0; i < SITES.length; i++) {
+    if (SITES[i].kind === 'portal' && SITES[i].to === mod) return SITES[i].screen;
+  }
+  return null;
+};
 
 /* =========================================================
    2. 开门规则（纯函数；状态由调用方给）
@@ -178,9 +195,15 @@ Station.audit = function () {
       else if (!Economy.SYSTEMS[d.to]) {
         problems.push(d.id + ' 通向一个不存在的模块：' + d.to + '（点下去什么也不会发生）');
       }
+      /* 门要知道自己通向**哪一屏**：以前那张翻译表在 scene.ts，而"走进去"
+        发生在模拟层（`game.ts` 走 `Station.screenOf`）—— 没有它，走上去
+        什么也不会发生，而所有别的自检都是绿的。 */
+      if (!d.screen) problems.push(d.id + ' 没有 `screen`（走进去该去哪一屏？）');
       if (!(d.cost >= 0)) problems.push(d.id + ' 的 cost 不是非负数');
     } else if (d.to) {
       problems.push(d.id + ' 不是门却有 `to`（它不通向任何地方，别写）');
+    } else if (d.screen) {
+      problems.push(d.id + ' 不是门却有 `screen`（它不是门，不该通向任何地方）');
     }
     for (j = 0; j < d.req.length; j++) {
       if (!Station.BY_ID[d.req[j]]) problems.push(d.id + ' 的前置不存在：' + d.req[j]);
@@ -266,12 +289,16 @@ Registry.family('stationSite', {
   note: '大厅（站）里的站点：三道通往模块的门 + 公告板', owner: 'station.ts',
   entries: function () {
     return Station.LIST.map(function (d) {
-      /* `refs` 让"这道门通向哪个模块"进总账 —— 于是 `to` 指向一个不存在的模块
-         会被 `Registry.audit()` 抓到，而不是等玩家点一下发现没反应。
-         `board` 那一档没有 `to`，`refs` 就是空的（它不通向任何地方）。 */
+      /* `refs` 让"这道门通向哪个模块 / 哪一屏"进总账 —— 于是 `to` 指向不存在的
+         模块、或 `screen` 写错一个状态名，都会被 `Registry.audit()` 抓到，
+         而不是等玩家走进门发现没反应（或去了错的界面）。
+         `board` 那一档两样都没有，`refs` 就是空的（它不通向任何地方）。 */
+      var refs: Array<{ field: string; value: string; family: string }> = [];
+      if (d.to) refs.push({ field: 'to', value: d.to, family: 'ledgerSystem' });
+      if (d.screen) refs.push({ field: 'screen', value: d.screen, family: 'state' });
       return {
         id: d.id,
-        refs: d.to ? [{ field: 'to', value: d.to, family: 'ledgerSystem' }] : []
+        refs: refs
       };
     });
   }

@@ -60,17 +60,25 @@ var w = window.innerWidth, h = window.innerHeight;
    摄像机
    ========================================================= */
 function updateCamera(dt) {
-  var sess = Game.getSession();
   var cam = R.cam;
-  if (!sess) return;
-  var p = sess.player;
-  var tx = p.x, ty = p.y;
+  /* 目标：屋里跟屋里的玩家，战斗里跟会话玩家。夹取范围也跟着世界尺寸走 ——
+     大厅 / 枢纽是 1500×1120 的**手写房间**（不是 Arena 那张 1680×1260），
+     用 Arena 的尺寸夹取会让镜头在屋里偏出去一截。 */
+  var hall = Game.hall();
+  var tx, ty, worldW, worldH;
+  if (hall && hall.def) {
+    tx = hall.x; ty = hall.y; worldW = hall.def.w; worldH = hall.def.h;
+  } else {
+    var sess = Game.getSession();
+    if (!sess) return;
+    tx = sess.player.x; ty = sess.player.y; worldW = Arena.W; worldH = Arena.H;
+  }
   cam.x = U.lerp(cam.x, tx, Math.min(1, dt * 7));
   cam.y = U.lerp(cam.y, ty, Math.min(1, dt * 7));
 
   var halfW = cam.w / 2 / cam.zoom, halfH = cam.h / 2 / cam.zoom;
-  cam.x = U.clamp(cam.x, Math.min(halfW, Arena.W / 2), Math.max(Arena.W - halfW, Arena.W / 2));
-  cam.y = U.clamp(cam.y, Math.min(halfH, Arena.H / 2), Math.max(Arena.H - halfH, Arena.H / 2));
+  cam.x = U.clamp(cam.x, Math.min(halfW, worldW / 2), Math.max(worldW - halfW, worldW / 2));
+  cam.y = U.clamp(cam.y, Math.min(halfH, worldH / 2), Math.max(worldH - halfH, worldH / 2));
 
   updateShake(dt);
   cam.shakeX = R.shake.x;
@@ -587,6 +595,221 @@ function drawPropsStatic(x, a) {
   }
 }
 
+/* =========================================================
+   大厅 / 枢纽：**能走的两间屋**（渲染这一半）
+   ---------------------------------------------------------
+   用户对这一块的要求（见 `hall.ts` 的文件头）：不是"一排按钮卡"，
+   是一间真的房间 —— 有地面、墙、货箱、站在地上的门与人。
+
+   所以这一块画三样东西：
+     · 静态：地面（棋盘 + 灯圈 + 中央毯）、墙、装饰
+     · 站点：传送门（发光的门环 + 门牌号）、设施、NPC（站在地上的人）、公告板
+     · 玩家：复用战斗里**同一个角色画法**（骨架 / 呼吸 / 走路都在那一条路上）
+
+   渲染层只读世界状态：这一块不写任何 `Game` 字段，也不认识状态机。
+   ========================================================= */
+var HALL_WALL_FILL = '#332e2a';
+var HALL_WALL_TOP = '#453e38';
+var HALL_WALL_EDGE = { outline: PAL.INK, outlineWidth: 3 };
+var HALL_THIN_EDGE = { outline: PAL.INK, outlineWidth: 2.5 };
+var HALL_LIT_SOFT = { alpha: 0.09, outlineWidth: 0 };
+var HALL_LIT_HARD = { alpha: 0.13, outlineWidth: 0 };
+var HALL_LABEL = { outline: PAL.INK, outlineWidth: 4, weight: 700 };
+var HALL_HINT = { outline: PAL.INK, outlineWidth: 5, weight: 700 };
+var HALL_GATE_A = { alpha: 0.85, outline: PAL.INK, outlineWidth: 2.5 };
+
+function hallGateColor(module) {
+  if (module === 'combat') return '#c47a5c';
+  if (module === 'manage') return '#b8a45c';
+  if (module === 'grow') return '#8fc47a';
+  return PAL.STEEL;
+}
+
+function drawHallFloor(x, room) {
+  D.rect(x, 0, 0, room.w, room.h, room.floor.base, D.O.none);
+  /* 棋盘格：64px 一格（与 `hall.ts` 的连通性网格 12px 无关 —— 那是碰撞用的，
+     这是给人看的）。格子只画一半（另一半留 base），于是地面有走向、不花。 */
+  var tile = 64;
+  for (var iy = 0; iy * tile < room.h; iy++) {
+    for (var ix = 0; ix * tile < room.w; ix++) {
+      if ((ix + iy) % 2) continue;
+      D.rect(x, ix * tile, iy * tile, tile, tile, room.floor.alt, D.O.none);
+    }
+  }
+  // 中央毯：把"屋子中间"说出来（也提示玩家这里可以站着看四周）
+  D.roundRect(x, room.w / 2 - 250, room.h / 2 - 180, 500, 360, 26,
+    room.floor.rug, HALL_THIN_EDGE);
+  /* 灯：同心圆 + alpha 的平涂光晕。**不是渐变** —— 美术宪法禁渐变，
+     所以"光"是几层不同 alpha 的圆，不是一个 radial gradient。 */
+  for (var l = 0; l < room.lamps.length; l++) {
+    var lp = room.lamps[l];
+    D.circle(x, lp.x, lp.y, lp.r, room.floor.lit, HALL_LIT_SOFT);
+    D.circle(x, lp.x, lp.y, lp.r * 0.6, room.floor.lit, HALL_LIT_HARD);
+  }
+}
+
+function drawHallWalls(x, room) {
+  for (var i = 0; i < room.walls.length; i++) {
+    var w = room.walls[i];
+    D.rect(x, w.x, w.y, w.w, w.h, HALL_WALL_FILL, HALL_WALL_EDGE);
+    if (w.w > 16 && w.h > 16) {
+      D.rect(x, w.x + 5, w.y + 5, w.w - 10, w.h - 10, HALL_WALL_TOP, D.O.none);
+    }
+  }
+}
+
+/** 装饰：不挡路（挡路的那些在 `room.walls` 里，这里只是"屋里有什么"） */
+function drawHallProps(x, room, t) {
+  for (var i = 0; i < room.props.length; i++) {
+    var p = room.props[i];
+    var s = p.s || 1;
+    switch (p.kind) {
+      case 'crate':
+        D.rect(x, p.x - 20 * s, p.y - 20 * s, 40 * s, 40 * s, PAL.WOOD, HALL_THIN_EDGE);
+        D.rect(x, p.x - 20 * s, p.y - 4 * s, 40 * s, 8 * s, PAL.WOOD_D, D.O.none);
+        break;
+      case 'barrel':
+        D.roundRect(x, p.x - 15 * s, p.y - 19 * s, 30 * s, 38 * s, 7 * s, PAL.WOOD_D, HALL_THIN_EDGE);
+        D.rect(x, p.x - 15 * s, p.y - 4 * s, 30 * s, 5 * s, PAL.WOOD, D.O.none);
+        break;
+      case 'pillar':
+        D.circle(x, p.x, p.y, 23 * s, HALL_WALL_TOP, HALL_THIN_EDGE);
+        D.circle(x, p.x, p.y, 13 * s, '#5a5148', { outline: PAL.INK, outlineWidth: 2 });
+        break;
+      case 'pipe':
+        D.rect(x, p.x - 58 * s, p.y - 9 * s, 116 * s, 18 * s, '#6f6a62', HALL_THIN_EDGE);
+        D.circle(x, p.x - 58 * s, p.y, 12 * s, '#7d786f', HALL_THIN_EDGE);
+        break;
+      case 'mushroom':
+        D.rect(x, p.x - 5 * s, p.y - 4 * s, 10 * s, 16 * s, PAL.CREAM, D.O.none);
+        D.ellipse(x, p.x, p.y - 6 * s, 22 * s, 12 * s, 0, '#8a5f86', HALL_THIN_EDGE);
+        break;
+      case 'fire': {
+        /* 火堆：石圈 + 火苗。火苗的抖动是**表现**（Game.time 驱动），
+           不影响任何模拟 —— 枢纽是这一局的"家"，家里有火。 */
+        D.circle(x, p.x, p.y, 30 * s, '#4a4038', HALL_THIN_EDGE);
+        var fl = Math.sin(t * 7.3) * 2.4;
+        D.circle(x, p.x + fl * 0.4, p.y - 8 * s, 15 * s, '#e08a34', D.O.none);
+        D.circle(x, p.x - fl * 0.3, p.y - 16 * s, 9 * s, '#f2c85e', D.O.none);
+        break;
+      }
+      case 'sign':
+        D.rect(x, p.x - 3, p.y - 8, 6, 30, PAL.WOOD_D, D.O.none);
+        D.rect(x, p.x - 26, p.y - 30, 52, 26, PAL.WOOD, HALL_THIN_EDGE);
+        break;
+    }
+  }
+}
+
+/** 一个站点：门环 / 设施 / 站在地上的人 / 公告板 */
+function drawHallSpot(x, s, t, playerNear) {
+  var spr = null;
+  x.save();
+  if (playerNear) {
+    D.circle(x, s.x, s.y + 8, s.r + 10, '#f2e6c8', { alpha: 0.13, outlineWidth: 0 });
+  }
+  switch (s.kind) {
+    case 'portal':
+    case 'device':
+    case 'door': {
+      var col = hallGateColor(s.module);
+      if (s.kind === 'door') col = PAL.WOOD;
+      // 门环：地上的一个椭圆环 + 深色底（"走进去"这件事要看得见）
+      D.ellipse(x, s.x, s.y + 10, s.r * 1.15, s.r * 0.62, 0, '#241f1c', HALL_THIN_EDGE);
+      D.ellipse(x, s.x, s.y + 6, s.r * 0.98, s.r * 0.5, 0, col, HALL_GATE_A);
+      if (s.kind !== 'door') {
+        // 门柱上的一对灯：告诉玩家"这是能用的"
+        var blink = 0.55 + Math.sin(t * 3 + s.x * 0.02) * 0.25;
+        D.circle(x, s.x - s.r * 0.9, s.y - s.r * 0.2, 7, PAL.GOLD, { alpha: blink, outlineWidth: 0 });
+        D.circle(x, s.x + s.r * 0.9, s.y - s.r * 0.2, 7, PAL.GOLD, { alpha: blink, outlineWidth: 0 });
+      }
+      spr = S.stationPortrait(s.id, s.kind === 'door' ? 72 : 92);
+      if (spr) {
+        var bob = Math.sin(t * 2.1 + s.x * 0.013) * 3;
+        x.drawImage(spr.canvas, s.x - spr.width / 2, s.y - 92 + bob);
+      }
+      D.text(x, s.name, s.x, s.y + 46, 15, PAL.CREAM, HALL_LABEL);
+      break;
+    }
+    case 'board':
+      D.rect(x, s.x - 34, s.y - 8, 68, 10, PAL.WOOD_D, D.O.none);
+      D.rect(x, s.x - 46, s.y - 62, 92, 58, PAL.WOOD, HALL_THIN_EDGE);
+      D.rect(x, s.x - 36, s.y - 52, 30, 20, PAL.PAPER, D.O.none);
+      D.rect(x, s.x + 2, s.y - 50, 26, 16, PAL.CREAM, D.O.none);
+      D.rect(x, s.x - 30, s.y - 24, 58, 12, PAL.CREAM, D.O.none);
+      D.text(x, s.name, s.x, s.y + 34, 15, PAL.CREAM, HALL_LABEL);
+      break;
+    case 'npc':
+      D.ellipse(x, s.x, s.y + s.r * 0.55, s.r * 0.72, s.r * 0.26, 0,
+        'rgba(16,13,12,0.28)', D.O.none);
+      spr = S.stationPortrait(s.id, 96);
+      if (spr) {
+        var bobN = Math.sin(t * 1.7 + s.y * 0.01) * 2.2;
+        x.drawImage(spr.canvas, s.x - spr.width / 2, s.y - 62 + bobN);
+      }
+      D.text(x, s.name, s.x, s.y + 48, 15, PAL.CREAM, HALL_LABEL);
+      break;
+  }
+  x.restore();
+}
+
+/** 站在谁面前就在他头上写一句"按 E 做什么" */
+function drawHallPrompt(x, h) {
+  var s = h.near;
+  if (!s) return;
+  var text = s.kind === 'npc' ? ('按 E 与' + s.name + '说话')
+    : s.kind === 'board' ? '按 E 读这一局的账'
+      : ('走进' + s.name + (s.screen ? ' · 或按 E' : ''));
+  D.text(x, text, s.x, s.y - 104, 16, PAL.CREAM, HALL_HINT);
+}
+
+/** 屋里那个玩家：复用战斗里同一个角色画法（骨架 / 呼吸 / 走路都在那条路上） */
+function drawHallPlayerActor(x, h, sess) {
+  if (!sess || !sess.player) return;
+  var src = sess.player;
+  var weapons = [];
+  for (var i = 0; i < src.weapons.length; i++) {
+    var w = src.weapons[i];
+    weapons.push({ def: w.def, index: w.index, swing: 0 });
+  }
+  var view = {
+    x: h.x, y: h.y, px: h.px, py: h.py, r: h.r,
+    vx: h.vx, vy: h.vy, aim: h.aim,
+    animT: h.animT, moveBlend: h.moveBlend,
+    rig: src.rig, charDef: src.charDef, weapons: weapons,
+    invuln: 0, hurtFlash: 0, rage: 0,
+    hp: sess.stats.maxHp
+  };
+  D.ellipse(x, h.x, h.y + h.r * 0.94, h.r * 0.9, h.r * 0.3, 0,
+    'rgba(16,13,12,0.24)', D.O.none);
+  drawPlayer(x, view, sess);
+}
+
+/** 一间屋的整帧：地面 → 墙 → 装饰 → 站点 → 玩家 → 提示 */
+function drawHall(x, h) {
+  var room = h.def;
+  if (!room) return;
+  var t = Game.time;
+  R.phase = 'hallFloor';
+  drawHallFloor(x, room);
+  R.phase = 'hallWalls';
+  drawHallWalls(x, room);
+  R.phase = 'hallProps';
+  drawHallProps(x, room, t);
+  R.phase = 'hallSpots';
+  for (var i = 0; i < h.spots.length; i++) {
+    if (!R.inView(h.spots[i].x, h.spots[i].y, h.spots[i].r + 70)) continue;
+    drawHallSpot(x, h.spots[i], t, h.near === h.spots[i]);
+  }
+  R.phase = 'hallPlayer';
+  drawHallPlayerActor(x, h, Game.getSession());
+  R.phase = 'hallPrompt';
+  drawHallPrompt(x, h);
+}
+
+/* =========================================================
+   玩家
+   ========================================================= */
 /** 没有环境时的降级配色（默认环境 = 改造前那套红棕，逐位相同） */
 var PAL_PAL_FALLBACK: ThemePal = {
   base: PAL.G2, tones: PAL_TONES,
@@ -1261,6 +1484,7 @@ R.draw = function (dt) {
   var x = R.ctx;
   if (!x) return;
   var sess = Game.getSession();
+  var hall = Game.hall();
   var arenaData = sess && sess.arena ? sess.arena : null;
 
   updateCamera(dt);
@@ -1269,8 +1493,19 @@ R.draw = function (dt) {
   R.phase = 'clear';
   x.clearRect(0, 0, R.cam.w, R.cam.h);
   // 战场外那一圈底色也属于环境：用这一层最暗的那一档，边界之外不会是另一种气候
-  x.fillStyle = arenaData ? arenaData.pal.tones[0] : PAL.G6;
+  x.fillStyle = (hall && hall.def) ? hall.def.floor.edge
+    : (arenaData ? arenaData.pal.tones[0] : PAL.G6);
   x.fillRect(0, 0, R.cam.w, R.cam.h);
+
+  /* 大厅 / 枢纽：**能走的两间屋**。这一支没有战斗实体 ——
+     画完屋子、站点、玩家就收工（弹幕 / 贴花 / 门闩都不属于这里）。 */
+  if (hall) {
+    applyCamera(x);
+    drawHall(x, hall);
+    screenSetup(x);
+    R.phase = 'idle';
+    return;
+  }
 
   if (!sess) return;
 

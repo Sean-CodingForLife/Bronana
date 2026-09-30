@@ -269,9 +269,14 @@ console.log('\n[9] 契约：枢纽这个新屏幕接齐了五处');
 {
   ok(Game.STATES.indexOf('hub') >= 0, '① 状态机里有 hub');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  ok(html.indexOf('id="scr-hub"') >= 0 && html.indexOf('id="hub-status"') >= 0 &&
-    html.indexOf('id="hub-stations"') >= 0 && html.indexOf('id="hub-talk"') >= 0,
-    '② index.html 里有枢纽的"状态带 + 站点网格 + 对话框"三块');
+  /* ⚠ HUD 只剩底栏（2026-10 两轮）：站点网格与状态带先**删掉了**（用户圈出
+     整块底栏说"完全没必要再显示这个了"），那条常驻控制提示后脚也删了
+     （"底部只剩一行操作提示 不需要"）。屋里站着谁、能进哪儿由画面回答；
+     说话时才出现的那张卡（#hub-talk）是**交互的产物**，不是常驻列表。 */
+  ok(html.indexOf('id="scr-hub"') >= 0 && html.indexOf('id="hub-talk"') >= 0 &&
+    html.indexOf('id="hub-stations"') < 0 && html.indexOf('id="hub-status"') < 0 &&
+    html.indexOf('id="hub-hint"') < 0,
+    '② index.html 里枢纽只剩底栏 + 对话框，站点网格 / 状态带 / 常驻提示都不在');
   /* 枢纽**归局内**（2026-09 用户拍板）：入口在**大厅**底栏，"有人想说新话"的
      角标跟着那个按钮走；局外菜单（标题页 / 选人页）里没有它的门。 */
   const stationAt = html.indexOf('id="scr-station"');
@@ -282,12 +287,13 @@ console.log('\n[9] 契约：枢纽这个新屏幕接齐了五处');
   ok(html.slice(0, stationAt).indexOf('data-act="hub"') < 0,
     '局外菜单（标题页 / 选人页）里没有枢纽的入口');
   const ui = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
-  const missHub = await uiMissingActs(['hub', 'hub-back', 'hub-go', 'hub-station', 'hub-say']);
+  const missHub = await uiMissingActs(['hub', 'hub-back', 'hub-go', 'hub-say']);
   ok(/renderHub\(\)/.test(ui) && missHub.length === 0,
-    '③ ui.ts 里渲染了枢纽，五个枢纽动作都注册在动作表里', missHub.join(','));
+    '③ ui.ts 里渲染了枢纽，四个枢纽动作都注册在动作表里', missHub.join(','));
   const css = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
-  ok(/\.hub-room/.test(css) && /\.hub-stations/.test(css) && /\.station\b/.test(css),
-    '④ styles.css 里有"一间房 + 站点网格"的布局');
+  ok(/\.screen\.hall-hud/.test(css) && /\.hall-read/.test(css) && /\.menu\.row/.test(css) &&
+    !/\.hall-hint/.test(css),
+    '④ styles.css 里有"贴底 HUD + 交互时才出现的读账卡"的布局，且没有常驻提示那一档');
   ok(Story.npcsFor(Profile.storyCtx()).length >= 1, '⑤ story.ts 的表能独立算出该出现谁');
   // 状态 ⇄ 场景 ⇄ 覆盖层：三处一一对应（registry 也会查，这里给一条更直白的）
   ok(Scene.has('hub'), '场景表里有 hub（否则 UI.show 会抛）');
@@ -309,6 +315,35 @@ console.log('\n[9] 契约：枢纽这个新屏幕接齐了五处');
   ok(Game._hubFrom === 'paused', '记下了来处（暂停）', String(Game._hubFrom));
   ok(Game.setState('paused') === true, '能沿原路回到那一局的暂停（不会把这一局丢掉）');
   ok(Game.setState('title') === true, '枢纽仍然留着回标题的兜底出口（放下这一局）');
+}
+
+/* ---------------- 9b. 枢纽也是"真的能走"的一间房 ---------------- */
+console.log('\n[9b] 枢纽真的能走（走到人面前按 E 才开口）');
+{
+  const { Game, Hall } = globalThis;
+  const DT = Game.cfg.fixedDt;
+  Game.newRun('ranger', 2, 0);
+  Game.setState('station', true);
+  Game.setState('hub', true);
+  const h = Game.hall();
+  ok(!!h && h.room === 'hub', '枢纽也是一份"走到哪"的状态（不是整屏面板）');
+  ok(Math.abs(h.x - 750) < 1 && Math.abs(h.y - 180) < 1,
+    '从大厅进来站在北门口（spawnAt.station）', h.x + ',' + h.y);
+  ok(Game.state === 'hub', '进门那一刻没有被门口再弹回大厅（落点在触发圈外）');
+  /* 菌母站在 (300,330)。先向左走到她那条竖线上，再向下走到她面前 ——
+     绕开 (750,300) 的镜面：走到设施上会自动进界面，而人要用 E。 */
+  let guard = 0;
+  while (h.x > 305 && guard++ < 300) Game.step(DT, { x: -1, y: 0 });
+  guard = 0;
+  while (h.y < 320 && guard++ < 300) Game.step(DT, { x: 0, y: 1 });
+  ok(!!h.near && h.near.id === 'mother',
+    '走到菌母面前（Hall.near 认出了她）', h.near && h.near.id);
+  const talk = Game.hallAct();
+  ok(!!talk && talk.act === 'talk' && talk.id === 'mother',
+    '在她面前按 E → 得到"跟菌母说话"（是交互，不是走过去自动开口）',
+    talk && talk.act + ':' + talk.id);
+  ok(Hall.BY_ID.hub.spots.some((s) => s.id === 'mother' && s.npc === 'mother'),
+    '摆位从 story.ts 合成了 npc（"站着谁"只有一个出处）');
 }
 
 /* ---------------- 10. 站点表：屋里有什么、谁站哪儿、走上去通向哪里 ---------------- */

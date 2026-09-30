@@ -173,16 +173,11 @@ UI.init = function () {
   el.bossName = q('boss-name');
   el.bossFill = q('boss-fill');
   el.bossHp = q('boss-hp');
-  el.hubStatus = q('hub-status');
-  el.hubStations = q('hub-stations');
-  el.hubGuide = q('hub-guide');
   el.hubTalk = q('hub-talk');
   el.hubNews = q('hub-news');
   /* 大厅（站）——**局内**的那一屏。前缀 `station-` 与枢纽那套（`hub-`）刻意分开：
      两者**都归局内**（大厅是这一局的起点 / 传送门房间，枢纽是这一局的家），
      只是复用同一套样式。 */
-  el.stationStatus = q('station-status');
-  el.stationGates = q('station-gates');
   el.stationBoard = q('station-board');
   el.toastWrap = q('toast-wrap');
   el.codexStory = q('codex-story');
@@ -510,10 +505,13 @@ function renderCodex() {
      · **说过的台词不再出现**（`Profile.say` 记账）：所以这一屏不是"越堆越长"，
        而是"每次回来头几个人有新东西说"
    ========================================================= */
-var _hubNpc = '';          // 当前选中的 NPC（界面状态，不进档案）
+var _hubNpc = '';          // 当前开口的 NPC（界面状态，不进档案；走开自动清）
+var _boardOn = false;      // 公告板是不是摊开着（同上：走开自动收）
 
-/** 状态带：先回答"档案里攒了什么"（一横条，每项 nowrap，永不折字） */
-function hubStatusHtml() {
+/** 档案那一带：回答"档案里攒了什么"（一横条，每项 nowrap，永不折字）。
+    以前它在枢纽屏的常驻状态带里；站点卡删掉之后，它并进**公告板**那张
+    走到跟前按 E 才摊开的卡（同一个数字不再有第二个写入处）。 */
+function profileStatusHtml() {
   var s = Profile.storySnapshot();
   var freePoints = 0;
   var chars = 0;
@@ -537,7 +535,7 @@ function hubStatusHtml() {
   if (freePoints > 0) rows.push({ k: '天赋点', v: freePoints + ' 点没用（去镜面）', warn: true });
   var html = '';
   rows.forEach(function (r) {
-    html += '<span class="hs-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
+    html += '<span class="acct-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
   });
   return html;
 }
@@ -555,72 +553,42 @@ function stationCanvas(id, size, cls) {
 }
 
 function renderHub() {
-  if (!el.hubStations) return;
+  /* 屋里站着谁由 `Profile.stationsFor()` 说了算（人有解锁条件：换档、洗档都会变）。
+     ⚠ 界面**不再摆站点卡**（2026-10：用户"完全没必要再显示这个了"）——
+     人在屋里站着、设施在地上摆着，走到跟前就是交互本身。这里只画**一样**：
+       · **说话时**才出现的对话框（走到谁面前按 E）
+     ⚠ 连那行常驻控制提示也删了（2026-10 第二轮：「底部只剩一行操作提示 不需要」）：
+       "走到人面前按 E 说话"由 render.ts 在**那个人头上**写（`drawHallPrompt`），
+       屏幕底下不再解释一遍。软引导（"下一步"）没丢 —— 它在大厅的公告板上，
+       **走到板子前按 E** 才摊开（`renderBoard`）。
+     选中的 NPC 必须还在屋里；进屋**不自动选中谁** —— 自动选中会让对话框
+     在你还没走到人面前时就冒出来，那是"按钮列表"的残留，不是一间屋子。 */
   var stations = Profile.stationsFor();
-  var news = Profile.newsByNpc();
-
-  // 选中的 NPC 必须还在屋里（解锁表是活的：换档、洗档都会变）
   var still: StoryStationDef | null = null;
   for (var i = 0; i < stations.length; i++) if (stations[i].npc === _hubNpc) still = stations[i];
-  if (!still) {
-    _hubNpc = '';
-    // 默认停在第一个**有人**的站点上：进屋第一眼就该有人跟你说话
-    for (var q = 0; q < stations.length; q++) if (stations[q].npc) { _hubNpc = stations[q].npc; break; }
-  }
-
-  if (el.hubStatus) el.hubStatus.innerHTML = hubStatusHtml();
-  /* **软引导**（v3 §8-15）：撞墙提示 + 路径指引。
-     ⚠ `null` 不是"没有建议" —— 那是**循环转起来了**，换个说法（不然玩家会以为坏了）。 */
-  if (el.hubGuide) {
-    /* ⚠ **模块内时间感独立**（v3 §8-12）：把"这一波各模块还剩几次"摆出来。
-       不摆的话，"时间感独立"就只是开发者知道的一句话 —— 而玩家会觉得
-       "我点了几下就不能点了"，却不知道那几下分别属于哪个模块。
-       ⚠ 战斗写「实时」而不是「0 次」：**它是实时的，没有回合这个数**。 */
-    var wb = Game.waveBudget();
-    var budgetTxt = wb
-      ? ('这一波还剩 —— 出击：实时 · 工坊产线 ' + wb.craftLines + ' 条 · 训练 ' +
-         wb.trainLeft + ' 次 · 相处 ' + wb.talkLeft + ' 次')
-      : '';
-    var gd = Game.guide();
-    el.hubGuide.textContent = (gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推') +
-      (budgetTxt ? '　｜　' + budgetTxt : '');
-  }
-
-  U.clear(el.hubStations);
-  stations.forEach(function (st) {
-    var b = U.el('button', 'btn station' + (st.npc && st.npc === _hubNpc ? ' sel' : ''));
-    b.dataset.act = 'hub-station';
-    b.dataset.station = st.id;
-    if (st.npc) b.dataset.npc = st.npc;
-    if (st.screen) b.dataset.screen = st.screen;
-    b.title = st.name + '：' + st.role;
-    b.appendChild(stationCanvas(st.id, 68, 'st-cv'));
-    b.appendChild(U.el('div', 'st-nm', st.name));
-    b.appendChild(U.el('div', 'st-role', st.role));
-    var n2 = news[st.npc || ''] || 0;
-    if (n2 > 0) b.appendChild(U.el('span', 'st-news', String(n2)));
-    el.hubStations.appendChild(b);
-  });
+  /* ⚠ 判据是"人还站在这一间屋里"，而不是直接比状态名 ——
+     哪一屏该长什么样由场景表说（表现层不再按状态名硬编码，见 test/states.mjs）；
+     而 `Game.hall()` 只在屋里才有，`room` 就是这一间的 id（枢纽 / 大厅）。 */
+  var here = Game.hall();
+  if (!still || !here || here.room !== 'hub') { _hubNpc = ''; still = null; }
 
   /* 对话框：只画**当前这一句**。
      一次把七八句话倒出来等于什么都没说；"说一句 → 重画 → 下一句顶上来"
      才是 Hades 那种"跟人聊天"的节奏。没新话时说一句"他没别的说了"，
      而不是留一片空白（空白会让人以为界面坏了）。 */
   if (el.hubTalk) {
-    var npcSt = null;
-    for (var j = 0; j < stations.length; j++) if (stations[j].npc === _hubNpc) npcSt = stations[j];
     U.clear(el.hubTalk);
-    el.hubTalk.hidden = !npcSt;
-    if (npcSt) {
-      el.hubTalk.appendChild(stationCanvas(npcSt.id, 64, 'tx-cv'));
+    el.hubTalk.hidden = !still;
+    if (still) {
+      el.hubTalk.appendChild(stationCanvas(still.id, 64, 'tx-cv'));
       var body = U.el('div', 'tx-body');
-      var who = U.el('div', 'tx-name', npcSt.name);
-      who.appendChild(U.el('span', 'tx-role', npcSt.role));
+      var who = U.el('div', 'tx-name', still.name);
+      who.appendChild(U.el('span', 'tx-role', still.role));
       body.appendChild(who);
-      var lines = Profile.linesFor(npcSt.npc);
+      var lines = Profile.linesFor(still.npc);
       if (lines.length) {
         body.appendChild(U.el('div', 'tx-line', lines[0].text));
-        // 整块可点（鼠标）+ 一个小按钮（键盘/手柄）：两种输入都往前走一句
+        // 一个小按钮（键盘/手柄/鼠标）：往前走一句
         var more = lines.length - 1;
         var nx = U.el('button', 'btn tiny tx-next',
           '▽ 继续说' + (more > 0 ? '（还有 ' + more + ' 句）' : '（最后一句）'));
@@ -648,6 +616,57 @@ function hubSay() {
   return true;
 }
 
+/**
+ * 在枢纽里**走到某人面前按 E**（main.ts 的 hall 按键组把 `Game.hallAct()` 的
+ * 回答交到这里）。
+ *
+ * 两次按键是两种动作，与 Hades 那种"站着跟人说话"的节奏一致：
+ *   ① 第一次按 E → 选中他，亮出他现在要说的那一句（不记账）
+ *   ② 再按一次   → 把这一句记成"说过了"，下一句顶上来
+ * 走到另一个人面前再按 E，会换成他（选中的人跟着你站的位置走）。
+ */
+function hallTalk(npcId) {
+  if (!npcId) return;
+  if (_hubNpc === npcId) { hubSay(); return; }
+  _hubNpc = npcId;
+  renderHub();
+}
+
+/** 走到公告板前按 E：把这一局的账与"下一步"读出来（不换屏，它不是门） */
+function hallBoard() {
+  _boardOn = true;
+  renderStation();
+  var gd = Game.guide();
+  UI.toast(gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推', 'good');
+}
+
+/**
+ * 屋里两屏的**每显示帧同步**（main.ts 在 hall 那两屏每帧调一次）。
+ *
+ * 为什么需要它：这两屏的"面板"是**交互的产物**，不是常驻菜单 ——
+ * 于是它必须跟着玩家的**位置**走：
+ *   · 大厅：站在公告板前按过 E 才摊开；走开一步就收起来
+ *   · 枢纽：走到谁面前按过 E 才有他的对话框；换个人、或走开，跟着变
+ * ⚠ 只**收**不**弹**：走近谁**不会**自动开口（自动弹出来又变成"一份常驻列表"了，
+ *   而且玩家还没走到人面前就有一句话糊在屏幕上）。开口只由按 E 触发。
+ */
+function hallSync() {
+  var h = Game.hall();
+  var room = h ? h.room : '';
+  if (room === 'station') {
+    var atBoard = !!(h && h.near && h.near.id === 'board');
+    if (_boardOn && !atBoard) { _boardOn = false; renderStation(); }
+    return;
+  }
+  if (room === 'hub') {
+    var who = (h && h.near && h.near.npc) ? h.near.npc : '';
+    if (_hubNpc && _hubNpc !== who) { _hubNpc = ''; renderHub(); }
+    return;
+  }
+  /* 不在屋里（暂停菜单 / 已经换屏）：两样都收起来，下次进来是干净的 */
+  if (_boardOn || _hubNpc) { _boardOn = false; _hubNpc = ''; }
+}
+
 /* =========================================================
    大厅（站）——**局内**的起点，不是菜单
    ---------------------------------------------------------
@@ -655,21 +674,24 @@ function hubSay() {
    进入游戏大厅，然后选择去往各个不同的游戏模块地图进行游玩」
    （挺进地牢 / 深岩银河那一类）。
 
-   三块内容，各自有各自的"为什么"：
-     · 状态带 —— 这一局攒下了什么（四本账），一横条，永不折字
-     · 三道门 —— 出击 / 经营 / 养成。门表在 `station.ts`，界面**不自己造门**
-       （加一道门不用改这里）；"门 → 哪一屏"的翻译在 `scene.ts` 的 MODULE_SCREENS
-     · 公告板 —— 三个核心素材的进度 + "下一步该去哪"（`Game.guide()` 的软引导）。
-       引导指向哪扇门，那扇门就带 `sel` 高亮 —— 这是"路径指引"在画面上的那一半
-     · 底栏 ——「枢纽」（这一局的**家**：NPC / 剧情那几站，枢纽也归局内）与「回标题」。
+   界面只剩**一样**东西（2026-10 两轮：先"完全没必要再显示这个了"删掉站点卡，
+   再"底部只剩一行操作提示 不需要"删掉那行提示）：
+     · 底栏两个按钮 ——「枢纽」（这一局的**家**：NPC / 剧情那几站，枢纽也归局内）
+       与「回标题」。这两个的去处**不在这间屋里**，所以它们才留在 HUD 上；
        "有人想说新话"的角标跟着「枢纽」走（角标 id 还是 `hub-news`，只是位置搬了）
+   ⚠ 操作提示也不在 HUD 上：怎么走、怎么交互由**画面里**回答 —— 走近门 / 人 /
+     板子时 `render.ts` 在**那件东西头上**写一行"按 E …"（`drawHallPrompt`），
+     键位全表在「说明」那一屏。屏幕底下常驻一行解释，是这一屏最后的旧菜单残留。
+   ⚠ 三道门与状态带**不再画在 HUD 上**：门在屋里摆着（走过去就进，门表仍然在
+     `station.ts`，界面不自己造门），账在公告板上（走到跟前按 E 才摊开）。
+     屋里有的东西不再在屏幕底下复制一份按钮列表 —— 那是旧菜单的残留。
 
    ⚠ 大厅**归局内**（见 scene.ts 的 station 一档）：没有会话时什么都不画，
      而不是抛异常。界面的三张表（RENDERERS / REFRESH / ACTIONS）会在测试里
      被当成"任意状态都能渲染"逐个走一遍 —— 抛异常等于整条链路断在那里。
    ========================================================= */
 
-/** 状态带：这一局攒下了什么（四本账 + 战斗代币；核心素材归公告板） */
+/** 账目那一带：这一局攒下了什么（四本账 + 战斗代币；核心素材归公告板） */
 function stationStatusHtml(sess: Session) {
   var rows: { k: string; v: string; warn?: boolean }[] = [
     { k: '材料', v: Game.material() + '（全局货币：三个模块的行动成本）' },
@@ -681,66 +703,62 @@ function stationStatusHtml(sess: Session) {
   if (Game.material() < 10) rows.push({ k: '提示', v: '材料见底了 —— 出击打一波', warn: true });
   var html = '';
   rows.forEach(function (r) {
-    html += '<span class="hs-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
+    html += '<span class="acct-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
   });
   return html;
 }
 
-function renderStation() {
+/**
+ * 公告板：**走到跟前按 E** 才摊开的那块板（走开自动收，见 `hallSync`）。
+ *
+ * 改造前它是常驻状态带 + 一排站点卡里的一格 —— 于是"这一局攒了什么"
+ * 与"屋里有哪三道门"各在屏幕上复制了一份。现在屋里有的东西不再复制，
+ * 账也只在一个地方读：这里。
+ *
+ * 一行一节，来源各自清楚：
+ *   · 四本账   —— 这一局攒下的（`stationStatusHtml`）
+ *   · 档案那一带 —— 跨局的（核心素材是**钥匙不是钱**，不在任何账本里，见 link.ts）
+ *   · 下一步 / 这一波还剩 —— 软引导（v3 §8-15）与"模块内时间感独立"（§8-12）
+ */
+function renderBoard() {
+  if (!el.stationBoard) return;
   var sess = Game.getSession();
+  var st = Game.hall();
+  var show = _boardOn && !!sess && !!st && st.room === 'station';
+  el.stationBoard.hidden = !show;
+  U.clear(el.stationBoard);
+  if (!show) return;
+
+  el.stationBoard.appendChild(U.el('div', 'acct-head', '公 告 板'));
+  var live = U.el('div', 'acct-band');
+  live.innerHTML = stationStatusHtml(sess);
+  el.stationBoard.appendChild(live);
+  var prof = U.el('div', 'acct-band');
+  prof.innerHTML = profileStatusHtml();
+  el.stationBoard.appendChild(prof);
+  el.stationBoard.appendChild(U.el('div', 'tx-line',
+    '核心素材：核心 ' + Profile.core() + ' · 遗物 ' + Game.relic() + ' · 徽记 ' + Game.sigil()));
+  /* ⚠ `null` 不是"没有建议" —— 那是**循环转起来了**，换个说法（不然玩家会以为坏了） */
+  var gd = Game.guide();
+  el.stationBoard.appendChild(U.el('div', 'tx-line',
+    gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推'));
+  var wb = Game.waveBudget();
+  if (wb) {
+    el.stationBoard.appendChild(U.el('div', 'tx-quiet',
+      '这一波还剩 —— 出击：实时 · 工坊产线 ' + wb.craftLines + ' 条 · 训练 ' +
+      wb.trainLeft + ' 次 · 相处 ' + wb.talkLeft + ' 次'));
+  }
+}
+
+function renderStation() {
   /* 枢纽的入口在这一屏的底栏（枢纽也**归局内**）：有人想说新话的角标跟着它走。
      ⚠ 角标 id 仍然是 `hub-news`（界面契约按 id 认元素），只是位置从标题页搬到了这里。 */
   if (el.hubNews) el.hubNews.hidden = !Profile.hasStoryNews();
-  /* 软引导（v3 §8-15）：下一步该去哪。`null` 不是"没有建议" ——
-     那是**循环转起来了**，换个说法（与枢纽的公告板同一条规矩）。 */
-  var gd = sess ? Game.guide() : null;
+  /* 换屏/离屏之后把板子收起来：进来时是干净的，不会看到上一次的账 */
+  var here = Game.hall();
+  if (!here || here.room !== 'station') _boardOn = false;
 
-  if (el.stationStatus) el.stationStatus.innerHTML = sess ? stationStatusHtml(sess) : '';
-
-  if (el.stationGates) {
-    U.clear(el.stationGates);
-    if (sess) {
-      /* 门按**表**画。`Station.LIST` 里除了三道门还有公告板（kind:'board'）——
-         它不是门、不换屏，只是把这一局的账读出来，所以动作是另一条。 */
-      Station.LIST.forEach(function (site) {
-        var b = U.el('button', 'btn station' + (gd && gd.to === site.id ? ' sel' : ''));
-        /* 两道分支各写一行（而不是三元）：界面契约测试按"赋一个**字符串字面量**
-           给 dataset.act"这个形状收集动态按钮动作，三元会让这两个动作
-           被判成"动作表里有、界面上没有按钮"（而且注释里也不许写那个形状的
-           例子 —— 语料是**整份源码文本**，注释会被一起扫到）。 */
-        if (site.kind === 'portal') b.dataset.act = 'station-gate';
-        else b.dataset.act = 'station-board';
-        b.dataset.station = site.id;
-        if (site.to) b.dataset.module = site.to;
-        // 长说明挂在 title 上（悬停可读）；卡片上是短名 + 去处
-        b.title = site.name + '：' + site.note;
-        b.appendChild(stationCanvas(site.id, 68, 'st-cv'));
-        b.appendChild(U.el('div', 'st-nm', site.name));
-        var sys = site.to ? Economy.SYSTEMS[site.to] : null;
-        b.appendChild(U.el('div', 'st-role', sys ? ('去 ' + sys.name) : '读这一局的账'));
-        el.stationGates.appendChild(b);
-      });
-    }
-  }
-
-  if (el.stationBoard) {
-    if (!sess) {
-      el.stationBoard.textContent = '';
-    } else {
-      /* 三个核心素材是**钥匙不是钱**（不在任何账本里，见 link.ts），
-         所以它们与四本账分开摆：左边是"有多少"，右边是"该去哪儿"。 */
-      var links = '核心素材：核心 ' + Profile.core() + ' · 遗物 ' + Game.relic() +
-        ' · 徽记 ' + Game.sigil();
-      var wb = Game.waveBudget();
-      var budget = wb
-        ? ('这一波还剩 —— 出击：实时 · 工坊产线 ' + wb.craftLines + ' 条 · 训练 ' +
-           wb.trainLeft + ' 次 · 相处 ' + wb.talkLeft + ' 次')
-        : '';
-      el.stationBoard.textContent = links + '　｜　' +
-        (gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推') +
-        (budget ? '　｜　' + budget : '');
-    }
-  }
+  renderBoard();
 }
 
 /**
@@ -1989,43 +2007,7 @@ var ACT_HUB: ActMap = {
     var from = Game._hubFrom;
     Game.setState(from && Game.canSetState(from) ? from : 'title');
   },
-  'hub-station': function (t) {
-    /* 站点：有人站着就选中他（说他的下一句），是设施就直接走上去。
-       一个动作两种去处 —— 由站点自己声明（story.ts 的 STATIONS），
-       界面不按站点 id 分支（加一站不用改这里）。 */
-    var nid = (t.dataset && t.dataset.npc) || '';
-    var scr = (t.dataset && t.dataset.screen) || '';
-    if (nid) { _hubNpc = nid; renderHub(); }
-    else if (scr) { Game.setState(scr as GameStateName); }
-  },
   'hub-say': function () { hubSay(); },
-};
-
-/* =========================================================
-   大厅（站）：三道门 + 公告板
-   ---------------------------------------------------------
-   门表在 `station.ts`（模块名），屏幕在 `scene.ts`（状态名），
-   翻译由 `Scene.moduleScreenOf` 做 —— 这里**不按模块名写分支**：
-   加一道门（或改它的去处）不用动这个文件。
-   ========================================================= */
-var ACT_STATION: ActMap = {
-
-  'station-gate': function (t) {
-    var mod = (t.dataset && t.dataset.module) || '';
-    var scr = Scene.moduleScreenOf(mod);
-    /* 查不到 = 那张翻译表被改坏了。定义期自检会先报出来，这里是运行期的兜底：
-       给一句人话，而不是"点了没反应"。 */
-    if (!scr) { UI.toast('这扇门没有去处：' + (mod || '（没写模块名）'), 'warn'); return; }
-    Game.setState(scr);
-  },
-
-  /* 公告板：把这一局的账再读一遍 + 把"下一步"说出来。
-     ⚠ 它**不是门**（`station.ts` 里 kind:'board' 且没有 `to`）—— 不进任何模块。 */
-  'station-board': function () {
-    renderStation();
-    var gd = Game.guide();
-    UI.toast(gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推', 'good');
-  },
 };
 
 var ACT_CODEX: ActMap = {
@@ -2091,7 +2073,6 @@ var ACT_GROUPS: Record<string, ActMap> = {
   talents: ACT_TALENTS,
   keep: ACT_KEEP,
   hub: ACT_HUB,
-  station: ACT_STATION,
   codex: ACT_CODEX,
   challenge: ACT_CHALLENGE
 };
@@ -2143,6 +2124,11 @@ function wireActions() {
 
 function wireEvents() {
   var G = Game.events;
+
+  /* 大厅 / 枢纽里按 E：模拟层广播"面前是谁 / 面前是什么"，界面决定画哪一句
+     （接入层不替界面决定；见 game.ts 的 `Game.hallAct`）。 */
+  G.on('hallTalk', function (d) { hallTalk(d && d.id); });
+  G.on('hallBoard', function () { hallBoard(); });
 
   // 状态变化 → 界面刷新（唯一驱动源，避免各处手动 refresh 漏掉某个状态）
   G.on('stateChange', function (d) {
@@ -3385,6 +3371,8 @@ function refreshContinueButton() {
 }
 UI.refreshContinueButton = refreshContinueButton;
 UI.renderSettings = renderSettings;
+/* 屋里两屏的每显示帧同步：面板是**交互的产物**，要跟着玩家的位置收放 */
+UI.hallSync = hallSync;
 
 /* =========================================================
    战绩（跨局累计）

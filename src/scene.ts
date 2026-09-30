@@ -28,6 +28,7 @@
 import { Game } from './game.ts';
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
+import { Station } from './station.ts';
 
 var Scene = {} as SceneApi;
 
@@ -46,12 +47,16 @@ var TABLE: Record<string, SceneDef> = {
   station: {
     /* 大厅（站）：**每一次开局的起点**。它归**局内**（不是菜单）——
        从战斗回大厅是走回去，从大厅出击是回到这一局。
-       `sim:false`：站里不推进逻辑帧（波次不会在站里流走）；
-       `world:true`：身后画的是这一局的世界（与暂停/商店同一条规则）。
-       `keys:'none'`：站里没有热键（与结算页同一档）——
-       方向键选门、回车进门那套通用菜单操作**不经过按键组**，仍然能用。 */
-    overlay: 'station', sim: false, world: true, hud: false, strip: false, keys: 'none',
-    note: '大厅（站）：这一局的起点；三道常开的门通向三个模块（出击 / 经营 / 养成）'
+
+       ⚠ 2026-10 改动（"要真的能走的世界，不要按钮和选项"）：
+         `sim:true` —— 大厅是一间**能走的房间**（`hall.ts` 摆的墙与门），
+           玩家用 WASD 走、撞墙、走进传送门换模块。它推进的只有"走动"这一层：
+           `Game.step` 在 station 里走 `stepHall`，**不碰波次**（见 game.ts 的
+           `stepHall` 注释：世界的时间在走，战斗的波次不在走）。
+         `keys:'hall'` —— 这一档按键组是"房间里走路"：方向键/WASD 是**移动**
+           （不是菜单焦点），E 是与面前的人/公告板交互，Esc 暂停。 */
+    overlay: 'station', sim: true, world: true, hud: false, strip: false, keys: 'hall',
+    note: '大厅（站）：这一局的起点，**一间能走的房**；三道常开的门通向三个模块（出击 / 经营 / 养成）'
   },
   playing: {
     overlay: null, sim: true, world: true, hud: true, strip: true, keys: 'battle',
@@ -102,11 +107,12 @@ var TABLE: Record<string, SceneDef> = {
     note: '据点：跨局经营（花孢子解锁功能，永久）'
   },
   hub: {
-    /* ⚠ 按键组是 `none`（2026-09 改动）：枢纽归局内之后，`menu` 那档的
-       "回车开新局（`chars`）"不再合法，留着会变成"按了没反应"的键。
-       与大厅同一档：屋里没有热键，方向键 + 回车走焦点机制（按钮照旧点得到）。 */
-    overlay: 'hub', sim: false, world: true, hud: false, strip: false, keys: 'none',
-    note: '枢纽：这一局的"家"（NPC 对话推进剧情；不推进模拟）—— 从大厅 / 暂停走过去'
+    /* ⚠ 与大厅同一档（`sim:true` / `keys:'hall'`）：枢纽也是**一间能走的房**
+       （2026-10，"要真的能走的世界"）。四个人站在屋里，走到谁面前按 E 说话；
+       四件设施走上去就进 —— 出去走回大厅（门口那一站），不是回主菜单。
+       这一档按键组取代了原来的 `none`（那档是"整屏面板 + 焦点按钮"的做法）。 */
+    overlay: 'hub', sim: true, world: true, hud: false, strip: false, keys: 'hall',
+    note: '枢纽：这一局的"家"，**一间能走的房**（NPC 站在屋里，走到跟前按 E 说话）'
   },
   end: {
     overlay: 'end', sim: false, world: true, hud: false, strip: false, keys: 'none',
@@ -159,29 +165,32 @@ var SCREEN_ACTS: Record<string, GameStateName> = {
 /* =========================================================
    1c. 模块 ⇄ 屏幕：大厅那三道门**通向哪一屏**
    ---------------------------------------------------------
-   为什么需要这一张小表（而不是在 ui.ts 里 `if (site.to === 'combat')`）：
+   这张表**搬去了 `station.ts`**（2026-10），因为它本来就是门自己的属性：
+   玩家走进那道门 = 切到那一屏，而"走进门"这件事发生在模拟层
+   （`game.ts` 的 `stepHall` 走 `Station.screenOf`）—— 而模拟层不能
+   import 本模块（本模块 import 它，环形依赖会被架构门拦下）。
 
-     · `station.ts` 的表只认识**模块名**（`combat` / `manage` / `grow`）——
-       它是对的：那是经济循环的语言，不是界面的语言
-     · 界面只认识**状态名**（`playing` / `keep` / `talents`）
-     · 两者之间**必须有人翻译**，而翻译表写错一个字母的表现是
-       "点了那扇门什么也没发生" —— 所以它放在这里（定义期就能查目标状态存不存在），
-       并且进总账（`Registry` 会查"这个模块真的存在吗"）。
+   留在这里的是**校验**：只有本模块认识全部状态名，所以"目标状态存不存在"
+   仍然在定义期就查（写错一个字母 = 那道门走上去什么也不会发生）。
+   本模块对外仍然提供同一个读口 `Scene.moduleScreenOf`（调用方不用改）。
 
    ⚠ 其中"战斗 → playing"指的是**回到手里这一局**，不是新开一局
      （新开一局只有 `newRun` 一条路，见 game.ts 的 TRANSITIONS 注释）。
    ========================================================= */
-var MODULE_SCREENS: Record<string, GameStateName> = {
-  combat: 'playing',
-  manage: 'keep',
-  grow: 'talents'
-};
+var MODULE_SCREENS: Record<string, GameStateName> = (function () {
+  var out: Record<string, GameStateName> = Object.create(null);
+  for (var i = 0; i < Station.LIST.length; i++) {
+    var s = Station.LIST[i];
+    if (s.kind === 'portal' && s.to && s.screen) out[s.to] = s.screen as GameStateName;
+  }
+  return out;
+})();
 
 /* =========================================================
    2. 定义期校验
    ========================================================= */
 var FIELDS = ['overlay', 'sim', 'world', 'hud', 'strip', 'keys'];
-var KEY_GROUPS = ['menu', 'start', 'battle', 'cards', 'shop', 'camp', 'pause', 'back', 'none'];
+var KEY_GROUPS = ['menu', 'start', 'battle', 'cards', 'shop', 'camp', 'pause', 'back', 'hall', 'none'];
 
 Scene.validate = function () {
   var i, s;
@@ -237,6 +246,23 @@ Scene.validate = function () {
         '（那扇门点下去什么也不会发生）');
     }
   }
+
+  /* 门表里的 `screen` 与 MODULE_SCREENS 是同一件事的两个读口（前者在
+     `station.ts`，后者派生于它）—— 这里再逐个查一遍，于是"门自己写着
+     一个不存在的状态名"也会在定义期被抓住。 */
+  for (var si = 0; si < Station.LIST.length; si++) {
+    var site = Station.LIST[si];
+    if (!site.screen) continue;
+    if (Game.STATES.indexOf(site.screen as GameStateName) < 0) {
+      problems.push('站点 ' + site.id + ' 写着不存在的界面：' + site.screen +
+        '（走上去什么也不会发生）');
+    }
+  }
+
+  /* 两间能走的房（大厅 / 枢纽）不在这里查：
+       · "有没有写去处 / 摆位压没压墙 / 走不走得到" 归 `hall.ts` 的 `Hall.audit`
+       · "写的去处是不是真实状态" 归总账（`hallRoom` / `hallSpot` 的 refs → family 'state'）
+     本模块只留"门表 → 屏幕"这条翻译（MODULE_SCREENS，由 Station 派生）。 */
 
   /* 与其它模块的 `audit()` 同一形状（返回 `{ok, problems}` 而不是抛）：
      于是它既能被启动期自检统一收集，也能被测试直接读问题清单。
@@ -342,7 +368,8 @@ Registry.family('screenAct', {
 /* 模块 → 屏幕：**两边的名字都要真的存在**（左 = 经济循环的三个模块，
    右 = 状态机里的状态）。写错任一边的表现都是"大厅里那扇门点不开"。 */
 Registry.family('moduleScreen', {
-  note: '模块（combat / manage / grow）通向哪一屏 —— 大厅那三道门的翻译表', owner: 'scene.ts',
+  note: '模块（combat / manage / grow）通向哪一屏 —— 大厅那三道门的翻译表' +
+    '（表在 station.ts 的门上，这里登记"它指向的状态真实存在"）', owner: 'scene.ts',
   entries: function () {
     var out = [];
     /* 名单从公开读口拿（而不是直接遍历私有变量）：总账登的就是

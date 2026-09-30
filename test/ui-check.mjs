@@ -90,8 +90,10 @@ const FORBID = [
     '碰撞体层是纯数学，只依赖 utils'],
   /* selfcheck 是纯机制（只依赖 registry / utils），所以场景表登记自检不算越层 */
   ['scene.ts', modFiles.filter(f => f !== 'scene.ts' && f !== 'game.ts' && f !== 'utils.ts' &&
-    f !== 'registry.ts' && f !== 'selfcheck.ts'),
-    '场景表是纯数据，只依赖状态机 / 总账 / 自检登记处与 utils（不得反向依赖渲染层 / 界面层）'],
+    f !== 'registry.ts' && f !== 'selfcheck.ts' && f !== 'station.ts'),
+    '场景表只依赖状态机 / 门表 / 总账 / 自检登记处与 utils' +
+    '（门表是「那三道门通向哪一屏」的唯一出处，场景表据此做定义期校验；' +
+    '不得反向依赖渲染层 / 界面层）'],
   ['bronana.ts', modFiles.filter(f => ['bronana.ts', 'rig.ts', 'draw2d.ts', 'comp.ts', 'utils.ts'].indexOf(f) < 0),
     '角色骨架只依赖 骨架层 / 组件层 / 绘制原语层 / 工具层'],
   ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts'),
@@ -170,9 +172,9 @@ const DYNAMIC_CLASSES = new Set([
   // .mm-cell 与 .mm-<cls>（cls 来自 dungeon.ts 的房型表），加一种房型不用改 HTML
   'mm-cell', 'mm-start', 'mm-fight', 'mm-elite', 'mm-treasure',
   'mm-shop', 'mm-camp', 'mm-event', 'mm-boss', 'mm-secret', 'mm-hint',
-  // 枢纽（N2）：站点网格与对话框都是**按表动态生成**的
-  // （屋里站着谁、谁有新话，都由 story.ts 的表和档案决定），所以这些类名不在 HTML 里
-  'hs-item', 'station', 'st-nm', 'st-role', 'st-news',
+  // 枢纽 / 大厅：对话框与公告板读账都是**按表动态生成**的
+  // （屋里站着谁、账上有多少都由 story.ts / 会话决定），所以这些类名不在 HTML 里
+  'acct-head', 'acct-band', 'acct-item',
   'tx-cv', 'tx-body', 'tx-name', 'tx-role', 'tx-line', 'tx-next', 'tx-quiet',
   // 图鉴的挑战分组小标题（组名只写一次，不再每行重复）
   'codex-group',
@@ -1101,28 +1103,62 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   ok(sess && sess.danger === 2, '开局带上了选中的难度等级', sess ? sess.danger : 'null');
   ok(sess && sess.dmods.enemyHp === 1.08 * 1.08, '难度 2 的敌人生命倍率已折进会话', sess && sess.dmods.enemyHp);
 
-  /* 大厅：三道门按**表**画出来（界面不自己造门），点「出击门」回到手里这一局 */
-  const gates = registry['station-gates'].children;
-  ok(gates.length === Station.LIST.length,
-    '大厅把站点表里的 ' + Station.LIST.length + ' 个站点都画出来', gates.length);
-  ok(gates.filter(c => !c.dataset.act).length === 0, '每个站点都可点（都带 data-act）');
-  const combatGate = gates.find(c => c.dataset.module === 'combat');
-  ok(!!combatGate, '出击门画出来了（它通向一个不存在的模块时这条就红）');
-  clickEl(combatGate);
-  ok(Game.state === 'playing', '点出击门 → 回到手里这一局', Game.state);
-  ok(Game.getSession() === sess, '回的是**同一个会话**（大厅不是"开新局"的入口）');
+  /* 大厅：HUD 上**没有**站点卡（2026-10：屋里有的东西不在屏幕底下复制一份）。
+     屋里有什么由摆位表回答，门靠**走过去** —— 这才是玩家真走的那条路。 */
+  ok(registry['station-gates'] === undefined && registry['station-status'] === undefined,
+    '大厅 HUD 里没有站点条 / 状态带（房间才是主体）');
+  const hall = Game.hall();
+  const portals = hall ? hall.spots.filter(s => s.kind === 'portal') : [];
+  ok(portals.length === Station.LIST.filter(s => s.kind === 'portal').length &&
+     portals.filter(s => !s.screen).length === 0,
+    '屋里的传送门与门表一一对应（界面不自己造门，一扇门都不会"走上去没反应"）', portals.length);
 
-  /* 从战斗走回大厅：暂停菜单里那条（局内 → 局内，不是"退出到主菜单"） */
+  /* 走位助手：朝一个方向走，直到条件成立（或走满帧数）。
+     ⚠ 屋里到处是**真墙**（货箱、柱子、公告板背后那堵矮墙），所以下面每一段
+     都得绕 —— 这本身就是"世界是真的"的证据：直线过去会被挡住。 */
+  const until = (mx, my, cond, n) => {
+    for (let i = 0; i < (n || 400); i++) { if (cond()) break; Game.step(Game.cfg.fixedDt, { x: mx, y: my }); }
+  };
+  const hallX = () => Game.hall().x, hallY = () => Game.hall().y;
+  const hallNear = () => (Game.hall() && Game.hall().near) || null;
+  /* 桩的 textContent **不递归**，而板子上的字全在子元素里 —— 逐层读一遍 */
+  const boardText = () => (function walk(n) {
+    return (n.children || []).map(c => (c._text || '') + ' ' + walk(c)).join(' ');
+  })(registry['station-board']);
+
+  /* 面板是**交互的产物**：没走到板子前按 E 之前，它是收着的 */
+  ok(registry['station-board'].hidden === true, '没读账之前公告板是收着的');
+  /* 开局站在**出击门口**（spawnAt.playing ≈ 300,470），而板子在屋子中段偏南。
+     路线：先往下走出门口那一条，再横着贴过去 —— 直线斜插会被板子背后那堵
+     矮墙（x 650–850, y 730）与两根柱子挡住，这也是"屋里真的有墙"的证据。 */
+  until(0, 1, () => hallY() >= 660);             // 从出击门口往下走
+  until(1, 0, () => !!hallNear() && hallNear().id === 'board');
+  ok(!!hallNear() && hallNear().id === 'board', '走到公告板跟前（这是屋里真走得通的一条路）',
+    hallNear() && hallNear().id);
+  const boardAct = Game.hallAct();
+  ok(!!boardAct && boardAct.act === 'board', '按 E：面前是公告板（不换屏，它不是门）', boardAct && boardAct.act);
+  ok(Game.state === 'station', '公告板只是把账读出来', Game.state);
+  ok(registry['station-board'].hidden === false, '按 E 之后账摊开');
+  ok(boardText().indexOf('下一步') >= 0, '账里有"下一步"');
+  ok(boardText().indexOf('核心素材') >= 0, '账里有三个核心素材的进度');
+
+  /* 走开一步就收起来 —— HUD 不做成"常驻面板"（main.ts 每帧调 UI.hallSync()） */
+  until(-1, 0, () => hallX() <= 570, 200);
+  UI.hallSync();
+  ok(registry['station-board'].hidden === true, '走开之后账自己收起来（不是一份常驻面板）');
+
+  /* 走进出击门（x≈300 那一扇）：**走过去就换屏**（不是点按钮） */
+  until(-1, 0, () => hallX() <= 305, 300);
+  until(0, -1, () => Game.state !== 'station', 400);
+  ok(Game.state === 'playing', '走进出击门 → 回到手里这一局（门是过道，不是菜单项）', Game.state);
+  ok(Game.getSession() === sess, '换模块回的是**同一个会话**（大厅不是"开新局"的入口）');
+
+  /* 从据点走回大厅：暂停菜单里那条（局内 → 局内，不是"退出到主菜单"） */
   Game.pause();
   clickAct('to-station');
   ok(Game.state === 'station', '暂停菜单能回大厅（走回去）', Game.state);
   ok(Game.getSession() === sess, '回大厅不会把这一局丢掉');
-
-  /* 公告板：读账，不换屏（它不是门 —— station.ts 里 kind:'board' 且没有 `to`） */
-  const board = registry['station-gates'].children.find(c => !c.dataset.module);
-  ok(!!board && board.dataset.act === 'station-board', '公告板是另一条动作（它不通向任何模块）');
-  clickEl(board);
-  ok(Game.state === 'station', '公告板只是把账读出来（点它不换屏）', Game.state);
+  ok(registry['station-board'].hidden === true, '重新进屋时账是收着的（不会停在上一次的读数）');
 
   Game.setState('title', true);
   Profile.reset();
@@ -1131,12 +1167,13 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
 }
 
 /* =========================================================
-   5h. 枢纽站点（N2 的界面侧）
-   枢纽不是一份菜单，而是"一间房 + 若干站点"，所以这一节守四件事：
-     · 屋里每一站都**画得出来**（站点 id 就是头像 id）
-     · 站点的条数与去处由 story.ts 的表决定（界面不自己数人、不按 id 分支）
-     · 点人会选中他、点设施会走上去（走的是同一条委托点击路径）
-     · 对话是"说一句 → 下一句顶上来"，而不是一次倒完
+   5h. 枢纽（N2 的界面侧）
+   枢纽不是一份菜单，而是"一间房 + 站在屋里的人"（2026-10：站点卡也删了）。
+   这一节守四件事：
+     · 走到谁面前按 E，谁那一句才出来；走开就收起来（人是对象，不是按钮）
+     · 说话是"说一句 → 下一句顶上来"，而不是一次倒完
+     · 屋里每一站都**画得出来**（站点 id ⇄ 头像 id：sprites.stationPortrait）
+     · 出入口：北面的门口走回大厅；设施（镜面）走上去就进去
    外加一条（2026-09 改动）：枢纽**归局内** —— 入口在大厅底栏，出去走回大厅，
    而标题页 / 选人页那对局外入口已经删掉（上面那条"玩家真走的路"就是从标题点过来的）。
    ========================================================= */
@@ -1158,49 +1195,66 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
     '"有人想说新话"的角标跟着大厅那个「枢纽」按钮走',
     String(registry['hub-news'].hidden));
 
+  /* 站点卡没了，但"每一站都画得出来"这条还要守 —— 它在**对话框**里用（tx-cv） */
   const stations = Profile.stationsFor();
-  ok(registry['hub-stations'].children.length === stations.length,
-    '站点网格列出表里全部 ' + stations.length + ' 站',
-    registry['hub-stations'].children.length);
   const noPortrait = stations.filter(s => !S.stationPortrait(s.id, 32)).map(s => s.id);
   ok(noPortrait.length === 0, '屋里每一站都有画法（站点 id ⇄ 头像 id）', noPortrait.join(','));
-  ok(String(registry['hub-status'].innerHTML).indexOf('材料') >= 0 &&
-     String(registry['hub-status'].innerHTML).indexOf('走过') >= 0,
-    '状态带报出"档案里攒了什么"');
+  ok(registry['hub-stations'] === undefined, '枢纽 HUD 里没有站点网格（人在屋里站着，不在屏幕底下排卡片）');
 
-  // 每一个站点按钮都真的带得动动作（不是画出来好看的空壳）
-  const deadStations = registry['hub-stations'].children.filter(c => !c.dataset.act);
-  ok(deadStations.length === 0, '每个站点都是可点的（都带 data-act）', deadStations.length);
+  const until = (mx, my, cond, n) => {
+    for (let i = 0; i < (n || 400); i++) { if (cond()) break; Game.step(Game.cfg.fixedDt, { x: mx, y: my }); }
+  };
+  const near = () => (Game.hall() && Game.hall().near) || null;
+  const deepText = (n) => (n.children || []).map(c => ((c._text || '') + ' ' + deepText(c))).join(' ');
 
-  // 点人：选中他，而且对话框里出现"是他 + 他这一句"
-  const mother = registry['hub-stations'].children.find(c => c.dataset.npc === 'mother');
-  clickEl(mother);
-  const talkText = () => String(registry['hub-talk'].children.map(c =>
-    c.children.map(x => x._text || '').join(' ')).join(' '));
-  ok(mother._classes.has('sel'), '点一位 NPC → 他成为当前选中的人');
+  /* 走到菌母面前：屋里全是墙与柱子，得绕着走（先左，再下） */
+  ok(registry['hub-talk'].hidden === true, '没走到人面前之前，对话框是收着的');
+  until(-1, 0, () => Game.hall().x <= 305);
+  until(0, 1, () => !!near() && near().npc === 'mother');
+  ok(!!near() && near().npc === 'mother', '走到菌母面前（这是屋里真走得通的一条路）',
+    near() && near().id);
+  ok(registry['hub-talk'].hidden === true, '只是站在人面前**还不会**开口（要按 E）');
+
+  const talkAct = Game.hallAct();
+  ok(!!talkAct && talkAct.act === 'talk' && talkAct.id === 'mother', '按 E：面前是菌母',
+    talkAct && talkAct.act);
+  ok(registry['hub-talk'].hidden === false, '按 E 之后对话框出现');
   const firstLine = Profile.linesFor('mother')[0];
+  const talkText = () => deepText(registry['hub-talk']);
   ok(!!firstLine && talkText().indexOf(firstLine.text) >= 0,
     '对话框里是他现在要说的那一句', talkText().slice(0, 40));
 
   // 说一句：说过的不再出现，下一句顶上来（一次只倒一句）
   const beforeCount = Profile.linesFor('mother').length;
-  clickEl(registry['hub-talk'].children[1].children.find(c => c.dataset.act === 'hub-say'));
+  clickEl(registry['hub-talk'].querySelectorAll('[data-act="hub-say"]')[0]);
   ok(Profile.linesFor('mother').length === beforeCount - 1,
     '点"继续说"把这一句记成说过了', beforeCount + ' → ' + Profile.linesFor('mother').length);
 
-  /* 出门：底栏两条路都通向大厅 —— 「去大厅」是门，「返回」沿来处走回去。
-     这是"枢纽归局内"在界面上的那一半：出去不是回主菜单。 */
-  clickAct('hub-go');
-  ok(Game.state === 'station', '枢纽底栏的「去大厅」走回大厅（局内 → 局内）', Game.state);
+  /* 走开就收起来（main.ts 每显示帧调 UI.hallSync()）——
+     不做成"进屏刷一次"：那样人走了对话框还挂在屏幕上 */
+  until(1, 0, () => Game.hall().x >= 520, 300);
+  UI.hallSync();
+  ok(registry['hub-talk'].hidden === true, '走开之后对话框收起来');
+
+  /* 出门：北面的门口走回大厅（走回去，不是回主菜单） */
+  until(1, 0, () => Game.hall().x >= 750, 300);
+  until(0, -1, () => Game.state !== 'hub', 300);
+  ok(Game.state === 'station', '走进北面的门口 → 回大厅（局内 → 局内）', Game.state);
+
+  /* 底栏两条路都通向大厅 —— 「去大厅」是门，「返回」沿来处走回去 */
   clickAct('hub');
+  ok(Game.state === 'hub', '再进一次枢纽', Game.state);
   clickAct('hub-back');
   ok(Game.state === 'station', '「返回」沿来处走：从大厅进来的就回大厅', Game.state);
   clickAct('hub');
+  clickAct('hub-go');
+  ok(Game.state === 'station', '枢纽底栏的「去大厅」走回大厅（局内 → 局内）', Game.state);
 
-  // 点设施：走上去（进入那个界面）。去处来自表里的 screen，不是界面里写死的 id 分支
-  const contract = registry['hub-stations'].children.find(c => c.dataset.station === 'contract');
-  clickEl(contract);
-  ok(Game.state === 'keep', '点契约台 → 走进据点（站点自己声明去处）', Game.state);
+  /* 设施：走上去就进去（与地牢里"走进门就换房"同一条规矩）——镜面 = 天赋。
+     去处来自 story.ts 的表，界面不按站点 id 分支。 */
+  clickAct('hub');
+  until(0, 1, () => Game.state !== 'hub', 240);
+  ok(Game.state === 'talents', '走上去就进镜面（天赋）——设施自己声明去处', Game.state);
   Game.setState('title', true);
   UI.refresh();
 }

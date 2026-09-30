@@ -838,11 +838,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 84 个 · 37964 行（另有 `types.d.ts` 4543 行） |
+| 模块 | 85 个 · 39134 行（另有 `types.d.ts` 4703 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 54 · `selfcheck.ts` 51 · `utils.ts` 30 |
-| 依赖最重的模块 | `game.ts` 41 · `ui.ts` 41 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 4867 · `ui.ts` 3462 · `profile.ts` 1614 · `sprites.ts` 1573 · `render.ts` 1416 · `dungeon.ts` 996 · `main.ts` 993 · `affixes.ts` 868 · `skills.ts` 742 |
+| 扇入最高的模块 | `registry.ts` 55 · `selfcheck.ts` 52 · `utils.ts` 31 |
+| 依赖最重的模块 | `game.ts` 42 · `ui.ts` 41 · `main.ts` 30 |
+| 超过 700 行的模块 | `game.ts` 5029 · `ui.ts` 3450 · `render.ts` 1651 · `profile.ts` 1614 · `sprites.ts` 1573 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 707 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -1734,9 +1734,9 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 | 维度 | 现状 |
 | --- | --- |
 | 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **54 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
+| 测试套件 | **57 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
-| 模块 | 71 个 · 34k 行（另有 `types.d.ts` 3.9k 行） |
+| 模块 | 85 个 · 39k 行（另有 `types.d.ts` 4.7k 行） |
 | 依赖环 | **0** |
 | 向上的边（低层认识高层） | **2 条**，都已逐条登记理由 |
 | 模块级可变状态 | 全部登记在 `test/persist.mjs` 的清单里（新增必须显式登记） |
