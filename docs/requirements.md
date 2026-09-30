@@ -1355,7 +1355,8 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 | `node tools/readme-stats.cjs` | ✅ README 存量表刷新（85 个模块 · 39134 行 · `hall.ts` 707 行） |
 | `tools/ui-shot.mjs`（1280×720） | ✅ 20 屏全装得下、没有被裁的文字；大厅 / 枢纽贴底 96 / 130px、读账卡收着时 0 高 |
 | 行为指纹 | ✅ `622d6ebf` / `a9c2902b` / `354cc83c`（未变） |
-| CI（`.github/workflows/ci.yml`） | ⏳ 推送后补 |
+| `git status` / `git log origin/main..HEAD` | ✅ 干净 / 空（推送 `93090aa..37aad33`） |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36755046288](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36755046288)） |
 
 ⚠ 与 R44 / R45 / R46 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，
 那次核对不成立。

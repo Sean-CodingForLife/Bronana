@@ -66,6 +66,8 @@ R45 把三个模块"收进了局内"，R46 把枢纽也搬了进来 —— 但�
 | `npx vite build` | ✅ |
 | `tools/ui-shot.mjs`（1280×720，20 屏） | ✅ 全部装得下、没有被裁的文字；大厅 / 枢纽两屏的读数逐行看过（贴底 96px / 130px、读账卡收着时 0 高） |
 | 行为指纹 | ✅ `622d6ebf` / `a9c2902b` / `354cc83c`（未变：这一轮不碰模拟） |
+| `git status` / `git log origin/main..HEAD` | ✅ 干净 / 空（推送 `93090aa..37aad33`，本地改动只剩用户自己的 `pnpm-lock.yaml`） |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36755046288](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36755046288)） |
 
 ---
 
