@@ -756,14 +756,43 @@ try {
     }
   }
   /* ② 账本里声明的模块代币，登记表里一个都不许漏 */
+  /* ⚠ **只扫 `currencies: [` 块内**：`eco_manage.ts` 现在还有两个**子模块**，
+     它们的 `id: 'build', name: '建造'` 与货币声明**同形** ——
+     第一版没分块，于是子模块被当成"没登记的货币"，报了两条假警报。 */
   const declared = [];
   for (const f of readDir('src').filter(x => /^eco_(combat|manage|grow)\.ts$/.test(x))) {
     const src = fs.readFileSync(path.join(ROOT, 'src', f), 'utf8');
-    for (const m of src.matchAll(/id: '([a-z]+)', name:/g)) declared.push(m[1]);
+    const at = src.indexOf('currencies: [');
+    if (at < 0) continue;
+    /* 从 `currencies: [` 到**同缩进的 `]`** 之间才算货币 */
+    const tail = src.slice(at);
+    const end = tail.search(/\n\s*\]\s*\n/);
+    const block = end >= 0 ? tail.slice(0, end) : tail;
+    for (const m of block.matchAll(/id: '([a-z]+)', name:/g)) declared.push(m[1]);
   }
   for (const id of declared) {
     if (!TOKEN_SITES[id]) materialProblems.push('模块代币 `' + id + '` 没有登记产出点与消费点 —— ' +
       '新加一笔模块代币时，要在 `TOKEN_SITES` 里说清它产在哪、花在哪（否则它会变成下一个 0/0）');
+  }
+
+  /* =========================================================
+     **建造不得承载战斗或养成的成长**（v3 §三-2 末尾那句）
+     ---------------------------------------------------------
+     「经营模块内部子模块可共享经营代币，但**不得让建造机制承载
+       战斗或养成的成长**。」
+
+     这一条是被**真的违反过**才加进来的：据点「档案馆」原有一个
+     `bonusPoints`（每局额外给天赋点），后来改指到"训练产出"上 ——
+     看着像修好了，其实仍然是**建造机制在承载养成的成长**，只是换了个动作。
+     它现在指到产能上（建造 → 经营，**同一模块内**），那才是合法的那条路。
+   ========================================================= */
+  const buildSrc = stripComments(fs.readFileSync(path.join(ROOT, 'src', 'stronghold.ts'), 'utf8'));
+  /* 建造能碰的：材料（全局货币=行动成本）、产能（同模块的兄弟）、核心材料（经营→养成那条边的入口） */
+  const FORBIDDEN = /addGrowth|spendGrowth|S\.growth|data\.growth|S\.talents|Talent\.|\.scrap|S\.player\.scrap|addScrap|spendScrap/;
+  if (FORBIDDEN.test(buildSrc)) {
+    materialProblems.push('`stronghold.ts`（**建造子模块**）里出现了战斗或养成的成长 —— ' +
+      'v3 §三-2 明令禁止「让建造机制承载战斗或养成的成长」。' +
+      '建造要影响别的模块，只能走**核心素材**那条合法的边。');
   }
 
   /* =========================================================

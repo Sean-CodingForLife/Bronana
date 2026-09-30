@@ -23,6 +23,9 @@
    ========================================================= */
 
 import { Items } from './data_items.ts';
+/* 经营子模块读**建造子模块的设施表**来算产出 —— 同层（都是 meta），方向合法：
+   经营看建造是「看它盖了什么」，而建造不认识经营。 */
+import { Stronghold } from './stronghold.ts';
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
 import { Weapons } from './data_weapons.ts';
@@ -57,6 +60,38 @@ function buildRecipes() {
   }
   return out;
 }
+
+/* =========================================================
+   经营子模块的**产出**：产能（M2 第二刀）
+   ---------------------------------------------------------
+   v3 §三-2 把「资源 / 生产 / 供需 / 效率 / 市场 / 人员 / 时间」划给
+   **经营子模块** —— 所以产能是**这里**产出来的，不是建造那边。
+
+   ⚠ **为什么有一个不依赖设施的底数**：只由设施产的话，开局就是
+   0 设施 → 0 产能 → 建不了设施 —— 一个把自己锁死的循环。
+   v3 §5.3-9 的「撞墙不卡死」要求的正是这一条：**经营模块自己会运转**，
+   设施是让它转得更快，不是让它开始转。
+   ========================================================= */
+Craft.CAPACITY_BASE = 1;      // 每波的基础运转（不依赖任何设施）
+Craft.CAPACITY_PER_LEVEL = 2; // 每波、每级设施额外产的
+
+/** 这一波的**产能产出**：基础运转 + 设施产出（v3 §8-2 的「设施产出」） */
+/**
+ * 这一波的产能产出：基础运转 + 设施产出 + 据点的加成。
+ *
+ * ⚠ `bonus` 来自据点「档案馆」（M2 第二刀从 `bonusPoints` 改过来的）。
+ *   它**原来是"训练每次额外给成长点"** —— 那是**建造机制承载养成的成长**，
+ *   而 v3 §三-2 明令禁止（"不得让建造机制承载战斗或养成的成长"）。
+ *   改指到产能上之后，它走的是**同一模块内两个子模块共享代币**这条路 ——
+ *   那正是 v3 §三-2 允许的那一条。
+ */
+Craft.capacityYield = function (owned, bonus) {
+  var lv = 0;
+  for (var i = 0; i < Stronghold.LIST.length; i++) {
+    lv += Stronghold.levelOf(owned, Stronghold.LIST[i].id);
+  }
+  return Craft.CAPACITY_BASE + lv * Craft.CAPACITY_PER_LEVEL + Math.max(0, Math.floor(Number(bonus) || 0));
+};
 
 Craft.LIST = buildRecipes();
 Craft.BY_ID = (function () {

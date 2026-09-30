@@ -98,13 +98,13 @@ console.log('\n[3] 折叠：买满的合计值逐个钉死');
   Keep.LIST.forEach(d => { all[d.id] = Keep.maxLevel(d.id); });
   const full = Keep.modsFor(all);
   const ALLOWED = ['startMaterials', 'shopSlots', 'freeRerolls', 'campSlots', 'refundFull',
-    'offlineLevel', 'freeRespecs', 'bonusPoints', 'workshop', 'rangeItem', 'depot'];
+    'offlineLevel', 'freeRespecs', 'capacityBonus', 'workshop', 'rangeItem', 'depot'];
   const extra = Object.keys(full).filter(k => ALLOWED.indexOf(k) < 0);
   ok(extra.length === 0, '据点买满之后只有这 ' + ALLOWED.length + ' 个"能力/容量/目录"键', extra.join(','));
   ok(full.offlineLevel === 2, '菌床买满 = 离线产出等级 2', full.offlineLevel);
   ok(full.refundFull === 1, '拆解全额返还（0/1，不会叠）', full.refundFull);
-  ok(full.freeRespecs <= 4 && full.bonusPoints <= 2, '养成层内的两条也封了顶',
-    full.freeRespecs + ' / ' + full.bonusPoints);
+  ok(full.freeRespecs <= 4 && full.capacityBonus <= 2, '这两条也封了顶',
+    full.freeRespecs + ' / ' + full.capacityBonus);
   ok(Keep.modsFor({ 不存在的: 3 }).shopSlots === 0, '未知设施被忽略（坏档防线）');
 
   ok(Keep.invested({ storehouse: 1 }) === 30 && Keep.invested({}) === 0, '已投入材料算得对',
@@ -395,7 +395,7 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
   buy('archive');
   ok(Profile.core() === coreNow - 2 && Profile.core() === coreBefore,
     '买下 Lv.3 真的扣了 2 个核心材料（' + coreNow + ' → ' + Profile.core() + '）');
-  ok(Stronghold.modsFor(Game.keepOwned()).bonusPoints === 1, '档案馆买满 → 训练每次额外 +1 成长点');
+  ok(Stronghold.modsFor(Game.keepOwned()).capacityBonus === 1, '档案馆买满 → 每波产能 +1');
   /* ⚠ **重指向**（M3）：它原来是"每局结算额外给的天赋点" —— 那是**经营直接发养成的钱**，
      而 v3 §5.4-错误4 禁止"直接花另一个模块的资源去买本模块的能力"。
      现在它加成在**训练的产出**上：据点变强 → 训练更有效（影响动作效率，不是替玩家付钱）。 */
@@ -414,8 +414,8 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
     return Game.growth() - b;
   };
   const baseDrill = Train.BY_ID['drill'].gain;
-  ok(drillGain() === baseDrill + 1,
-    '据点喂到训练上：一次操练从 ' + baseDrill + ' 变成 ' + drillGain() + '', drillGain());
+  ok(Craft.capacityYield(Game.keepOwned(), 1) === Craft.capacityYield(Game.keepOwned(), 0) + 1,
+    '据点喂到**产能**上：每波 +1（v3 §三-2：建造不得承载养成的成长，但同模块内可共享代币）');
   /* 反过来：**结算不再发天赋点**（M3 与 `growth` 同一个违规：战斗 → 养成） */
   const rep = runOnce();
   ok(rep.pointsGained === 0, '结算不再发天赋点（产出点在训练那边）', rep.pointsGained);
@@ -444,9 +444,9 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
   }
   const broken = Stronghold.audit();
   ok(broken.ok === false &&
-     broken.problems.some(p => /据点 → 天赋/.test(p)) &&
+     broken.problems.some(p => /据点 → 产能/.test(p)) &&
      broken.problems.some(p => /3 级设施/.test(p)),
-    '拔掉档案馆 → 自检报"据点 → 天赋这条边是断的"', broken.problems.slice(0, 2).join(' | '));
+    '拔掉档案馆 → 自检报「据点 → 产能这条边是断的」', broken.problems.slice(0, 2).join(' | '));
   Stronghold.LIST.length = 0;
   Array.prototype.push.apply(Stronghold.LIST, saved);
   ok(Stronghold.audit().ok === true, '装回去之后自检重新通过');

@@ -599,6 +599,33 @@ interface BondStageDef {
   note: string;
 }
 
+/**
+ * 经营模块的一个**子模块**（`eco_manage.ts`）。
+ *
+ * v3 §二-3：经营 = **建造子模块 + 经营子模块**，对外仍是一个模块、一套账本。
+ * `scope` 逐条抄自 v3 §三-2 的原文；`money` 说它在产能这笔钱上扮演哪一边。
+ */
+interface ManageSubDef {
+  id: string;
+  name: string;
+  /** 子领域（**逐条对账 v3 §三-2 的原文**） */
+  scope: string[];
+  /** 由哪个文件承载（防「声明了却没人实现」） */
+  owner: string;
+  /** 它在产能这笔钱上扮演哪一边：`produce` 或 `spend` */
+  money: string;
+  note: string;
+  why: string;
+}
+
+interface ManageApi {
+  SUBMODULES: ManageSubDef[];
+  BY_ID: Record<string, ManageSubDef>;
+  /** v3 §三-2 的两份清单原文（用来对账） */
+  SCOPE_OF: Record<string, string[]>;
+  audit(): { ok: boolean; problems: string[]; counts: { subs: number; scopes: number } };
+}
+
 interface BondsApi {
   STAGES: BondStageDef[];
   BY_STAGE: Record<string, BondStageDef>;
@@ -2624,6 +2651,15 @@ interface CraftRecipe {
 interface CraftResult { tier: number; lucky: boolean; double: boolean; }
 interface CraftAudit { ok: boolean; problems: string[]; counts: { recipes: number; weapons: number; items: number; tiers: number }; }
 interface CraftApi {
+  /* ---- 产能的**产出**侧（M2 第二刀）----
+     v3 §三-2 把「生产 / 效率」划给**经营子模块**，所以产能从这里出来，
+     而不是从建造（`stronghold.ts`）那边。 */
+  /** 每波的基础运转（**不依赖设施** —— 否则 0 设施 → 0 产能 → 建不了设施，是个死锁） */
+  CAPACITY_BASE: number;
+  /** 每波、每级设施额外产的产能 */
+  CAPACITY_PER_LEVEL: number;
+  /** 这一波的产能产出：基础运转 + 设施产出 */
+  capacityYield(owned: Record<string, number> | null, bonus?: number): number;
   MARKUP: number;
   /** 商店那一边的"应急成品"溢价（market.ts 读它） */
   EMERGENCY_MARKUP: number;
@@ -2707,7 +2743,7 @@ interface StrongholdMods {
   offlineLevel: number;
   /** 据点 → 天赋（「档案馆」）：额外免费洗点 / 每局额外天赋点 */
   freeRespecs: number;
-  bonusPoints: number;
+  capacityBonus: number;
   /** **结构性解锁**（不是加数值）：刷新保 T3 / 开局多带一件道具 / 商店必出在用的武器类别 */
   workshop: number;
   rangeItem: number;

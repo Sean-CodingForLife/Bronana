@@ -64,7 +64,7 @@ var MOD_KEYS: Record<string, KeepModKeyDef> = {
      它落在**养成层内部**（据点与天赋都是局外养成），不穿透到战斗或制造。 */
   freeRespecs: kd('每个角色多几次免费洗点（profile.ts 的免费次数）',
     function (v) { return ['免费洗点 +' + v + ' 次']; }),
-  bonusPoints: kd('**训练**每次额外给的成长点（game.ts 的 Game.train —— 影响动作效率，不是替玩家付钱）',
+  capacityBonus: kd('每波的**产能产出**额外 +N（Craft.capacityYield —— 建造 → 经营，**同模块内**）',
     function (v) { return ['每局天赋点 +' + v]; }),
   /* ---- 下面三个是"**结构性解锁**"（不是加数值）----
      参照 Loop Hero 的营地：Gymnasium **解锁特性**、Crypt **解锁职业**、
@@ -87,7 +87,7 @@ var BASE: StrongholdMods = {
   refundFull: 0,
   offlineLevel: 0,
   freeRespecs: 0,
-  bonusPoints: 0,
+  capacityBonus: 0,
   workshop: 0,
   rangeItem: 0,
   depot: 0
@@ -174,7 +174,7 @@ var LIST: KeepFacilityDef[] = [
       /* L3 额外要**核心材料**：它是据点唯一那条 3 级线，也是"每局多给一点天赋点"
          这个**永久产出**的闸门。加了它之后，"打 Boss"这件事在局外第一次有了
          不可替代的用途 —— 而不是"再打两把攒孢子"。 */
-      { cost: 300, core: 2, effect: { bonusPoints: 1 } }
+      { cost: 300, core: 2, effect: { capacityBonus: 1 } }
     ],
     req: req('clocktower', 1)              // 记录时间的人，得先有钟
   },
@@ -220,15 +220,11 @@ Stronghold.BASE = BASE;
      一个把自己锁死的循环。v3 §5.3-9 的"撞墙不卡死"要求的正是这一条：
      经营模块**自己会运转**，设施是让它转得更快，不是让它开始转。
    ========================================================= */
-Stronghold.CAPACITY_BASE = 1;      // 每波的基础运转（不依赖任何设施）
-Stronghold.CAPACITY_PER_LEVEL = 2; // 每波、每级设施额外产的
+/* ⚠ **产出不在这里**（M2 第二刀）：v3 §三-2 把「生产 / 效率」划给**经营子模块**，
+   而「设施 / 升级」才是建造子模块的。所以产能的**产出**搬到了 `craft.ts`
+   （`Craft.capacityYield`）—— 见 `eco_manage.ts` 的子模块声明。
+   这个文件（建造）只留**消费**那一半：`capacityFor`。 */
 
-/** 这一波的**产能产出**：基础运转 + 设施产出（v3 §8-2 的"设施产出"） */
-Stronghold.produce = function (owned) {
-  var lv = 0;
-  for (var i = 0; i < LIST.length; i++) lv += Stronghold.levelOf(owned, LIST[i].id);
-  return Stronghold.CAPACITY_BASE + lv * Stronghold.CAPACITY_PER_LEVEL;
-};
 
 /**
  * 升这一级要多少**产能**（v3 §8-2 的消费点：**建造子模块**用它盖设施）。
@@ -366,7 +362,7 @@ Stronghold.modsFor = function (owned) {
   m.refundFull = m.refundFull ? 1 : 0;
   m.offlineLevel = Math.max(0, Math.min(2, m.offlineLevel));
   m.freeRespecs = Math.max(0, Math.min(4, m.freeRespecs));
-  m.bonusPoints = Math.max(0, Math.min(2, m.bonusPoints));
+  m.capacityBonus = Math.max(0, Math.min(2, m.capacityBonus));
   return m;
 };
 
@@ -453,10 +449,12 @@ Stronghold.audit = function () {
   if (!LIST.some(function (d) { return d.levels.some(function (l) { return l.effect.campSlots; }); })) {
     problems.push('没有任何设施给工坊加产线 —— 据点 → 制造那条边是断的');
   }
-  /* "据点 → 天赋"这条边也必须有设施接着（否则天赋那条线是孤岛：
-     你只能靠通关攒点，据点里花的孢子对养成**一点帮助都没有**）*/
-  if (!LIST.some(function (d) { return d.levels.some(function (l) { return l.effect.bonusPoints; }); })) {
-    problems.push('没有任何设施给天赋点 —— "据点 → 天赋"这条边是断的');
+  /* "据点 → 产能"这条边必须有设施接着 —— 建造（设施）与经营（产能）是**同一个**
+     模块的两个子模块，它们共享代币正是 v3 §三-2 允许的那条路。
+     ⚠ 这里原来守的是"据点 → 天赋"，而那是**建造机制承载养成的成长** ——
+       正是 §三-2 末尾那句明令禁止的。它已被改指到产能上（见 `Craft.capacityYield`）。 */
+  if (!LIST.some(function (d) { return d.levels.some(function (l) { return l.effect.capacityBonus; }); })) {
+    problems.push('没有任何设施加产能产出 —— "据点 → 产能"这条边是断的');
   }
   if (!LIST.some(function (d) { return d.levels.some(function (l) { return l.effect.freeRespecs; }); })) {
     problems.push('没有任何设施让养成可以试错（免费洗点）—— 这条边只有"送点"没有"降本"');

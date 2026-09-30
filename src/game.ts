@@ -1696,7 +1696,7 @@ function startWave(n) {
   /* **经营模块每波自己运转一次**（M2）：产出 = 基础 + 设施产出。
      ⚠ 之所以有一个不依赖设施的底数，见 `Stronghold.CAPACITY_BASE` 那段说明 ——
        没有它，开局 0 设施 → 0 产能 → 建不了设施，是个把自己锁死的循环。 */
-  addCapacity(Stronghold.produce(keepOwned()));
+  addCapacity(Craft.capacityYield(keepOwned(), (S.kmods && S.kmods.capacityBonus) || 0));
   /* **相处次数也跟着每波重置**：它与 `craftUsed` 是同一个东西（模块内的回合数），
      只是分别属于经营与养成两条线。放一起才看得出来它们是同一套时间感。 */
   S.talks = {};
@@ -4380,7 +4380,7 @@ function refoldTalents() {
 /** **经营代币余额**（局内） */
 Game.capacity = function () { return capacity(); };
 /** 这一波的**产能产出**是多少（界面拿它显示"每波 +N"） */
-Game.capacityPerWave = function () { return S ? Stronghold.produce(keepOwned()) : 0; };
+Game.capacityPerWave = function () { return S ? Craft.capacityYield(keepOwned(), (S.kmods && S.kmods.capacityBonus) || 0) : 0; };
 
 /** 养成代币余额（**局内**） */
 Game.growth = function () { return growth(); };
@@ -4501,13 +4501,11 @@ Game.train = function (id) {
      上限与原来同一套（`Profile.SPORE_MUL_CAP`），不新开一份。 */
   var mul = 1 + Math.min(Profile.SPORE_MUL_CAP, Math.max(0, (S.omods && S.omods.sporeMul) || 0));
   var gain = Math.round(d.gain * mul);
-  /* **据点「档案馆」加成到训练上**（M3 的重指向）。
-     ⚠ 它原来叫 `bonusPoints`（"每局结算额外给的天赋点"）—— 那是**经营直接发养成的钱**，
-       而 v3 §5.4-错误4 明令禁止"直接花另一个模块的资源去买本模块的能力"。
-       改指到**训练的产出**上：据点变强 → 训练更有效 —— 影响的是**动作的效率**，
-       不是替玩家把钱付了。 */
-  var archive = Math.max(0, ((S.kmods || {}) as { bonusPoints?: number }).bonusPoints || 0);
-  if (archive) gain += archive;
+  /* ⚠ **据点不再往这里加成了**（M2 第二刀）。
+     上一轮曾把「档案馆」的 `bonusPoints` 指到训练产出上 —— 那仍然是
+     **建造机制承载养成的成长**，而 v3 §三-2 明令禁止这一条。
+     它现在指到**产能产出**上（`Craft.capacityYield` 的 `bonus`），
+     走的是同一模块内两个子模块共享代币那条**合法**的路。 */
   /* **产在局内余额上**（M3 第二块）：`growth` 是模块代币，按 v3 §5.1
      产出与消费都在本模块内。 */
   addGrowth(gain);
