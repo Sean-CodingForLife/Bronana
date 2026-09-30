@@ -841,6 +841,35 @@ try {
   if (!targets.length) materialProblems.push('`guide.ts` 里一条 `to` 都没有 —— 软引导指不了路');
 
   /* =========================================================
+     **全局货币要真的被三个模块花**（v3 §8-11 的「消耗刚性」）
+     ---------------------------------------------------------
+     §8-11 的两半：**获取有限** + **消耗刚性**。
+
+       · 获取有限 —— 判据 J 已经在守：`Profile.addMaterial` 只有一个出口
+         （`game.ts` 的 `gainMaterial`），多一处就是双重入账。
+       · 消耗刚性 —— 这一条守：**三个模块各自都要花它**。
+
+     ⚠ 为什么「刚性」值得单独守：如果某个模块从来不花行动成本，它就不是
+       循环里的一环，而是一个**旁路** —— 玩家可以一直玩它而不付任何代价。
+       表现是「那个模块好像不要钱」，而没有任何东西会报错。
+   ========================================================= */
+  const MAT_SINKS = {
+    combat: ['combine', 'buyOffer', 'reroll', 'buyPack'],
+    manage: ['craft', 'keepBuy', 'campBuy'],
+    grow:   ['train', 'respec']
+  };
+  const sinkSrc = readDir('src').filter(f => f.endsWith('.ts') && f !== 'types.d.ts')
+    .map(f => stripComments(fs.readFileSync(path.join(ROOT, 'src', f), 'utf8'))).join('\n');
+  for (const mod of Object.keys(MAT_SINKS)) {
+    const hit = MAT_SINKS[mod].filter(s => sinkSrc.includes(s));
+    if (!hit.length) {
+      materialProblems.push('**' + mod + '** 模块一处都不花全局货币（试过的名字：' +
+        MAT_SINKS[mod].join(' / ') + '）—— 那它就不是循环里的一环，而是一个**旁路**：' +
+        '玩家可以一直玩它而不付任何行动成本（v3 §8-11 的「消耗刚性」）。');
+    }
+  }
+
+  /* =========================================================
      **双轨守卫**（v3 §8-3）：叙事线**不产经济**
      ---------------------------------------------------------
      `story.ts` 只管「哪句话说得出」，它**一个铜板都不该碰**。

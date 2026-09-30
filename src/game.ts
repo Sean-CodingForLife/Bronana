@@ -4142,6 +4142,47 @@ Game.guide = function () {
   });
 };
 
+/* =========================================================
+   **模块内时间感独立**（v3 §8-12，M5）
+   ---------------------------------------------------------
+   三个模块各有各的"这一波还能做几次"，而且**互不占用**：
+     战斗：实时（一局就是一串房间，没有回合）
+     经营：营地每波 2 点 · 每条产线每波 1 次
+     养成：训练每波 3 次 · 与每位 NPC 每波 2 次
+
+   ⚠ 这四处**分散在各自的模块里**（`camp.ts` / `craft.ts` / `training.ts` / `bonds.ts`）
+     —— 那是对的（额度属于那个模块，不属于会话）。但玩家那侧就**看不见**它们，
+     于是"时间感独立"变成一句只有开发者知道的话。
+
+   这里只做**汇总**，不改任何额度：一次把三个模块的余量摆出来。
+   ========================================================= */
+/** 这一波三个模块各还剩多少"回合"（界面用它把时间感摆出来） */
+Game.waveBudget = function () {
+  if (!S) return null;
+  /* 经营：这一波还有几条产线没动过。
+     ⚠ 用**会话里的** `S.craftUsed` 与声明的产线数对减 ——
+       不去读营地那笔（`campOwned`）：营地是**账号侧**的（M1 搬走了），
+       它的每波额度不在会话里，拿它算会算出一个与局内无关的数。 */
+  /* 产线数 = **真的建了几座工坊设施**（一座一条）。
+     ⚠ 不去调 `Craft.linesOf`：它的声明收 `ForgeMods`，而实现读的是 `mods.lines` ——
+       那是**既有**的一处类型与实现不符（还有别的调用点靠它），不该顺手在这一轮动。
+       数"建了的"比"按公式算"也更不容易漂。 */
+  var lines = Object.keys(campOwned() || {}).length;
+  var usedLines = (S.craftUsed || []).length;
+  /* 养成：训练还剩几次；与 NPC 相处还剩几次（取**聊得最多的那位**的余量） */
+  var maxTalks = 0;
+  var npcs = Bonds.NPCS();
+  for (var i = 0; i < npcs.length; i++) maxTalks = Math.max(maxTalks, talksOf(npcs[i].id));
+  return {
+    /* 战斗：**实时**，没有"回合"这个数 —— 所以它是 `null` 而不是 0。
+       ⚠ 写成 0 会让界面显示"战斗还剩 0 次"，而那是错的（它是实时的）。 */
+    combat: null,
+    craftLines: Math.max(0, lines - usedLines),
+    trainLeft: Train.left(trainUsed()),
+    talkLeft: Math.max(0, Bonds.TALK_PER_WAVE - maxTalks)
+  };
+};
+
 Game.exchangeOpts = function () {
   return Exchange.LIST.map(function (e) {
     var amt = Math.min(e.cap > 0 ? e.cap : 1, tokenBalance(e.from));

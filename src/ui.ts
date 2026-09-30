@@ -561,10 +561,18 @@ function renderHub() {
   /* **软引导**（v3 §8-15）：撞墙提示 + 路径指引。
      ⚠ `null` 不是"没有建议" —— 那是**循环转起来了**，换个说法（不然玩家会以为坏了）。 */
   if (el.hubGuide) {
+    /* ⚠ **模块内时间感独立**（v3 §8-12）：把"这一波各模块还剩几次"摆出来。
+       不摆的话，"时间感独立"就只是开发者知道的一句话 —— 而玩家会觉得
+       "我点了几下就不能点了"，却不知道那几下分别属于哪个模块。
+       ⚠ 战斗写「实时」而不是「0 次」：**它是实时的，没有回合这个数**。 */
+    var wb = Game.waveBudget();
+    var budgetTxt = wb
+      ? ('这一波还剩 —— 出击：实时 · 工坊产线 ' + wb.craftLines + ' 条 · 训练 ' +
+         wb.trainLeft + ' 次 · 相处 ' + wb.talkLeft + ' 次')
+      : '';
     var gd = Game.guide();
-    el.hubGuide.textContent = gd
-      ? ('下一步：' + gd.text)
-      : '循环转起来了 —— 三个模块随便挑一个推';
+    el.hubGuide.textContent = (gd ? ('下一步：' + gd.text) : '循环转起来了 —— 三个模块随便挑一个推') +
+      (budgetTxt ? '　｜　' + budgetTxt : '');
   }
 
   U.clear(el.hubStations);

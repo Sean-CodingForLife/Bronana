@@ -2738,7 +2738,6 @@ interface CraftApi {
   linesOf(builtCount: number, mods: ForgeMods | null): number;
   audit(): CraftAudit;
 }
-
 /* ---------------- 图纸工坊（forge.ts） ----------------
    纪律：只解锁**能力**，没有一条是属性。键名与模拟层读的名字一致（没有改名层）。 */
 interface ForgeMods {
@@ -4202,6 +4201,11 @@ interface GameApi {
      判定在 `Ledger.canExchange`。 */
   /** 兑换一次：扣源代币 + 扣全局货币手续费 + 给目标代币。**失败整笔回滚**。 */
   exchange(from: string, to: string, n: number): { ok: boolean; reason: string; got: number; cost: number };
+  /* ---- **模块内时间感独立**（v3 §8-12，M5）----
+     各模块的每波额度分散在各自的模块里（那是**对的**：额度属于那个模块），
+     这里只是**汇总**，让它在玩家那一侧看得见。 */
+  /** 这一波三个模块各还剩多少"回合"（战斗是实时的，所以是 `null`） */
+  waveBudget(): { combat: null; craftLines: number; trainLeft: number; talkLeft: number } | null;
   /** **下一步该去哪**（软引导，v3 §8-15）；`null` = 循环转起来了 */
   guide(): { id: string; to: string; text: string; why: string } | null;
   /** 界面铺一屏兑换选项 */
