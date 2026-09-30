@@ -843,11 +843,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 85 个 · 39134 行（另有 `types.d.ts` 4703 行） |
+| 模块 | 87 个 · 39801 行（另有 `types.d.ts` 4788 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 55 · `selfcheck.ts` 52 · `utils.ts` 31 |
-| 依赖最重的模块 | `game.ts` 42 · `ui.ts` 41 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 5029 · `ui.ts` 3450 · `render.ts` 1651 · `profile.ts` 1614 · `sprites.ts` 1573 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 707 |
+| 扇入最高的模块 | `registry.ts` 58 · `selfcheck.ts` 54 · `utils.ts` 31 |
+| 依赖最重的模块 | `game.ts` 43 · `ui.ts` 41 · `main.ts` 30 |
+| 超过 700 行的模块 | `game.ts` 5033 · `ui.ts` 3450 · `render.ts` 1656 · `profile.ts` 1614 · `sprites.ts` 1573 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |

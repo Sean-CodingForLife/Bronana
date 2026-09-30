@@ -33,7 +33,22 @@ const SYSTEMS = [
          因为**它的依赖**在 L1。决定一个模块坐哪的不是它的性质，是它的依赖。 */
       'fold.ts',
       'containers.ts', 'envelope.ts',
-      'comp.ts', 'collide.ts', 'rig.ts', 'draw2d.ts', 'depth.ts', 'ai.ts']
+      'comp.ts', 'collide.ts', 'rig.ts', 'draw2d.ts', 'depth.ts', 'ai.ts',
+      /* =========================================================
+         **引擎的两条地基系统**（R51，2026-10-01）：
+           `world.ts`  世界系统 —— 坐标契约 / 区域表（战场·大厅·枢纽）/ 网格表，
+                       只 import `registry` / `selfcheck`
+           `object.ts` 对象系统 —— 身份（`$id`）· 原型普查 · 容器对账，
+                       只 import `comp` / `containers` / `registry` / `selfcheck`
+         两者都坐在 L0 的理由与 `fold.ts` 同一条：**决定一个模块坐哪的不是
+         它的性质，是它的依赖** —— 它们一个玩法概念都不认识（不认识会话、
+         不认识渲染、不认识对局），而 data(1) / dungeon(2) / sim(4) /
+         view(7) 四层都要读它们。
+         ⚠ `world.ts` 是"尺寸的唯一出处"：`arena.ts` / `hall.ts` /
+         `game.ts` / `render.ts` / `art_spec.ts` 的尺寸与格边长都从它读，
+         这一条由 `test/world.mjs` [3] 的静态检查守着（谁也别再抄一遍）。
+         ========================================================= */
+      'world.ts', 'object.ts']
   },
   {
     id: 'data', name: '数据表', level: 1,

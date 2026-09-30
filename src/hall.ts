@@ -38,6 +38,7 @@ import { SelfCheck } from './selfcheck.ts';
 import { Station } from './station.ts';
 import { Story } from './story.ts';
 import { PAL, U } from './utils.ts';
+import { World } from './world.ts';
 
 var Hall = {} as HallApi;
 
@@ -55,7 +56,11 @@ var Hall = {} as HallApi;
 /** 墙的厚度（两面共用；画法也读它，所以它只写一次） */
 Hall.WALL = 36;
 
-var W = 1500, H = 1120, T = 36;
+/* 房间尺寸的**唯一出处是 `world.ts` 的区域表**（R51 收口）：
+   大厅 / 枢纽是**同一房型**（墙坐标按同一套数写），所以两间都读 `station` 那一块地；
+   `Hall.audit` 会逐间核对"房型尺寸 = 世界区域表里的尺寸"，漂了当场红。 */
+var ZONE = World.zone('station');
+var W = ZONE.w, H = ZONE.h, T = Hall.WALL;
 
 var ROOMS: HallRoomDef[] = [
   {
@@ -412,6 +417,18 @@ Hall.audit = function () {
     if (seenRoom[room.id]) problems.push('房间 id 重复：' + room.id);
     seenRoom[room.id] = true;
     if (!room.name) problems.push(room.id + ' 没有名字');
+    /* 房型尺寸必须等于**世界区域表**里的那一块地（R51）：
+       这一条防的是"把房间放大 200px、却忘了改世界尺寸"——
+       症状是镜头夹取范围与可站范围对不上（走到边上镜头不动 / 镜头越过墙）。 */
+    if (!World.has(room.id)) {
+      problems.push('房间 ' + room.id + ' 在世界区域表里没有对应的一块地（World.zone 会抛）');
+    } else {
+      var zone = World.zone(room.id);
+      if (room.w !== zone.w || room.h !== zone.h) {
+        problems.push('房间 ' + room.id + ' 的尺寸 ' + room.w + '×' + room.h +
+          ' 与世界区域表里的 ' + zone.w + '×' + zone.h + ' 不一致');
+      }
+    }
     if (!(room.w > Hall.WALL * 3) || !(room.h > Hall.WALL * 3)) {
       problems.push(room.id + ' 尺寸不合理：' + room.w + '×' + room.h);
     }
@@ -586,11 +603,11 @@ Hall.audit = function () {
   };
 };
 
-/* ---- 连通性：一张粗网格上的洪水填充（12px 一格）----
+/* ---- 连通性：一张粗网格上的洪水填充 ----
    为什么值得写：房间是手写的，而"手写的东西会挡住路"这件事
    **肉眼看不出来** —— 少留一个口子，玩家就永远走不到记录墙，
    而所有别的自检都是绿的（墙是合法的、站点是合法的、就是过不去）。 */
-var CELL = 12;
+var CELL = World.grid('walk');   // 格边长走世界系统的网格表（`walk`，见 world.ts）
 function gridKey(x: number, y: number) {
   return Math.floor(x / CELL) + ':' + Math.floor(y / CELL);
 }

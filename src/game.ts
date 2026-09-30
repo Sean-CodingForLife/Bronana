@@ -28,6 +28,8 @@ import { Hall } from './hall.ts';
 import { makeChamber } from './chamber.ts';
 import { makeGrid } from './grid.ts';
 import { makeImpact } from './impact.ts';
+/* 世界系统：坐标契约 / 区域尺寸 / 网格表 —— 会话里的空间参数从这里读 */
+import { World } from './world.ts';
 import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 /* 养成模块的第一个局内行动（训练：花全局货币换养成代币）—— 见 M3 的说明。 */
@@ -658,7 +660,9 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
         不能等到第一次合成才懒创建 —— persist 的字段分组守卫查的就是这个） */
     combineCount: 0,
     stats_total: { kills: 0, scrap: 0, dmg: 0, taken: 0, healed: 0, waves: 0 },
-    grid: { cell: 68, map: Object.create(null) },
+    /* 空间网格的格边长走世界系统的网格表（`spatial`）——
+       这一格以前写死 68，而"还有别的网格吗、各自多大"没有一处能回答。 */
+    grid: { cell: World.grid('spatial'), map: Object.create(null) },
     nextId: 1
   };
 

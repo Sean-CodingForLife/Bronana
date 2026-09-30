@@ -31,6 +31,7 @@
    ========================================================= */
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
+import { World } from './world.ts';
 
 var Art = {} as ArtApi;
 
@@ -137,12 +138,15 @@ Art.kindOfName = function (name) {
    `bake` 那一层（设备倍率烘焙），单张资源本身不必是 2 的幂。
    ========================================================= */
 Art.SIZES = {
+  /* 三格尺寸都读**世界系统的 `tile` 网格**（R51 收口）：
+     瓦片格距不是美术自己定的常量，而是世界网格表里那一条 —— 于是
+     "格子多大"这个问题在任何一层都只有一个答案。 */
   /** 世界层绘制网格：瓦片与物件的锚点都按它对齐 */
-  grid: 16,
-  /** 瓦片边长（必须整除 grid） */
-  tile: 16,
+  grid: World.grid('tile'),
+  /** 瓦片边长（必须是 grid 的整数倍） */
+  tile: World.grid('tile'),
   /** 外墙用的瓦片格距（= grid；单独给个名字，因为改外墙时会先看它） */
-  border: 16,
+  border: World.grid('tile'),
   /** 图标基准边长（商店 / 背包 / 提示三处都从这里派生） */
   icon: 32,
   /** 静态层烘焙画布的尺寸上限（超过就分片，与"大背景图分片"同一条规矩） */

@@ -36,6 +36,28 @@ var ARCH_NAMES: string[] = [];
 var SYSTEMS: Record<string, CompSystem> = Object.create(null);
 var SYS_NAMES: string[] = [];
 
+/* =========================================================
+   对象身份（**每个对象出生时拿到的实例号**）
+   ---------------------------------------------------------
+   用户的要求（2026-10-01）：「游戏里所有东西都是一个对象……没有每个对象的属性」。
+
+   改造前：连"这是哪一个对象"都没有一处能回答 —— 怪身上有 `EnemyCore.id`
+   （`S.nextId++`），那是**怪物编号**（存档 / 行为用），而子弹 / 粒子 / 掉落 /
+   贴花 / 炮塔**一个身份字段都没有**。于是"同一个对象在两帧之间是同一个吗"
+   这个问题只能靠引用比较回答，池化复用之后连引用都会撞。
+
+   现在：工厂产出的字面量里带一格 `$id`（与 `$arch` 同为**运行期字段**，
+   不属于任何组件），`Comp.spawn` 出生时写一个全项目唯一的整数。
+   它是 `object.ts`（对象系统的普查）与调试面板读身份的唯一入口。
+
+   ⚠ 全项目唯一而不是"每局唯一"：会话会被重建，而身份一旦重复
+   （第 2 局的 1 号与第 1 局的 1 号），"回放里那发子弹"就没法指认。
+
+   ⚠ 计数器是**模块级可变状态**（登记在 test/persist.mjs 的清单里）：
+   它对玩法没有任何影响（只被审计与调试读），但不登记就会被盘点漏掉。
+   ========================================================= */
+Comp.seq = 0;
+
 /** 定义一个组件。fields 的键 = 字段名，值 = 默认值 */
 Comp.define = function (name, fields, hooks) {
   if (DEFS[name]) throw new Error('comp: 组件重名 ' + name);
@@ -95,7 +117,10 @@ function inlineLiteral(v) {
  * 但行为一致，且 test/comp.mjs 校验的是行为不是速度，兜底路径照样过。
  */
 function compileFactory(name, fields, tpl) {
-  var parts = ['$arch: ' + JSON.stringify(name)];
+  /* `$arch` / `$id` 是**运行期字段**：前者回答"它是什么"，后者回答"它是哪一个"。
+     两者都不属于任何组件，所以不在 `fields` 里；工厂把它们写在最前面，
+     与组件字段一起构成同原型对象的固定形状。 */
+  var parts = ['$arch: ' + JSON.stringify(name), '$id: 0'];
   var fromTemplate = false;
   for (var i = 0; i < fields.length; i++) {
     var f = fields[i];
@@ -142,6 +167,7 @@ Comp.archetype = function (name, comps, opts) {
     }
   }
   tpl.$arch = name;    // 代码生成的工厂从这里取原型名
+  tpl.$id = 0;         // 身份在 spawn 时写（见文件头的"对象身份"）
   var has: Record<string, boolean> = Object.create(null);
   for (var q = 0; q < fields.length; q++) has[fields[q]] = true;
   var a: CompArch = {
@@ -194,6 +220,10 @@ Comp.spawn = function (name, overrides) {
   var a = ARCHS[name];
   if (!a) throw new Error('comp: 未注册的原型 ' + name);
   var e = a.make();
+  /* 身份：出生时写，且**只能**在这里写（assign 会拒绝 `$id`，它不是组件字段）。
+     这一行在热路径上，但它只是一次整数自增 + 一次属性写入 ——
+     与 `seedPrev` 的两次写入同类，实测开销见 test/comp.mjs [7]。 */
+  e.$id = (Comp.seq += 1);
   if (overrides) Comp.assign(e, overrides);
   if (a.seedPrev) { e.px = e.x; e.py = e.y; }
   var hk = a.hooks;
@@ -229,13 +259,16 @@ Comp.has = function (e, compName) {
 /* =========================================================
    3. 审计（测试与 ?fps=1 叠加层用）
    ========================================================= */
-/** 对象上出现了原型没声明的字段 → 返回字段名列表；不是组合对象返回 null */
+/**
+ * 对象上出现了原型没声明的字段 → 返回字段名列表；不是组合对象返回 null。
+ * `$arch` / `$id` 是**运行期字段**（原型与身份），与组件字段分开算。
+ */
 Comp.unknownFields = function (e) {
   var a = ARCHS[e && e.$arch];
   if (!a) return null;
   var bad: string[] = [];
   for (var k in e) {
-    if (Object.prototype.hasOwnProperty.call(e, k) && k !== '$arch' && !a.has[k]) bad.push(k);
+    if (Object.prototype.hasOwnProperty.call(e, k) && k !== '$arch' && k !== '$id' && !a.has[k]) bad.push(k);
   }
   return bad;
 };
@@ -249,7 +282,11 @@ Comp.audit = function (e) {
       if (!Object.prototype.hasOwnProperty.call(e, a.fields[i])) missing.push(a.fields[i]);
     }
   }
-  return { arch: (e && e.$arch) || null, unknown: unknown || [], missing: missing };
+  return {
+    arch: (e && e.$arch) || null,
+    id: (e && typeof e.$id === 'number') ? e.$id : 0,
+    unknown: unknown || [], missing: missing
+  };
 };
 
 /* =========================================================
@@ -382,7 +419,10 @@ Comp.run = function (name, list, dt, ctx) {
 };
 
 Comp.stats = function () {
-  return { components: DEF_NAMES.length, archetypes: ARCH_NAMES.length, systems: SYS_NAMES.length };
+  return {
+    components: DEF_NAMES.length, archetypes: ARCH_NAMES.length, systems: SYS_NAMES.length,
+    spawned: Comp.seq
+  };
 };
 
 /* =========================================================
@@ -473,16 +513,16 @@ Comp.archetype('player',
 Comp.archetype('enemy',
   ['Transform', 'Motion', 'Body', 'Health', 'Damage', 'HitFlash',
     'Knock', 'Burn', 'AI', 'EnemyCore', 'SpriteCache'],
-  { list: 'enemies' });
+  { list: 'enemies', note: '怪：AI 驱动追击 / 攻击，掉落与经验在死亡时结算' });
 
 Comp.archetype('bullet',
   ['Transform', 'Motion', 'Body', 'Damage', 'Pierce', 'Crit', 'Origin',
     'Lifetime', 'Look', 'BulletExtra'],
-  { list: 'bullets' });
+  { list: 'bullets', note: '玩家子弹：穿透 / 暴击 / 来源都在组件里（不是特例代码）' });
 
 Comp.archetype('ebullet',
   ['Transform', 'Motion', 'Body', 'Damage', 'Lifetime', 'Look'],
-  { list: 'ebullets' });
+  { list: 'ebullets', note: '敌弹：与玩家子弹同构但更轻（无穿透 / 无暴击 / 无来源）' });
 
 Comp.archetype('particle',
   ['Transform', 'Motion', 'Body', 'Lifetime', 'Look', 'ParticleExtra'],
@@ -490,11 +530,11 @@ Comp.archetype('particle',
 
 Comp.archetype('pickup',
   ['Transform', 'Motion', 'Look', 'PickupCore'],
-  { list: 'pickups' });
+  { list: 'pickups', note: '地面掉落物：吸附与拾取由 PickupCore 驱动（废料 / 回血 / 弹药）' });
 
 Comp.archetype('decal',
   ['Transform', 'Body', 'Look', 'DecalArt'],
-  { list: 'decals' });
+  { list: 'decals', note: '贴花：纯视觉残留（血渍 / 焦痕），只有寿命与画法，不参与碰撞' });
 
 /* 装置（炮塔）：它比别的原型多一个 `Lifetime` ——
    道具白给的炮塔寿命是"永久"（`life` 留 0 = 不过期），
@@ -502,19 +542,22 @@ Comp.archetype('decal',
    两者共用这一个原型，所以寿命做成可选：0 = 不过期。 */
 Comp.archetype('turret',
   ['Transform', 'Body', 'Health', 'Cooldown', 'Aim', 'Lifetime', 'TurretExt'],
-  { list: 'turrets' });
+  { list: 'turrets', note: '装置：白给的塔寿命为 0（永久），技能放下的有寿命 —— 共用这一个原型' });
 
 Comp.archetype('weapon',
   ['WeaponCore', 'Cooldown', 'Seat', 'AffixSet'],
-  { list: 'player.weapons' });
+  { list: 'player.weapons', note: '武器：住在 player.weapons（不是会话顶层），词条折进 wmods' });
 
 Comp.archetype('offer',
   ['OfferCore', 'AffixSet'],
-  { list: 'offers' });
+  { list: 'offers', note: '货架商品：商店 / 锻炉的报价，sold 决定它还能不能买' });
 
 Comp.archetype('item',
   ['ItemCore'],
-  { note: '道具实例只有 def（与词条）两个字段，但仍然走原型，便于统一审计' });
+  /* `list` 这一格是**对象系统**加的（object.ts 的普查靠它把"类"配到"容器"上）：
+     道具住在 `player.items`，与武器那一条同一套写法 —— 于是
+     `Comp.query(sess, 'item')` 也能用，不再需要每个读点自己记得路径。 */
+  { list: 'player.items', note: '道具实例只有 def（与词条）两个字段，但仍然走原型，便于统一审计' });
 
 /* =========================================================
    7. 系统（本项目里语义确实一致的那几趟）

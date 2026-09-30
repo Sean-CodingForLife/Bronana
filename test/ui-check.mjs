@@ -98,12 +98,19 @@ const FORBID = [
     '角色骨架只依赖 骨架层 / 组件层 / 绘制原语层 / 工具层'],
   ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts'),
     '组件层是纯声明与组合，只依赖 utils / 总账 / 自检登记处（组件与原型两张表要在启动期自检，见 comp.ts 末尾）'],
-  ['diag.ts', modFiles.filter(f => ['diag.ts', 'game.ts', 'render.ts', 'registry.ts', 'containers.ts', 'depth.ts', 'sprites.ts', 'utils.ts'].indexOf(f) < 0),
-    '诊断面板只读各系统的账目，不依赖界面层'],
+  /* 诊断面板读的就是**各系统自己的账**：R51 起又多了世界 / 对象两行，所以允许列表里
+     多了 `world.ts` / `object.ts` / `comp.ts`（三者都在 L0，是引擎地基）。
+     ⚠ 这一条守的是"面板不依赖界面层"—— 界面层（ui / input / main）一个都不许进。 */
+  ['diag.ts', modFiles.filter(f => ['diag.ts', 'game.ts', 'render.ts', 'registry.ts', 'containers.ts',
+    'comp.ts', 'object.ts', 'world.ts', 'depth.ts', 'sprites.ts', 'utils.ts'].indexOf(f) < 0),
+    '诊断面板只读各系统的账目（世界 / 对象 / 容器 / 深度 / 扩展点），不依赖界面层'],
   ['record.ts', modFiles.filter(f => f !== 'record.ts' && f !== 'game.ts'),
     '录制层只依赖状态机（不认识渲染 / 界面）'],
-  ['containers.ts', modFiles.filter(f => f !== 'containers.ts'),
-    '容器层是纯机制（回收/上限/账目），不依赖任何模块'],
+  /* 容器名也要登记进扩展点总账（`Registry.family('container')`）—— 与 `comp.ts`
+     末尾那两张表同一条纪律：**声明表在拥有数据的模块里自注册**。
+     `registry.ts` 是最底层的纯机制（只依赖 utils），所以这不是一条玩法依赖。 */
+  ['containers.ts', modFiles.filter(f => f !== 'containers.ts' && f !== 'registry.ts'),
+    '容器层是纯机制（回收/上限/账目），只依赖总账（容器名要登记，与 comp.ts 同一条纪律）'],
   ['registry.ts', modFiles.filter(f => f !== 'registry.ts' && f !== 'utils.ts'),
     '扩展点总账是纯机制，只依赖 utils'],
   ['ai.ts', modFiles.filter(f => f !== 'ai.ts' && f !== 'utils.ts' && f !== 'registry.ts'),

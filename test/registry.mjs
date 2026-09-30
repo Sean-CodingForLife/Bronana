@@ -34,7 +34,9 @@ const { Registry, Game, Scene, UI, Settings, Emit, Depth, AI, Comp, S } = g;
 /* ---------------- 1. 家族齐备 ---------------- */
 console.log('\n[2] 家族清单');
 const REQUIRED = [
-  'component', 'archetype',            // 对象由组件拼出来
+  'component', 'archetype', 'container', // 对象由组件拼出来，再交给某个容器管
+  'worldZone', 'worldGrid',              // 世界系统：区域表（块）与网格表（R51）
+  'objectKind',                          // 对象系统：原型 ↔ 容器的普查表（R51）
   'state', 'scene', 'overlay', 'keyGroup', // 阶段与界面
   'enemy', 'enemyShape', 'enemyLegs', 'enemyMouth', 'enemyEye',   // 怪物
   'aiBehaviour', 'aiPattern',          // 行为与弹幕

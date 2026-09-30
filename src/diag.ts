@@ -11,11 +11,14 @@
    ========================================================= */
 
 import { Containers } from './containers.ts';
+import { Comp } from './comp.ts';
 import { Depth } from './depth.ts';
 import { Game } from './game.ts';
+import { Objects } from './object.ts';
 import { Registry } from './registry.ts';
 import { S } from './sprites.ts';
 import { Perf } from './utils.ts';
+import { World } from './world.ts';
 
 var Diag = {} as DiagApi;
 
@@ -81,9 +84,39 @@ Diag.cache = function () {
   return out;
 };
 
+/**
+ * 世界：坐标契约 + 三块地 + 三套网格（引擎的空间地基，R51）。
+ * 这一行是"尺寸只有一个出处"的可视证据 —— 面板上的数与 arena / hall 用的是同一份。
+ */
+Diag.world = function () {
+  var zones = World.zones();
+  var names = [];
+  for (var i = 0; i < zones.length; i++) {
+    names.push(zones[i].id + ' ' + zones[i].w + '×' + zones[i].h);
+  }
+  var grids = World.grids();
+  var gs = [];
+  for (var j = 0; j < grids.length; j++) gs.push(grids[j].id + ' ' + grids[j].cell);
+  return '世界  ' + World.CONTRACT.origin + '原点 · ' + names.join('  ') + ' · 网格 ' + gs.join(' / ');
+};
+
+/** 对象：几类原型 / 几个容器 / 场上几个 / 身份发到几号（R51 的对象系统） */
+Diag.objects = function () {
+  var s = Game.getSession();
+  var live = 0;
+  if (s) {
+    var st = Objects.stats(s);
+    for (var k in st) live += st[k].len;
+  }
+  var c = Comp.stats();
+  return '对象  ' + Objects.kinds(s).length + ' 类 · ' + c.components + ' 组件 · ' +
+    Containers.names().length + ' 容器  场上 ' + live + '  身份 #' + c.spawned;
+};
+
 /** 汇总：面板就显示这几行 */
 Diag.lines = function () {
-  return [Diag.header(), Diag.frame(), Diag.containers(), Diag.depth(), Diag.registry(), Diag.cache()];
+  return [Diag.header(), Diag.frame(), Diag.world(), Diag.objects(), Diag.containers(),
+    Diag.depth(), Diag.registry(), Diag.cache()];
 };
 
 Diag.text = function () { return Diag.lines().join('\n'); };
@@ -92,6 +125,8 @@ Diag.text = function () { return Diag.lines().join('\n'); };
 Diag.full = function () {
   var s = Game.getSession();
   var out = Diag.lines().slice();
+  out.push('');
+  out.push(Objects.describe(s));
   out.push('');
   out.push(s ? Containers.describe(s) : '（无会话）');
   out.push('');

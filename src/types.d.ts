@@ -1266,6 +1266,10 @@ interface DiagApi {
   header(): string;
   frame(): string;
   containers(): string;
+  /** 世界系统的一行（坐标契约 / 三块地 / 三套网格） */
+  world(): string;
+  /** 对象系统的一行（几类原型 / 几个容器 / 场上几个 / 身份到几号） */
+  objects(): string;
   depth(): string;
   registry(): string;
   cache(): string;
@@ -1380,6 +1384,85 @@ interface ContainersApi {
   stats(sess: any): Record<string, ContainerStat>;
   check(sess: any): string[];
   describe(sess: any): string;
+}
+
+/* ---------------- 世界系统（world.ts） ----------------
+   "这张地图多大、一格多宽、坐标怎么数"的**唯一出处**。
+   三块地（战场 / 大厅 / 枢纽）与三套网格（空间 / 行走 / 瓦片）都是数据表，
+   被模拟层、渲染层、工具链同时读；它自己不认识任何实体。 */
+interface WorldZoneDef {
+  id: string;
+  name: string;
+  w: number;
+  h: number;
+  /** 边界内缩（软边界；有真墙的屋子写 0） */
+  pad: number;
+  note: string;
+}
+interface WorldGridDef {
+  id: string;
+  /** 格边长（px） */
+  cell: number;
+  note: string;
+}
+interface WorldContract {
+  origin: string;
+  yAxis: string;
+  unit: string;
+  note: string;
+}
+interface WorldApi {
+  CONTRACT: WorldContract;
+  zones(): WorldZoneDef[];
+  /** 取一块地（id 写错即抛） */
+  zone(id: string): WorldZoneDef;
+  has(id: string): boolean;
+  size(id: string): { w: number; h: number };
+  clampTo(id: string, x: number, y: number, r?: number): { x: number; y: number };
+  inside(id: string, x: number, y: number, r?: number): boolean;
+  grids(): WorldGridDef[];
+  /** 取一套网格的格边长（id 写错即抛） */
+  grid(id: string): number;
+  /** 世界坐标 → 格坐标（向下取整） */
+  cell(id: string, x: number, y: number): { cx: number; cy: number };
+  audit(): { ok: boolean; problems: string[]; counts: { zones: number; grids: number } };
+}
+
+/* ---------------- 对象系统（object.ts） ----------------
+   "游戏里所有东西都是一个对象"这条契约的**账**：每个原型一类，每类都在某个容器里，
+   每个对象出生时拿到一个身份（`$id`，由 comp.ts 写）、一份组件、一份字段。
+   它只读 comp / containers / registry 三张表，自己不是第四个注册表。 */
+interface ObjectKindRow {
+  arch: string;
+  note: string;
+  comps: string[];
+  fields: string[];
+  /** 原型声明的集合路径（`opts.list`）；没有集合的写 '' */
+  list: string;
+  /** 容纳它的全部容器名（粒子的视觉池 / 飘字池 / 两个空闲池；按容器声明的 list 反查） */
+  homes: string[];
+  /** 主容器（homes[0]）；没有的写 '' */
+  container: string;
+  /** 场上现在有几个（口径同 Containers.stats；没有会话时传 null） */
+  live: number;
+}
+interface ObjectsApi {
+  CONTRACT: { identity: string; unit: string; note: string };
+  /** 全项目对象普查：每个原型一行（含"它在哪个容器里"与当前数量） */
+  kinds(sess?: any): ObjectKindRow[];
+  /** 某个容器 / 原型之间的绑定表（容器名 → 原型名；与容器一一对应） */
+  bindings(): { container: string; arch: string; list: string }[];
+  /** 定义期审计：容器 ↔ 原型必须一一配对，且字段并集与组件一致 */
+  audit(): { ok: boolean; problems: string[]; counts: { kinds: number; containers: number; fields: number } };
+  /** 场上的对象账：每个容器的数量 / 身份是否齐备（在真会话上调用） */
+  stats(sess: any): Record<string, { arch: string; len: number; cap: number; identified: number }>;
+  /** 活体审计：场上每个对象是不是都有身份 / 是不是都由组件组合（测试与调试用） */
+  liveAudit(sess: any): { checked: number; problems: string[] };
+  /** 这个对象的身份（不是组合对象返回 0） */
+  id(e: any): number;
+  /** 这个对象的原型与字段（给调试面板 / 悬浮提示用；非组合对象返回 null） */
+  describeObject(e: any): { arch: string; id: number; comps: string[]; fields: string[]; list: string } | null;
+  describe(sess?: any): string;
 }
 
 /* ---------------- 扩展点总账（registry.ts） ----------------
@@ -4574,6 +4657,8 @@ interface CompSystem {
 }
 
 interface CompApi {
+  /** 身份序列：每 spawn 一个对象 +1（全项目唯一；见 comp.ts 的"对象身份"） */
+  seq: number;
   define(name: string, fields: Record<string, any>, hooks?: any): CompDef;
   componentKeys(name: string): string[] | null;
   archetype(name: string, comps: string[], opts?: { list?: string; note?: string }): CompArch;
@@ -4586,13 +4671,13 @@ interface CompApi {
   archOf(e: any): string | null;
   has(e: any, comp: string): boolean;
   unknownFields(e: any): string[] | null;
-  audit(e: any): { arch: string | null; unknown: string[]; missing: string[] };
+  audit(e: any): { arch: string | null; id: number; unknown: string[]; missing: string[] };
   /** 定义期启动期自检：全部原型逐字段齐全、默认值与模板一致（登记进 SelfCheck） */
   selfCheck(): { ok: boolean; problems: string[] };
   query(sess: any, archName: string): any[];
   system(name: string, need: string[], fn: (e: any, dt: number, ctx: any) => any, opts?: { back?: boolean }): CompSystem;
   run(name: string, list: any[], dt: number, ctx?: any): number;
-  stats(): { components: number; archetypes: number; systems: number };
+  stats(): { components: number; archetypes: number; systems: number; spawned: number };
 }
 
 /* ---------------- 骨架系统（rig.ts / bronana.ts） ---------------- */

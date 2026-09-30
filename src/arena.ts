@@ -16,11 +16,15 @@
 
 import { U } from './utils.ts';
 import { Dungeon } from './dungeon.ts';
+import { World } from './world.ts';
 var Arena = {} as ArenaApi;
 
-Arena.W = 1680;
-Arena.H = 1260;
-Arena.PAD = 26;          // 边界内缩（角色不可越过）
+/* 尺寸的**唯一出处是 `world.ts` 的区域表**（R51 收口）。
+   ⚠ 这个模块仍然叫"战场"，但它不再回答"战场多大"——
+   那是世界系统的事（`World.zone('arena')`），这里只说"战场上长什么"。 */
+Arena.W = World.size('arena').w;
+Arena.H = World.size('arena').h;
+Arena.PAD = World.zone('arena').pad;   // 边界内缩（角色不可越过）
 
 /** 每个环境配几种装饰物变体（画法在 render.ts 的 PROP_DRAW 里，按 kind 查） */
 var PROP_VARIANTS: Record<string, string[]> = {

@@ -144,14 +144,17 @@ console.log('\n[4] 诊断面板');
   ok(text.split('\n').length >= 5, '简报有多行', String(text.split('\n').length));
   ok(/状态|波次/.test(text), '含状态与波次');
   ok(/帧\s+FPS/.test(text), '含帧预算');
+  ok(/世界/.test(text) && /网格/.test(text), '含世界系统（坐标契约 / 区域 / 网格）');
+  ok(/对象/.test(text) && /类/.test(text), '含对象系统（几类原型 / 几个容器 / 身份发到几号）');
   ok(/容器/.test(text), '含容器账目');
   ok(/深度/.test(text), '含深度层带');
   ok(/总账/.test(text) && /审计通过/.test(text), '含扩展点总账与审计结论');
   ok(/贴图/.test(text), '含贴图缓存账目');
 
   const full = Diag.full();
-  ok(full.indexOf('容器账目') >= 0 && full.indexOf('深度队列') >= 0 && full.indexOf('扩展点总账') >= 0,
-    '展开档把三份 describe() 都放出来');
+  ok(full.indexOf('对象普查') >= 0 && full.indexOf('容器账目') >= 0 &&
+    full.indexOf('深度队列') >= 0 && full.indexOf('扩展点总账') >= 0,
+    '展开档把四份 describe() 都放出来（对象 / 容器 / 深度 / 总账）');
 
   // 面板写 DOM：节流到 4Hz。用"累加器有没有被吃掉"来观察（返回值就是证据）
   ok(UI.refreshDiag(true) === true, '强制刷新返回 true 并生成文本', UI.diagText().slice(0, 24));

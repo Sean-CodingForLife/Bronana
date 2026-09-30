@@ -159,7 +159,10 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
       // 回放中标记：回放会真的跑到 gameOver，接入层靠它不往存档里写假数据
       'replaying'],
     'diag.ts': [],
-    'comp.ts': ['DEFS', 'DEF_NAMES', 'ARCHS', 'ARCH_NAMES', 'SYSTEMS', 'SYS_NAMES'],
+    /* `seq` = 对象身份序列（`Comp.seq`，对象系统读它做普查）。
+       它是**字段形态**的模块级可变状态（不是顶层 var），登记在这里是因为
+       这份盘点的规矩是"可变就必须被看见"：它对玩法零影响，但每 spawn 一次就变。 */
+    'comp.ts': ['DEFS', 'DEF_NAMES', 'ARCHS', 'ARCH_NAMES', 'SYSTEMS', 'SYS_NAMES', 'seq'],
     'scene.ts': ['TABLE'],
     'ai.ts': ['BEHS', 'BEH_NAMES', 'PATS', 'PAT_NAMES'],
     'bronana.ts': ['W'],
@@ -216,7 +219,9 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
   const API_CONTAINERS = ['Arena', 'Sfx', 'Bronana', 'Col', 'Comp', 'C', 'I', 'W', 'Demo', 'D', 'O',
     'Emit', 'E', 'Game', 'Input', 'R', 'Rig', 'Scene', 'S', 'Stats', 'CFG', 'UI', 'U', 'Perf',
     'Settings', 'Save', 'Storage', 'Weapons', 'Items', 'Chars', 'Enemies', 'TPL', 'B', 'PAINT',
-    'PARTS', 'PUBLIC_KEYS'];
+    'PARTS', 'PUBLIC_KEYS',
+    /* 引擎地基的两条系统（R51）：都是"只挂函数与表的命名空间对象"。 */
+    'World', 'Objects'];
 
   const files = fs.readdirSync(path.join(ROOT, 'src'))
     .filter(f => f.endsWith('.ts') && f !== 'types.d.ts' && f !== 'cli.ts');

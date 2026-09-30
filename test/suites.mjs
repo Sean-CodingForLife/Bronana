@@ -27,6 +27,8 @@ export const SUITES = [
   ['调试工具 / 存档迁移 · 录制回放 · 诊断面板', 'debug.mjs'],
   ['怪物行为 / 弹幕模式注册表', 'ai.mjs'],
   ['组件系统 / 组合与校验', 'comp.mjs'],
+  ['世界系统 / 坐标·区域·网格', 'world.mjs'],
+  ['对象系统 / 身份·普查·容器', 'object.mjs'],
   ['骨架系统 / 骨头·部件·几何等价', 'rig.mjs'],
   ['碰撞体 / 帧模型 / 插值', 'frames.mjs'],
   ['三种运行形态 / web·cli·desktop', 'modes.mjs'],

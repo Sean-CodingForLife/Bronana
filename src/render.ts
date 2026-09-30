@@ -17,6 +17,7 @@ import { Scene } from './scene.ts';
 import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
 import { PAL, Perf, U } from './utils.ts';
+import { World } from './world.ts';
 
 var R = ({
   cam: { x: 0, y: 0, w: 0, h: 0, zoom: 1, shakeX: 0, shakeY: 0 },
@@ -71,7 +72,11 @@ function updateCamera(dt) {
   } else {
     var sess = Game.getSession();
     if (!sess) return;
-    tx = sess.player.x; ty = sess.player.y; worldW = Arena.W; worldH = Arena.H;
+    /* 战场尺寸读**世界区域表**（不是 `Arena`）：镜头夹取与"人能站到哪"
+       从此用同一个数。`World.zone()` 返回表里那一份（不复制、不分配），
+       所以这条每帧都跑的路没有新增分配。 */
+    var zone = World.zone('arena');
+    tx = sess.player.x; ty = sess.player.y; worldW = zone.w; worldH = zone.h;
   }
   cam.x = U.lerp(cam.x, tx, Math.min(1, dt * 7));
   cam.y = U.lerp(cam.y, ty, Math.min(1, dt * 7));

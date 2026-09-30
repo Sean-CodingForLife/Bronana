@@ -43,6 +43,8 @@ export const MODULES = {
   diag: '../src/diag.ts',
   crash: '../src/crash.ts',
   comp:    '../src/comp.ts',
+  world:   '../src/world.ts',
+  object:  '../src/object.ts',
   rig:     '../src/rig.ts',
   draw2d:  '../src/draw2d.ts',
   collide: '../src/collide.ts',
@@ -104,7 +106,10 @@ export const MODULES = {
 
 /** 模拟层（无 DOM 依赖，无头环境直接跑） */
 export const SIM_MODULES = [
-  'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
+  /* `world`（世界系统）只需要 registry / selfcheck；`object`（对象系统）需要 comp / containers。
+     两者都是 L0 地基，所以排在最前面 —— 后面的 arena / hall / game / render 都读它们。 */
+  'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
+  'world', 'comp', 'object', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
   /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
   'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station', 'hall',
   'exchange', 'guide', 'art_spec', 'affixes', 'synergy', 'weapons',

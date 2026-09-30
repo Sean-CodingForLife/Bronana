@@ -80,6 +80,8 @@
     "ui-preview": "node tools/ui-serve.mjs",
     "flow": "node tools/flow-audit.mjs",
     "test:comp": "node test/comp.mjs",
+    "test:world": "node test/world.mjs",
+    "test:object": "node test/object.mjs",
     "test:rig": "node test/rig.mjs",
     "test:frames": "node test/frames.mjs",
     "test:states": "node test/states.mjs",

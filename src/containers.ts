@@ -20,6 +20,8 @@
    零分配：`reap` 就地倒序交换删除（不新建数组、不拷贝），`add` 只碰得上限时才处理。
    ========================================================= */
 
+import { Registry } from './registry.ts';
+
 var Containers = {} as ContainersApi;
 
 var DEFS: Record<string, ContainerDef> = Object.create(null);
@@ -260,5 +262,19 @@ Containers.describe = function (sess) {
   }
   return lines.join('\n');
 };
+
+/* =========================================================
+   登记进扩展点总账（见 registry.ts）
+   ---------------------------------------------------------
+   容器是**对象系统的第三个家族**（前两个是组件与原型）：
+   `object.ts` 的普查表用 `family: 'container'` 引用这里的名字，
+   于是"普查表里写了一个不存在的容器"在启动期就会抛。
+   ========================================================= */
+Registry.family('container', {
+  note: '容器（对象住在哪个会话字段、最多几个、满了怎么办）', owner: 'containers.ts',
+  /* 只登记**名字**：policy / onFull 的取值域在 `Containers.declare` 里当场就校验了
+     （写错直接抛），再立两个家族只是把同一条规则写两遍 —— 那是噪音。 */
+  values: function () { return NAMES.slice(); }
+});
 
 export { Containers };
