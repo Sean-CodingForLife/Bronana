@@ -55,9 +55,11 @@
 
 证据：`npx tsc -p tsconfig.json` ✅ 0 错误 · `node test/world.mjs` ✅ 30 条断言 ·
 `node test/object.mjs` ✅ 32 条断言 · `node tools/verify.mjs` ✅ **17 / 17 门** ·
-`npx vite build` ✅ 89 模块 · JS gzip 253.64 kB（全站 267.86 kB，预算 300）·
+`npx vite build` ✅ 89 模块 · JS gzip 253.63 kB（全站 267.85 kB，预算 300）·
 `node tools/registry-drift.mjs` ✅ 无漂移 · `node tools/hardcode-audit.cjs` ✅ 3/0/0 = 基线 ·
 `node tools/readme-stats.cjs` ✅ README 存量表刷新。
+推送 `8835945..1366d62` · CI ✅ **completed / success**
+（[run 36767383271](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36767383271)）。
 
 ---
 
