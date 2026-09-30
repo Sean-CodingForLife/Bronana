@@ -618,6 +618,18 @@ interface ManageSubDef {
   why: string;
 }
 
+/**
+ * 一条**模块代币之间的兑换**（`exchange.ts`）。
+ *
+ * v3 §5.3：可以把本模块的代币换成另一个模块的。§7-12：必须有
+ * **高税 / 限额 / 单向 / 消耗全局货币**，否则玩家会用它绕过整个模块。
+ */
+interface ExchangeApi {
+  LIST: ExchangeDef[];
+  BY_ID: Record<string, ExchangeDef>;
+  audit(): { ok: boolean; problems: string[]; counts: { exchanges: number } };
+}
+
 interface ManageApi {
   SUBMODULES: ManageSubDef[];
   BY_ID: Record<string, ManageSubDef>;
@@ -734,8 +746,11 @@ interface ExchangeDef {
   cap: number;
   oneWay?: boolean;
   cost: number;
+  /** **在哪个模块换** —— 必须是已登记的模块名（界面据此挂到那个模块上） */
   where: string;
   note: string;
+  /** 为什么税率 / 限额是这个数（缺了它，下一个人会想"调低一点应该没事吧"） */
+  why?: string;
 }
 
 interface LedgerApi {
@@ -4148,6 +4163,13 @@ interface GameApi {
   sigil(): number;
   /** **经营代币余额**（局内） */
   capacity(): number;
+  /* ---- 兑换（M5，v3 §5.3 + §7-12）----
+     四条限制（高税 / 限额 / 单向 / 消耗全局货币）全在 `exchange.ts` 的表里，
+     判定在 `Ledger.canExchange`。 */
+  /** 兑换一次：扣源代币 + 扣全局货币手续费 + 给目标代币。**失败整笔回滚**。 */
+  exchange(from: string, to: string, n: number): { ok: boolean; reason: string; got: number; cost: number };
+  /** 界面铺一屏兑换选项 */
+  exchangeOpts(): Array<{ id: string; from: string; to: string; rate: number; cap: number; fee: number; have: number; note: string; ok: boolean; reason: string }>;
   /** **用徽记重掷一次货架**（M4）：`养成 → 战斗` 那条边的**消费点** */
   rerollWithSigil(): boolean;
   /** 这一波的产能产出（界面拿它显示"每波 +N"） */

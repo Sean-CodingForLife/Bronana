@@ -29,6 +29,10 @@ import { Bronana } from './bronana.ts';
 import { Camp } from './camp.ts';
 /* 养成模块的第一个局内行动（训练：花全局货币换养成代币）—— 见 M3 的说明。 */
 import { Train } from './training.ts';
+/* **模块代币之间的兑换**（v3 §5.3 + §7-12，M5）：表在那边，钱在这边。 */
+import { Exchange } from './exchange.ts';
+/* 兑换的**判定**在机制层（那四条限制的审计也在那里）—— 这里只改状态。 */
+import { Ledger } from './ledger.ts';
 /* 天赋的规则全在 `talents.ts`（纯函数收 state）；这里只用它的判定与折叠。 */
 import { Talent } from './talents.ts';
 /* NPC 关系状态（v3 §8-3 的「共享关系状态」）：叙事与养成**都读它** —— 见 `bonds.ts`。 */
@@ -4087,6 +4091,41 @@ Game.reroll = market.reroll;
  * 它扣在**会话**上，而 `market.reroll` 只管货架。两件事分开写，
  * 扣钱与掷货架就各有一个明确的主人（失败时也才回滚得干净）。
  */
+/**
+ * **兑换一次**（M5，v3 §5.3 + §7-12）。
+ *
+ * 四条限制全在表里（`exchange.ts`），判定在 `Ledger.canExchange`（机制层）——
+ * 这里只负责**改状态**：扣源代币、扣全局货币、给目标代币。
+ *
+ * ⚠ 任何一步扣不动就**整笔回滚**（与 `keepBuy` / `forgeNode` 同一条纪律）。
+ */
+Game.exchange = function (from, to, n) {
+  if (!S) return { ok: false, reason: '还没开局', got: 0, cost: 0 };
+  var amt = Math.max(0, Math.floor(Number(n) || 0));
+  var chk = Ledger.canExchange(from, to, amt, tokenBalance(from), material());
+  if (!chk.ok) return { ok: false, reason: chk.reason, got: 0, cost: 0 };
+  if (!spendToken(from, amt)) {
+    return { ok: false, reason: '不够换', got: 0, cost: 0 };
+  }
+  if (chk.cost > 0 && !spendMaterial(chk.cost)) {
+    addToken(from, amt);   // 退回去，这一笔不算
+    return { ok: false, reason: '全局货币不够当手续费（需要 ' + chk.cost + '）', got: 0, cost: 0 };
+  }
+  addToken(to, chk.got);
+  return { ok: true, reason: '', got: chk.got, cost: chk.cost };
+};
+/** 界面铺一屏兑换选项（价钱 / 能不能换 / 换多少） */
+Game.exchangeOpts = function () {
+  return Exchange.LIST.map(function (e) {
+    var amt = Math.min(e.cap > 0 ? e.cap : 1, tokenBalance(e.from));
+    var chk = Ledger.canExchange(e.from, e.to, amt, tokenBalance(e.from), material());
+    return {
+      id: e.id, from: e.from, to: e.to, rate: e.rate, cap: e.cap, fee: e.cost,
+      have: tokenBalance(e.from), note: e.note, ok: chk.ok, reason: chk.reason
+    };
+  });
+};
+
 Game.rerollWithSigil = function () {
   if (!S) return false;
   if (!spendSigil(1)) return false;
@@ -4375,6 +4414,33 @@ function spendRelic(n) {
   S.relic = relic() - cost;
   return true;
 }
+/* 兑换要按 id 读写**各模块的代币** —— 这是唯一一处"按名字取本模块的钱"。
+   ⚠ 它只认三个模块代币（`scrap` / `capacity` / `growth`），
+     不认核心素材也不认全局货币：那两样各有各的通道（`link.ts` / `material`）。 */
+function tokenBalance(id) {
+  if (id === 'scrap') return (S && S.player && S.player.scrap) || 0;
+  if (id === 'capacity') return capacity();
+  if (id === 'growth') return growth();
+  return 0;
+}
+function addToken(id, n) {
+  var add = Math.max(0, Math.floor(Number(n) || 0));
+  if (!S || !add) return 0;
+  if (id === 'scrap') { S.player.scrap = ((S.player.scrap) || 0) + add; return S.player.scrap; }
+  if (id === 'capacity') return addCapacity(add);
+  if (id === 'growth') return addGrowth(add);
+  return 0;
+}
+function spendToken(id, n) {
+  var cost = Math.max(0, Math.floor(Number(n) || 0));
+  if (cost <= 0) return true;
+  if (!S || tokenBalance(id) < cost) return false;
+  if (id === 'scrap') { S.player.scrap -= cost; return true; }
+  if (id === 'capacity') return spendCapacity(cost);
+  if (id === 'growth') return spendGrowth(cost);
+  return false;
+}
+
 function sigil() { return (S && S.sigil) || 0; }
 function addSigil(n) {
   if (!S) return 0;

@@ -147,8 +147,10 @@ UI.init = function () {
   el.talentPoints = q('talent-points');
   el.trainList = q('train-list');
   el.bondList = q('bond-list');
+  el.exchangeList = q('exchange-list');
   el.trainList = q('train-list');
   el.bondList = q('bond-list');
+  el.exchangeList = q('exchange-list');
   el.talentHead = q('talent-head');
   el.talentList = q('talent-list');
   el.skillWho = q('skill-who');
@@ -1173,6 +1175,40 @@ function renderTalents() {
       el.bondList.appendChild(bRow);
     });
   }
+  /* =========================================================
+     **兑换面板**（M5，v3 §5.3 + §7-12）
+     ---------------------------------------------------------
+     模块代币之间**唯一**合法的通道。四条限制（高税 / 限额 / 单向 /
+     消耗全局货币）都写在表里，这里只负责把**为什么贵**说出来 ——
+     不说的结果就是玩家换一次觉得亏，然后再也不碰。
+     ========================================================= */
+  if (el.exchangeList) {
+    U.clear(el.exchangeList);
+    var exHead = U.el('div', 'set-row');
+    exHead.appendChild(U.el('span', 'set-label', '兑换（模块代币之间 · 单向 · 亏一截）'));
+    exHead.appendChild(U.el('span', 'set-value', '换的是近路，不是主路'));
+    el.exchangeList.appendChild(exHead);
+    Game.exchangeOpts().forEach(function (o) {
+      var amt = Math.min(o.cap > 0 ? o.cap : 1, o.have);
+      var exRow = U.el('div', 'set-row');
+      exRow.appendChild(U.el('span', 'set-label', o.note + '（在「' + o.from + '」换）'));
+      var exVal = U.el('span', 'set-value');
+      if (o.ok) {
+        var exBtn = U.el('button', 'btn tiny',
+          '换 ' + amt + ' → ' + Math.max(1, Math.floor(amt * o.rate)) + '（手续费 ' + o.fee + ' 材料）');
+        exBtn.dataset.act = 'exchange-do';
+        exBtn.dataset.from = o.from;
+        exBtn.dataset.to = o.to;
+        exBtn.dataset.n = String(amt);
+        exVal.appendChild(exBtn);
+      } else {
+        exVal.appendChild(U.el('span', 'set-note', o.reason));
+      }
+      exRow.appendChild(exVal);
+      el.exchangeList.appendChild(exRow);
+    });
+  }
+
   var earned = Game.talentEarned();
   var spent = Game.talentSpent();
   var free = Game.talentFree();
@@ -1707,6 +1743,16 @@ var ACT_TALENTS: ActMap = {
 
   /* ---- 天赋（角色养成） ---- */
   /* 训练一次：规则在 `training.ts`，钱与状态在会话（见 `Game.train`）。 */
+  /* 兑换一次：四条限制的判定在 `Ledger.canExchange`，钱在会话（见 `Game.exchange`）。 */
+  'exchange-do': function (t) {
+    var from = (t.dataset && t.dataset.from) || '';
+    var to = (t.dataset && t.dataset.to) || '';
+    var n = Number((t.dataset && t.dataset.n) || 0);
+    var r = Game.exchange(from, to, n);
+    if (r.ok) UI.toast('换到 ' + r.got + '（手续费 ' + r.cost + ' 材料）', 'good');
+    else UI.toast(r.reason, 'warn');
+    renderTalents();
+  },
   'train-do': function (t) {
     var drill = (t.dataset && t.dataset.drill) || '';
     var r = Game.train(drill);

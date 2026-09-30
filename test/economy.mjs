@@ -197,7 +197,7 @@ console.log('\n[6] 兑换（模块代币 ↔ 模块代币）');
   ok(Economy.audit().ok, '兑换表装回去之后重新通过');
 
   const n = Economy.EXCHANGE.length;
-  ok(n === 0, '当前登记的兑换条数：' + n +
+  ok(n >= 2, '当前登记的兑换条数：' + n +
     '（机制已就位；真正的兑换要等三个模块各自成立之后再定）');
 }
 
