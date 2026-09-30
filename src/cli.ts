@@ -21,6 +21,14 @@ import { Game } from './game.ts';
 import { Stats } from './stats.ts';
 import { U } from './utils.ts';
 import { createHandler, listen } from '../server/static.mjs';
+/* ⚠ **CLI 是三种形态里唯一没有持久化的**（web / desktop 都走 Chromium 的
+   localStorage，它落在 `userData` 里，本来就持久）。接上文件后端之后，
+   `pnpm cli` 的设置与账号档案才会留下来。 */
+import { fileAdapter, defaultSaveDir } from './storage_fs.ts';
+/* ⚠ 必须**显式 import** `Storage` —— 浏览器环境有一个同名的
+   全局 `Storage`（Web Storage API），不 import 的话 TypeScript 会解析到那个，
+   于是 `.use` 报错。 */
+import { Storage } from './storage.ts';
 
 /* =========================================================
    参数解析（纯函数，测试直接调）
@@ -334,6 +342,15 @@ export async function main(argv) {
     return 1;
   }
   if (parsed.cmd === 'help') { console.log(usage()); return 0; }
+
+  /* **接存储**：在这一步之后 `Settings` / `Profile` 的读写才会落盘。
+     放在参数校验**之后**：参数写错了不该顺手在用户家里建目录。
+     环境变量 `BRONANA_HOME` 改目录（测试与"想开两份档"要用）。
+     接不上就退回内存适配器 —— "存不进去"绝不该让命令行崩（与 `storage.ts` 同一条纪律）。 */
+  Storage.use(fileAdapter({
+    dir: defaultSaveDir(),
+    onError: function (m) { console.error('[storage] ' + m); }
+  }));
 
   try {
     if (parsed.cmd === 'sim') {

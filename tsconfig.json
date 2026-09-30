@@ -36,5 +36,5 @@
     "types": []
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/cli.ts"]
+  "exclude": ["src/cli.ts", "src/storage_fs.ts"]
 }

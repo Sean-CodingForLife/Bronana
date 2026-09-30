@@ -36,5 +36,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/cli.ts", "src/types.d.ts", "server/static.d.mts"]
+  "include": ["src/cli.ts", "src/storage_fs.ts", "src/types.d.ts", "server/static.d.mts"]
 }
