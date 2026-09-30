@@ -1237,7 +1237,13 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36709235
 | 全套测试（57 套） | ✅ 含新增接线断言：`test/station.mjs` [7]（状态 / 场景 / 翻译表 / 转换 / html id / 渲染与 `startRun`）· `test/ui-check.mjs`（出发落 `station`、门回 `playing` 同一会话、暂停→回大厅、公告板不换屏） |
 | `node tools/verify.mjs` | ✅ **17 / 17 门**（92.9s） |
 | `vite build` | ✅ 86 模块 · 445ms |
-| CI | ⏳ 推送后核对（不做"提交上去就算完"那一种） |
+| `tools/ui-shot.mjs` | ✅ 21 屏 × 2 尺寸全装得下；顺带抓出并修掉营地一屏把 markdown 的 `**` 画给玩家的文案 |
+| `git status` / `git log origin/main..HEAD` | ✅ 干净 / 空（推送 `d449a07..65726ec`，本地改动只剩用户自己的 `pnpm-lock.yaml`） |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success** |
+
+CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36722243283>
+
+⚠ 与 R44 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，那次核对不成立。
 
 新增守卫（都进了现有门，不新开一道）：
 `states.mjs` 的静态扫描（只有 `game.ts` 能写 `Game.state =`；`station` 必须 `sim:false`）·
