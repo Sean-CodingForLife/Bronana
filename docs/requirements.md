@@ -698,6 +698,17 @@ R41 普查里那条"叙事线一个铜板都不碰"的守卫扩到了选项上�
 代币**，必须通过合法兑换或核心素材路径"），所以它只能花 **`growth`（养成）** 或
 **`material`（全局）**，**不能花 `scrap`**。下一批做。
 
+#### ✅ R41 第二批收尾记录（2026-10）—— 推送与 CI 核对
+
+| 核对项 | 结果 |
+| --- | --- |
+| 推送 | ✅ `git push origin main` 成功（`f5881bd..63fde56`） |
+| 远端对齐 | ✅ `git log origin/main..HEAD` 为空 |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36777684089](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36777684089)） |
+| 工作区 | ✅ 干净（只剩用户自己的 `pnpm-lock.yaml` 改动，未纳入本轮） |
+
+⚠ 与 R44 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，那次核对不成立。
+
 ---
 
 #### R41 对话系统 / NPC 交易：有骨架、缺一半，以及一个**真 bug**
