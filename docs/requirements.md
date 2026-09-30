@@ -1786,6 +1786,20 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 
 ⚠ 与 §六 / §九 同一套写法：上面五条是**待确认**，不是"已经开工"。
 
+#### ✅ R50 第一批收尾记录（2026-10）—— 推送与 CI 核对
+
+| 核对项 | 结果 |
+| --- | --- |
+| 推送 | ✅ `git push origin main` 成功（`63ca533..c0da764`） |
+| 远端对齐 | ✅ `git fetch` 后 `git log origin/main..HEAD` 为空；`HEAD` = `origin/main` = `c0da764` |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36774061925](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36774061925)） |
+| 工作区 | ✅ 干净（只剩用户自己的 `pnpm-lock.yaml` 改动，未纳入本轮 —— 与 R45 / R48 同一条处置） |
+
+⚠ 那次推送**一次就过** —— 与 R51 收尾记录里写清的那条一致：
+"推送连不上"要**先分清是沙箱还是真实网络**。本轮沙箱没拦，所以不必重试也不必搭代理。
+
+⚠ 与 R44 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，那次核对不成立。
+
 ---
 
 ## 十一、当前项目基线（讨论时引用这一节，不要凭记忆）
