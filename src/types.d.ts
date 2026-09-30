@@ -1699,6 +1699,8 @@ interface SessionCraft {
   relic: number;
   /** **徽记**：养成走通一条关键能力线产出它，回到战斗里花 */
   sigil: number;
+  /** 已经为哪几个扇区发过徽记（**发过就不再发** —— 否则每次点天赋都重发一遍） */
+  sigilSectors: string[];
   /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()`。
    *  没有它就只能整个重折一遍，那会把属性加两次。 */
   talentFx: { stats: Record<string, number>; econ: Record<string, number> } | null;
@@ -3237,6 +3239,8 @@ interface TalentApi {
   costFor(node: TalentNodeDef, charId: string): number;
   visibleFor(charId: string): TalentNodeDef[];
   canTake(charId: string, nodeId: string, taken: string[], earned: number): { ok: boolean; reason: string; cost: number };
+  /** 一条能力线走通了吗（这个扇区的节点全在 `taken` 里） */
+  sectorComplete(taken: string[], sector: string): boolean;
   spentOn(taken: string[], charId: string): number;
   openingFor(charId: string, taken: string[]): OpeningLoadout;
   pointsForRun(run: { win?: boolean; wave?: number; danger?: number } | null): number;
@@ -4080,7 +4084,7 @@ interface GameApi {
   packPrice(kind: string): number;
   packOdds(kind: string): string;
   sellWeapon(i: number): boolean;
-  reroll(): boolean;
+  reroll(free?: boolean): boolean;
   toggleLock(): boolean;
   nextWave(): boolean;
   /* ---- 地牢（换房间 / 自动探索 / 房间内容） ---- */
@@ -4144,6 +4148,8 @@ interface GameApi {
   sigil(): number;
   /** **经营代币余额**（局内） */
   capacity(): number;
+  /** **用徽记重掷一次货架**（M4）：`养成 → 战斗` 那条边的**消费点** */
+  rerollWithSigil(): boolean;
   /** 这一波的产能产出（界面拿它显示"每波 +N"） */
   capacityPerWave(): number;
 

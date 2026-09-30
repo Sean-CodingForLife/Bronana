@@ -301,6 +301,23 @@ Talent.canTake = function (charId, nodeId, taken, balance) {
 };
 
 /** 已花掉的点数（按这个角色算成本） */
+/**
+ * **一条能力线走通了吗**（M4）。
+ *
+ * v3 §5.2 那条 **养成 → 战斗** 的边，起点就是这里：走通一条线才产徽记。
+ * 判据是"这个扇区的节点**全在** `taken` 里" —— 与 `Talent.spentOn` 同一形状，
+ * **收 state 当参数**（`talents.ts` 不认识会话，那是 `game.ts` 的事）。
+ */
+Talent.sectorComplete = function (taken, sector) {
+  var list = taken || [];
+  var all = NODES.filter(function (d) { return d.sector === sector; });
+  if (!all.length) return false;
+  for (var i = 0; i < all.length; i++) {
+    if (list.indexOf(all[i].id) < 0) return false;
+  }
+  return true;
+};
+
 Talent.spentOn = function (taken, charId) {
   var sum = 0;
   for (var i = 0; i < (taken || []).length; i++) {

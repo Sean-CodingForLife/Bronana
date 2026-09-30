@@ -122,6 +122,8 @@ UI.init = function () {
   el.shopMats = q('shop-mats');
   el.shopWave = q('shop-wave');
   el.rerollCost = q('reroll-cost');
+  el.rerollSigil = q('btn-reroll-sigil');
+  el.sigilCount = q('sigil-count');
   el.packBasicCost = q('pack-basic-cost');
   el.packDeluxeCost = q('pack-deluxe-cost');
   el.packOdds = q('pack-odds');
@@ -1620,6 +1622,12 @@ var ACT_SHOP: ActMap = {
     }
   },
   'reroll': function () { Game.reroll(); renderShop(); },
+  /* **用徽记刷新**（M4）：徽记是养成走通一条能力线产出的，回到战斗里花。 */
+  'reroll-sigil': function () {
+    if (!Game.rerollWithSigil()) { UI.toast('没有徽记（走通一条天赋线才产）', 'warn'); return; }
+    UI.toast('用徽记刷新了一次', 'good');
+    renderShop();
+  },
   'lock': function () { Game.toggleLock(); renderShop(); },
 
   /* ---- 合成 / 回收（战斗 × 经营的交点，规则在 data_weapons.ts） ----
@@ -2637,6 +2645,10 @@ function renderShop() {
   el.shopMats.textContent = String(Math.floor(sess.player.scrap || 0));
   el.shopWave.textContent = '· 第 ' + Game.wave + ' 间结束 · ' + sess.floor + 'F';
   el.rerollCost.textContent = '(' + sess.rerollCost + ')';
+  /* 徽记那一颗按钮：没有徽记就灰着 —— 而**说明里讲清它从哪来**，
+     不然玩家只会看到一个永远点不动的按钮。 */
+  if (el.sigilCount) el.sigilCount.textContent = '(' + Game.sigil() + ')';
+  if (el.rerollSigil) (el.rerollSigil as HTMLButtonElement).disabled = Game.sigil() <= 0;
   renderDoors(el.shopDoors, sess);
   renderBoonPick(sess);
 

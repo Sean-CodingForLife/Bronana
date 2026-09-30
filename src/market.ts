@@ -75,7 +75,8 @@ export interface MarketApi {
   sellWeapon(index: number): boolean;
   /** 合成两把同名同档的武器（brotato 的规则：规则在 data_weapons.ts，这里只管状态） */
   combine(i: number, j: number): boolean;
-  reroll(): boolean;
+  /** 重掷货架。`free` = **别收废料**（调用方已用别的钱付过，例如徽记） */
+  reroll(free?: boolean): boolean;
   toggleLock(): boolean;
   packPrice(kind: string): number;
   buyPack(kind: string): boolean;
@@ -404,8 +405,16 @@ export function makeMarket(C: MarketCtx): MarketApi {
     return C.combine(i, j);
   }
 
-  function reroll() {
+  /**
+   * 重掷货架。
+   * @param free `true` = **别收废料**（调用方已经用别的钱付过了 ——
+   *   例如徽记，见 `Game.rerollWithSigil`）。
+   *
+   *   ⚠ 免费次数那一段**照样走**：它是营地送的，与"用什么钱付"无关。
+   */
+  function reroll(free) {
     if (!C.requireState('shop', 'reroll')) return false;
+    if (free === true) { shopRoll(); C.events().emit('reroll', 0); return true; }
     var S = C.S();
     var p = S.player;
     /* 营地祭坛送的免费刷新先花掉（不影响废料）。

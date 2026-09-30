@@ -90,7 +90,7 @@ console.log('\n[2] 编码（serialize）');
     'upgrades', 'weapons', 'items', 'totals', 'materialEarned', 'material', 'keep', 'skillBuild',
     'forge', 'floor', 'room', 'roomsCleared', 'roomsSeen', 'walls', 'secretSeen',
     'bossesDown', 'coreEarned', 'boon', 'pendingBoons', 'packsOpened', 'packSpent',
-    'offers', 'combineCount', 'roomFx', 'craftCount', 'craftUsed', 'camp', 'campRow', 'bonds', 'talks', 'growth', 'capacity', 'relic', 'sigil', 'rerolls',
+    'offers', 'combineCount', 'roomFx', 'craftCount', 'craftUsed', 'camp', 'campRow', 'bonds', 'talks', 'growth', 'capacity', 'relic', 'sigil', 'sigilSectors', 'rerolls',
     'rerollCost', 'shopLocked', 'shopBonus', 'freeRerolls', 'rndState', 'pendingLevels',
     'runEvents'
   ];

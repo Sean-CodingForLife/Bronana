@@ -217,6 +217,8 @@ RunSave.serialize = function (input) {
        与 `capacity` 那次同一个坑（`flow` 门会报"存档不幂等"）。 */
     relic: sess.relic || 0,
     sigil: sess.sigil || 0,
+    /* 已经为哪几个扇区发过徽记 —— 丢掉它，"再点一个别的节点"会**重发**一次徽记。 */
+    sigilSectors: (sess.sigilSectors || []).filter(function (x) { return typeof x === 'string'; }),
     rerolls: sess.rerolls || 0,
     rerollCost: sess.rerollCost,
     shopLocked: !!sess.shopLocked,

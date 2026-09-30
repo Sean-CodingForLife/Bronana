@@ -94,7 +94,9 @@
              白占 45px 高，还把 shop-foot 顶到 700px。重复 id 是不合法的 HTML。 -->
         <div class="shop-foot-row">
           <div class="shop-actions">
-            <button class="btn" id="btn-reroll" data-act="reroll">刷 新 <span id="reroll-cost"></span></button>
+            <button class="btn" id="btn-reroll" data-act="reroll">刷 新 <span id="reroll-cost"></span>
+          <!-- **用徽记刷新**（M4）："养成 → 战斗"那条边的消费点。见 src/link.ts。 -->
+          <button class="btn" id="btn-reroll-sigil" data-act="reroll-sigil">徽记刷新 <span id="sigil-count"></span></button></button>
             <button class="btn" id="btn-lock" data-act="lock">锁 定 商 店</button>
             <button class="btn" data-act="camp">去 营 地</button>
           </div>

@@ -471,6 +471,8 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
     relic: 0,
     /** **徽记**：养成走通一条关键能力线产出它，回到战斗里花 */
     sigil: 0,
+    /** 已经为哪几个扇区发过徽记（**发过就不再发** —— 否则每次点天赋都重发一遍） */
+    sigilSectors: [] as string[],
     /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()` */
     talentFx: null,
     /** 本局造了几件（结算展示用；进存档） */
@@ -3892,6 +3894,9 @@ Game.importRun = function (data) {
   /* **核心素材**（M4）：与 `capacity` 同一组，**只写不读**会让 `flow` 门报"存档不幂等"。 */
   S.relic = Math.max(0, Math.round(Number(data.relic) || 0));
   S.sigil = Math.max(0, Math.round(Number(data.sigil) || 0));
+  S.sigilSectors = Array.isArray(data.sigilSectors)
+    ? data.sigilSectors.filter(function (x) { return typeof x === 'string'; })
+    : [];
   /* **工坊（局内）**：从存档恢复等级与建造顺序。
      老档没有这两个字段 → 空工坊（工坊以前在账号档案里，那一份不再被读）。 */
   S.camp = {};
@@ -4075,6 +4080,20 @@ Game.packOdds = function (kind) {
 };
 Game.sellWeapon = market.sellWeapon;
 Game.reroll = market.reroll;
+/**
+ * **用徽记重掷一次货架**（M4）：`养成 → 战斗` 那条边的**消费点**。
+ *
+ * 为什么要单独一个出口而不是给 `Game.reroll` 加参数：徽记是**跨模块**的钱，
+ * 它扣在**会话**上，而 `market.reroll` 只管货架。两件事分开写，
+ * 扣钱与掷货架就各有一个明确的主人（失败时也才回滚得干净）。
+ */
+Game.rerollWithSigil = function () {
+  if (!S) return false;
+  if (!spendSigil(1)) return false;
+  var ok = market.reroll(true);
+  if (!ok) addSigil(1);   // 没掷成就退回去，这一笔不算
+  return ok;
+};
 Game.toggleLock = market.toggleLock;
 Game.nextWave = nextWave;
 /** 走门（玩家点小地图 / 按方向键都走它）。这是**唯一**换房间的公开入口 */
@@ -4471,6 +4490,23 @@ Game.takeTalent = function (nodeId) {
   if (!chk.ok) return chk;
   if (!spendGrowth(chk.cost)) return { ok: false, reason: '成长点不够', cost: chk.cost };
   S.talents = talentsOf().concat([key]);
+  /* =========================================================
+     **核心素材的第三处产出：养成走通一条能力线**（M4，2026-09）
+     ---------------------------------------------------------
+     v3 §5.2 的第三条边是 **养成 → 战斗**，而它的起点就是这里：
+     一个天赋扇区**点满**，就算"走通了一条能力线"。
+
+     ⚠ 扇区一旦点满就**一直**是满的 —— 所以必须记"发过没有"，
+       否则之后每点一个别的节点都会再发一次徽记（一台安静的印钞机）。
+     ========================================================= */
+  for (var sigKey in Talent.SECTORS) {
+    if (!Object.prototype.hasOwnProperty.call(Talent.SECTORS, sigKey)) continue;
+    if (S.sigilSectors.indexOf(sigKey) >= 0) continue;
+    if (Talent.sectorComplete(talentsOf(), sigKey)) {
+      S.sigilSectors = S.sigilSectors.concat([sigKey]);
+      addSigil(1);
+    }
+  }
   /* ⚠ 天赋折出来的是 **`omods`（开局经济修正）**，不是 `fmods`（那是图纸的）。
      而且它连带属性/武器/道具一起折 —— 那正是 `openingOf()` 干的事。
      这里直接重折一次：天赋是**局内**点的，开局条件必须跟着变（v3 §4-规则2）。 */
