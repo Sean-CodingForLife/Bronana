@@ -217,13 +217,21 @@ Storage.lastError = function () { return lastError; };
  * @param opts.silent 只删键、不发通知（测试里想观察"没有通知时会怎样"时用）
  */
 Storage.wipe = function (opts) {
-  Storage.remove(KEYS.settings);
-  Storage.remove(KEYS.run);
-  Storage.remove(KEYS.records);
-  Storage.remove(KEYS.profile);
-  Storage.remove(Storage.backupKey(KEYS.run));
-  Storage.remove(Storage.backupKey(KEYS.records));
-  Storage.remove(Storage.backupKey(KEYS.profile));
+  /* ⚠ **连每一个槽位一起清**（R50 修正）。
+     改造前这里只删 0 号槽那三个键 + 它们的备份 ——
+     而那正是"槽位 = 键重定向"这条设计的漏洞：`bronana.profile#1` / `#2`
+     **活过了 wipe**。表现是"清空之后切到 1 号槽，上一段测试（或者上一局）
+     留下的档还在" —— 实测：`test/character.mjs` 里 wipe 之后
+      `Slots.select(1)` 读出了**别的用例写过的一份档**，
+     而这条不报错，只是让后面的断言以一个说不清的原因失败。
+     `Storage.SLOTS` 是槽位数的**唯一出处**（`Slots.COUNT` 读它），
+     所以遍历它不会与"加一个槽位"脱节。 */
+  var bases = [KEYS.settings, KEYS.run, KEYS.records, KEYS.profile];
+  for (var s = 0; s < Storage.SLOTS; s++) {
+    for (var b = 0; b < bases.length; b++) {
+      Storage.removeAll(Storage.slotKey(bases[b], s));
+    }
+  }
   if (!(opts && opts.silent)) Storage.emitWipe();
 };
 

@@ -5,6 +5,7 @@ ui.ts — 覆盖层界面（标题 / 角色 / 商店 / 升级 / 暂停 / 结算 
 import { Art } from './art_spec.ts';
 import { Sfx } from './audio.ts';
 import { Affixes } from './affixes.ts';
+import { Appearance } from './appearance.ts';
 import { Chars } from './data_chars.ts';
 import { Elems } from './data_elems.ts';
 import { Camp } from './camp.ts';
@@ -187,6 +188,16 @@ UI.init = function () {
   el.shopDoors = q('shop-doors');
   el.campDoors = q('camp-doors');
   el.titleLogo = q('title-logo');
+  /* 选存档 / 捏人（R50）：开局流程的前两步 */
+  el.slotGrid = q('slot-grid');
+  el.slotDetail = q('slot-detail');
+  el.createPreview = q('create-preview');
+  el.createName = q('create-name');
+  el.createJob = q('create-job');
+  el.createPalette = q('create-palette');
+  el.createFace = q('create-face');
+  el.createAccessory = q('create-accessory');
+  el.createEntry = q('create-entry');
 
   /* 标题是**画出来的**（`sprites.ts` 的 promo 那一类），所以在 init 时烘一次塞进画布。
      为什么不用 CSS 文字：标题要锁死字形间距与 3px 描边 + 4px 硬边投影，
@@ -251,6 +262,10 @@ var RENDERERS: Record<string, () => void> = {
      它们以前只在 init / runStart / runResumed / 某几个动作里更新，
      于是"放弃本局 → 回标题"这条路上按钮停在旧值。挂进这张表就自动被 stateChange 覆盖。 */
   title: function () { refreshContinueButton(); },
+  /* 选存档与捏人（R50）：两屏的内容都是**从存档读出来的**（档里有谁 / 捏成什么样），
+     所以进屏必须重画 —— 不重画就会停在上一次进来时的样子。 */
+  slots: function () { renderSlots(); },
+  create: function () { renderCreate(); },
   shop: function () { renderShop(); },
   cards: function () { renderLevelCards(); },
   settings: function () { renderSettings(); },
@@ -372,6 +387,219 @@ function buildCharSelect() {
     if (port) cx.drawImage(port.canvas, 0, 0, port.width, port.height);   // 按逻辑尺寸贴
   });
   refreshCharSelection();
+}
+
+/* =========================================================
+   R50 · 选存档（开局流程的第二步）
+   ---------------------------------------------------------
+   用户原话：「点击开始游戏按钮，**选择存档**，进入游戏，第一个到的是大厅」。
+
+   改造之前这一步**不存在**：三个槽位只在「设置 → 存档槽位」里切换，
+   而开局直接把玩家丢进选人页。
+
+   ⚠ 判据是**这个档里有没有人**（`Profile.character()` 读的是 `data.characters[槽位]`），
+   **不是** `Slots.used()` —— 后者只看"这个槽位写过键没有"，
+   设置里随手切一下槽位、或某一局写到一半就会让它变真，
+   于是"新档"会被当成老档（玩家进不了捏人）。
+   ========================================================= */
+/** 正在看哪个槽位（**界面状态，不进档案** —— `Slots.current()` 才是真正生效的那个） */
+var _slotView = 0;
+
+function slotCharOf(slot) {
+  var all = Profile.snapshot().characters || {};
+  var c = all[String(slot)];
+  return (c && c.charId) ? c : null;
+}
+
+/** 一个槽位卡片上的那行小字（有人的档写他是谁，空档写"空"） */
+function slotSummary(c) {
+  if (!c) return '空 存 档';
+  var def = Chars.BY_ID[c.charId];
+  var snap = Profile.snapshot().perChar || {};
+  var p: PerCharRecord = snap[c.charId] || ({} as PerCharRecord);
+  return (def ? def.name : c.charId) + ' · 第 ' + (p.bestWave || 0) + ' 波 · ' + (p.runs || 0) + ' 局';
+}
+
+function renderSlots() {
+  if (!el.slotGrid) return;
+  if (_slotView < 0 || _slotView >= Slots.COUNT) _slotView = Slots.current();
+  U.clear(el.slotGrid);
+  U.clear(el.slotDetail);
+  for (var i = 0; i < Slots.COUNT; i++) {
+    (function (slot) {
+      var c = slotCharOf(slot);
+      var card = U.el('div', 'slot-card' + (c ? '' : ' empty') + (slot === _slotView ? ' sel' : ''));
+      card.dataset.slot = String(slot);
+      var size = 74;
+      var cc = S.domCanvas(size + 8, size + 8);
+      var cv = cc ? cc.canvas : document.createElement('canvas');
+      var cx = cc ? cc.ctx : cv.getContext('2d');
+      card.appendChild(cv);
+      card.appendChild(U.el('div', 'cn', '存 档 ' + (slot + 1)));
+      card.appendChild(U.el('div', 'ce', c ? c.name : '空'));
+      card.appendChild(U.el('div', 'ce', slotSummary(c)));
+      card.addEventListener('click', function () {
+        /* 点一下 = **选中并切过去**（不只是高亮）：切槽位会让 `Profile.load()`
+           重读那一份档，于是下面那一排按钮说的就是这一档的事。 */
+        _slotView = slot;
+        Slots.select(slot);
+        Profile.load();
+        renderSlots();
+        if (Sfx) Sfx.click();
+      });
+      el.slotGrid.appendChild(card);
+      /* 头像按**这一档的人**画（没人的档画该槽位上一次选中的职业本色） */
+      var def = Chars.BY_ID[(c && c.charId) || UI.selectedChar] || Chars.LIST[0];
+      var port = S.bronanaPortrait(size, def, c ? c.look : null);
+      if (port) cx.drawImage(port.canvas, 0, 0, port.width, port.height);
+    })(i);
+  }
+
+  /* 详情 + 那一对按钮：有人的档「继续」，没人的档「开始新档」。
+     ⚠ "继续"走的是 `startRun`（**同一个开局入口**，见它的注释）——
+       不能另开一条只传角色的路（R38 那个 bug 就是这么长出来的）。 */
+  var cur = slotCharOf(_slotView);
+  var box = U.el('div', '');
+  if (cur) {
+    var jd = Chars.BY_ID[cur.charId];
+    box.appendChild(U.el('h3', '', cur.name + ' —— ' + (jd ? jd.name : cur.charId)));
+    box.appendChild(U.el('div', '', '外观：' + Appearance.palette(cur.look.palette).name +
+      ' · ' + cur.look.face + ' · ' + Appearance.accessory(cur.look.accessory).name));
+    box.appendChild(U.el('div', '', slotSummary(cur)));
+  } else {
+    box.appendChild(U.el('h3', '', '存 档 ' + (_slotView + 1) + ' · 还 没 有 人'));
+    box.appendChild(U.el('div', '', '这是一个空档 —— 下一步是选职业与捏人。'));
+  }
+  var row = U.el('div', 'row center');
+  /* ⚠ 两个动作**分开写**，不要写成三元表达式 `cur ? 'slot-continue' : 'slot-new'`：
+     界面契约测试（`ui-check` 的 data-act 契约）按 `dataset.act\s*=\s*'...'` 静态抓
+     "动态生成的按钮动作"，三元表达式只抓得到第一个 —— 于是 `slot-new` 会被报成
+     "动作表里有一个动作没有按钮"。这条**实测踩过**。 */
+  var go = U.el('button', 'btn big', cur ? '继 续 这 个 档' : '开 始 新 档');
+  if (cur) go.dataset.act = 'slot-continue';
+  else go.dataset.act = 'slot-new';
+  row.appendChild(go);
+  box.appendChild(row);
+  el.slotDetail.appendChild(box);
+}
+
+/* =========================================================
+   R50 · 捏人（新存档的角色创建）
+   ---------------------------------------------------------
+   用户原话：「选择新存档，就会需要**捏人选择初始角色外观，选择初始角色职业**，
+   然后就能确定这个角色的**初始技能，初始属性，初始天赋**等
+   确定人物以后开始世界冒险」。
+
+   四块：名字 / 外观（色板 · 脸型 · 配件）/ 初始职业 / 入门三选。
+   一律**程序化**（B02 / R30：零素材）—— 外观是配色与配件的变体，不是贴图。
+   ========================================================= */
+var _createSeed = 1;
+/** 这一次那个"还没出发的人"是在哪个槽位里建起来的（-1 = 不是捏人页建的）。
+ *  它**不进档案**：这是界面记账，用来回答"返回时该不该撤回他"。 */
+var _draftSlot = -1;
+
+/** 现在这份"正在捏"的形状。
+ *
+ *  ⚠ 它**可能还没落盘**（从选存档页进来时还没建人）—— 所以这里按需**先建一份**：
+ *  "进了捏人页"这件事本身就是"这个档要有人"的意图，而半途离开由 `back-slots`
+ *  负责撤回（它按 `_draftSlot` 这个**记账**判，不猜）。
+ */
+function draftCharacter() {
+  var cur = Profile.character();
+  if (cur) return cur;
+  /* 空名字 → 归一成缺省名（见 `character.ts` 的 `DEFAULT_NAME`）；
+     外观给 `null` → 缺省档（用职业本色），与"没捏过"逐位相同。 */
+  var made = Game.saveCharacter({ name: '', look: null }, UI.selectedChar);
+  _draftSlot = Slots.current();     // 记一笔：这个人是捏人页刚建起来的（可以撤回）
+  return made as CharacterDef;
+}
+
+/** 一排"选一个"的小按钮（色板 / 脸型 / 配件共用这一个形状） */
+function optionRow(host, list, picked, act) {
+  U.clear(host);
+  list.forEach(function (d) {
+    var b = U.el('button', 'btn tiny' + (d.id === picked ? ' sel' : ''), d.name) as HTMLButtonElement;
+    if (act === 'create-palette') b.dataset.act = 'create-palette';
+    else if (act === 'create-face') b.dataset.act = 'create-face';
+    else b.dataset.act = 'create-accessory';
+    b.dataset.id = d.id;
+    b.title = d.note;
+    host.appendChild(b);
+  });
+}
+
+function renderCreate() {
+  if (!el.createEntry) return;
+  var me = draftCharacter();
+  var def = Chars.BY_ID[me.charId] || Chars.LIST[0];
+
+  /* 名字输入框：只在值不同时写 —— 每帧写一次会打断正在输入的人（光标跳到最后） */
+  if (el.createName && (el.createName as HTMLInputElement).value !== me.name) {
+    (el.createName as HTMLInputElement).value = me.name;
+  }
+  if (el.createJob) {
+    el.createJob.textContent = def.name + ' · ' + def.tag;
+  }
+  optionRow(el.createPalette, Appearance.PALETTES, me.look.palette, 'create-palette');
+  optionRow(el.createFace, Appearance.FACES, me.look.face, 'create-face');
+  optionRow(el.createAccessory, Appearance.ACCESSORIES, me.look.accessory, 'create-accessory');
+
+  /* 入门三选：每一列一块，块里一档一行（名字 + 它给什么 + 说明） */
+  U.clear(el.createEntry);
+  Game.creationOptions().forEach(function (col) {
+    var head = U.el('div', 'set-label', col.name + '　' + col.note);
+    el.createEntry.appendChild(head);
+    col.list.forEach(function (d) {
+      var r = U.el('div', 'entry-row' + (d.picked ? ' sel' : ''));
+      r.dataset.act = 'create-pick';
+      r.dataset.col = col.key;
+      r.dataset.id = d.id;
+      r.appendChild(U.el('div', 'en-name', d.name));
+      var body = U.el('div', '');
+      body.appendChild(U.el('div', 'en-give', d.lines.join(' · ')));
+      body.appendChild(U.el('div', 'en-note', d.note));
+      r.appendChild(body);
+      el.createEntry.appendChild(r);
+    });
+  });
+
+  paintCreatePreview(me, def);
+}
+
+/** 捏人页左边那张大图：**正在捏的那一套**（不是存档里的旧样子） */
+function paintCreatePreview(me, def) {
+  if (!el.createPreview) return;
+  var size = 216;
+  var port = S.bronanaPortrait(size, def, me.look);
+  var node = el.createPreview as HTMLCanvasElement;
+  var x = node.getContext ? node.getContext('2d') : null;
+  if (!x) return;
+  x.setTransform(1, 0, 0, 1, 0, 0);
+  x.clearRect(0, 0, node.width, node.height);
+  if (!port) return;
+  /* 画布是设备像素比放大的，所以按画布尺寸铺满（`S.domCanvas` 那一套在这里不用：
+     本元素写在 index.html 里，尺寸是固定的 256×256）。 */
+  x.drawImage(port.canvas, 0, 0, node.width, node.height);
+}
+
+/** 改一项外观（走**存档那一个口**，不在这里维护第二份"正在捏"的状态） */
+function setLook(patch) {
+  var me = Profile.character();
+  if (!me) return false;
+  Game.setCharacterMeta({ look: patch });
+  renderCreate();
+  return true;
+}
+
+/** 改入门三选里的一档 */
+function setEntry(col, id) {
+  var me = Profile.character();
+  if (!me) return false;
+  var patch: Partial<CharacterEntryPick> = {};
+  patch[col] = id;
+  Game.setCharacterMeta({ entry: patch });
+  renderCreate();
+  return true;
 }
 
 /* =========================================================
@@ -1590,7 +1818,13 @@ type ActMap = Record<string, (t: HTMLElement, act: string) => void>;
 
 var ACT_SHELL: ActMap = {
 
-  'start': function () { Game.setState('chars'); },
+  /* 「开始游戏」→ **选存档**（R50），不是直接进选人页。
+     用户的流程原话：「点击开始游戏按钮，**选择存档**，进入游戏，
+     第一个到的是大厅再通过大厅前往不同的模块」。 */
+  'start': function () {
+    _slotView = Slots.current();
+    Game.setState('slots');
+  },
 
   'enter-room': function (t) {
     // 点小地图上相邻的一间就过去（与"走到门口"是同一条路，同一套校验）
@@ -1634,6 +1868,108 @@ var ACT_SHELL: ActMap = {
   },
   'again': function () { buildCharSelect(); Game.setState('chars'); },
   'diag-close': function () { UI.setDiag(false); },
+};
+
+/* =========================================================
+   R50 · 选存档与捏人的动作
+   ---------------------------------------------------------
+   六个动作，分两组：
+     · `slots` 那一屏：「继续这个档」（有人的档）/「开始新档」（空档），
+       外加导出 / 导入 / 清空本档（**从设置里搬过来的** ——
+       槽位的事现在有它自己的那一屏，摆在设置里等于把玩法入口当地选项）
+     · `create` 那一屏：三样外观各一个动作、入门三选一个、随机一套、换职业
+   ========================================================= */
+var ACT_SLOTS: ActMap = {
+
+  'slot-continue': function () {
+    /* 「继续」= 用**这个档的那个人**开局，走的是**同一个**开局入口
+       （`UI.startRun`）—— 不许另开一条只传角色的路：R38 那个 bug
+       （技能构筑从来没被传进任何一局）就是这么长出来的。 */
+    var me = Profile.character();
+    if (!me) { UI.toast('这个档里没有人（先"开始新档"）', 'warn'); return; }
+    UI.selectedChar = me.charId;
+    UI.startRun();
+    UI.toast('继续 · ' + me.name, 'good');
+  },
+
+  'slot-new': function () {
+    /* 「开始新档」→ 选职业（`chars`）→ 捏人（`create`）。
+       选职业那一屏已经存在（9 个角色 + 难度），不必再造一屏 ——
+       捏人页只负责"外观 / 名字 / 入门三选"，职业显示在它顶上。 */
+    Game.setState('chars');
+  },
+
+  'slot-export': function () {
+    var text = Slots.exportText();
+    var ok = U.copyText(text);
+    UI.toast(ok ? I18n.t('存档已复制') : ('导出（复制失败，请手动选中）：' + text.slice(0, 60) + '…'),
+      ok ? 'good' : 'warn');
+  },
+
+  'slot-import': function () {
+    U.readClipboard(function (text) {
+      var r = Slots.importText(text);
+      if (!r.ok) { UI.toast('导入失败：' + r.reason, 'warn'); return; }
+      Profile.load();
+      var me = Profile.character();
+      if (me) UI.selectedChar = me.charId;
+      buildCharSelect();
+      renderSlots();
+      UI.toast(I18n.t('存档已导入'), 'good');
+    });
+  },
+
+  'slot-wipe': function () {
+    if (!armed('wipe-slot', refreshConfirmLabels)) return;
+    Slots.reset(_slotView);
+    Profile.load();
+    buildCharSelect();
+    renderSlots();
+    UI.toast('存档 ' + (_slotView + 1) + ' 已清空（连备份一起）', 'warn');
+  }
+};
+
+var ACT_CREATE: ActMap = {
+
+  'create-palette': function (t) { setLook({ palette: (t.dataset && t.dataset.id) || '' }); },
+  'create-face': function (t) { setLook({ face: (t.dataset && t.dataset.id) || '' }); },
+  'create-accessory': function (t) { setLook({ accessory: (t.dataset && t.dataset.id) || '' }); },
+
+  'create-pick': function (t) {
+    var col = (t.dataset && t.dataset.col) || '';
+    var id = (t.dataset && t.dataset.id) || '';
+    if (col === 'skill' || col === 'stat' || col === 'talent') setEntry(col, id);
+    else UI.toast('认不出的那一列：' + col, 'warn');
+  },
+
+  'create-random': function () {
+    /* 种子化而不是 `Math.random`：捏人页要能被测试"点一下、看到什么、断言什么"，
+       而且"随机出来那套好看、再点两下找回来"要复现得出来
+       （见 `Character.randomLook`；界面只通过 `Game` 那一个口拿它）。
+       名字**不随机** —— 那是玩家自己的事。 */
+    _createSeed = (_createSeed * 1103515245 + 12345) >>> 0;
+    Game.setCharacterMeta({ look: Game.randomLook(_createSeed) });
+    renderCreate();
+    if (Sfx) Sfx.click();
+  },
+
+  'create-job': function () {
+    /* 「换职业」回选人页 —— 两边是**同一份存档角色**（改的是 `charId`） */
+    Game.setState('chars');
+  },
+
+  'create-go': function () {
+    /* 「确定 · 开始冒险」：名字从输入框读回来（玩家可能刚打完字没失焦）。 */
+    if (el.createName) {
+      Game.setCharacterMeta({ name: (el.createName as HTMLInputElement).value });
+    }
+    var me = Profile.character();
+    if (!me) { UI.toast('还没有人（先捏一个）', 'warn'); return; }
+    UI.selectedChar = me.charId;
+    _draftSlot = -1;                 // 出发了 —— 这个人正式是这个档的人，不再可撤回
+    UI.startRun();
+    UI.toast('出发 · ' + me.name + '（' + (Chars.BY_ID[me.charId] || { name: me.charId }).name + '）', 'good');
+  }
 };
 
 var ACT_SETTINGS: ActMap = {
@@ -1774,17 +2110,44 @@ UI.startRun = function () {
 
 var ACT_CHARS: ActMap = {
 
+  'back-slots': function () {
+    /* ⚠ 「返回」要**撤回一个刚建起来、还没出发的角色**：
+       进捏人页那一刻就已经建了人，而玩家如果只是点进来看看就退回去，
+       这个档不该从此变成"有人"—— 否则下一次点「开始新档」会直接跳过捏人
+       （判据是"这个档里有没有人"）。
+       判据用**记账**（`_draftSlot`）而不是"名字是不是缺省名"这类猜测：
+       只有**这一次**由捏人页建起来的人才会被撤回，老档永远不会被误删。 */
+    if (_draftSlot === Slots.current()) {
+      /* 撤回那个刚建起来、还没出发的人。
+         ⚠ 只拿掉"人"这一格，**不碰进度** —— 玩家点进捏人页看了看再退出来，
+           不该顺手清掉这个档的孢子与图鉴（所以不用 `Profile.reset`）。
+         ⚠ 而且它**必须落盘**（`dropCharacter` 自己会写）：`Profile.load()`
+           拿存储里那一份覆盖内存，只清内存的话切一次槽位他就回来了 —— 实测踩过。 */
+      Profile.dropCharacter();
+      _draftSlot = -1;
+      buildCharSelect();
+    }
+    Game.setState('slots');
+  },
+
   'confirm-char': function () {
-    // 门槛只在界面这一层：锁着的角色由按钮 disabled 挡住，这里再兜一次
-    // （手柄/键盘走的是 .click()，disabled 元素点不动，但焦点机制仍可能调到）
+    /* 门槛只在界面这一层：锁着的角色由按钮 disabled 挡住，这里再兜一次
+       （手柄/键盘走的是 .click()，disabled 元素点不动，但焦点机制仍可能调到） */
     if (!isCharAvailable(Chars.BY_ID[UI.selectedChar])) {
       UI.toast('这个角色还没解锁：' + charUnlockHint(UI.selectedChar), 'warn');
       return;
     }
-    UI.startRun();
-    UI.toast('进入大厅' +
-      (UI.selectedDanger > 0 ? '（难度 ' + UI.selectedDanger + ' · ' + Danger.name(UI.selectedDanger) + '）' : '') +
-      '：三道门通向三个模块', 'good');
+    /* **这个档已经有人** → 选人页就是"换职业"，直接拿他开局（老档继续那条路）。
+       **还没有人** → 往下走一步到捏人（R50 的流程：选职业 → 捏人 → 出发）。 */
+    var me = Profile.character();
+    if (Game.hasCharacter() && me) {
+      if (me.charId !== UI.selectedChar) Game.setCharacterMeta({ charId: UI.selectedChar });
+      UI.startRun();
+      UI.toast('出发 · ' + me.name +
+        (UI.selectedDanger > 0 ? '（难度 ' + UI.selectedDanger + ' · ' + Danger.name(UI.selectedDanger) + '）' : ''), 'good');
+      return;
+    }
+    Game.setState('create');
   },
 };
 
@@ -2064,6 +2427,8 @@ var ACT_SAVES: ActMap = {
 
 var ACT_GROUPS: Record<string, ActMap> = {
   shell: ACT_SHELL,
+  slots: ACT_SLOTS,
+  create: ACT_CREATE,
   settings: ACT_SETTINGS,
   volume: ACT_VOLUME,
   saves: ACT_SAVES,
@@ -3266,7 +3631,13 @@ UI.afterSlotChange = afterSlotChange;
    实测（`test/slots.mjs`）表现是"切回 0 号槽读到的是 1 号槽的孢子"，
    而且**不报任何错**。放在这里而不是 `slots.ts` 里，是因为
    `slots.ts` 不该认识 Profile 的字段（见它的文件头）。 */
-Slots.onChange(function () { afterSlotChange(); });
+Slots.onChange(function () {
+  /* 换槽位之后那个"还没出发的人"的记账要作废（见 `_draftSlot`）——
+     否则在 1 号档捏到一半、切到 2 号档再点返回，会去清 2 号档。 */
+  _draftSlot = -1;
+  _slotView = Slots.current();
+  afterSlotChange();
+});
 
 /* `Storage.wipe()`（"清空存档"那条路）之后**也要重读档案**：
    否则内存里那份旧档会继续活着，表现是"点了清空，数值还在"。

@@ -52,6 +52,14 @@ export const MODULES = {
   input:   '../src/input.ts',
   audio:   '../src/audio.ts',
   stats:   '../src/stats.ts',
+  /* ---- R50：外观（时装）/ 入门三选 / 存档角色 ----
+     `appearance` 只认识 registry + selfcheck；`openings` 还读 `stats`；
+     `character` 读 `appearance`。三者都在 meta 层，所以**必须排在 `profile` 之后、
+     数据表之前**吗？不必 —— 它们不 import 任何数据表（职业 id 由总账查）。
+     但要排在 `stats` 之后（openings 读它），所以位置就在这一行下面。 */
+  appearance: '../src/appearance.ts',
+  openings:   '../src/openings.ts',
+  character:  '../src/character.ts',
   tiers:   '../src/data_tiers.ts',
   elems:   '../src/data_elems.ts',
   curves:  '../src/curves.ts',
@@ -109,7 +117,11 @@ export const SIM_MODULES = [
   /* `world`（世界系统）只需要 registry / selfcheck；`object`（对象系统）需要 comp / containers。
      两者都是 L0 地基，所以排在最前面 —— 后面的 arena / hall / game / render 都读它们。 */
   'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
-  'world', 'comp', 'object', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
+  'world', 'comp', 'object', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats',
+  /* **外观与入门三选**（R50）：两者都只依赖 registry / selfcheck（openings 还读 stats），
+     所以它们坐在这一批的最前面 —— `character` 读 `appearance`，顺序必须如此。 */
+  'appearance', 'openings', 'character',
+  'tiers', 'elems', 'curves',
   /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
   'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station', 'hall',
   'exchange', 'guide', 'art_spec', 'affixes', 'synergy', 'weapons',

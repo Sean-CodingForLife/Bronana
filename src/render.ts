@@ -4,6 +4,7 @@ render.ts — 渲染层（只读世界状态，不做任何模拟）
 ========================================================= */
 
 import { Arena } from './arena.ts';
+import { Appearance } from './appearance.ts';
 import { Art } from './art_spec.ts';
 import { ArtParallax } from './art_parallax.ts';
 import { ArtShaders } from './art_shaders.ts';
@@ -1114,8 +1115,25 @@ var _seat = { x: 0, y: 0 };
 var _flashOpt = { seed: 1, outlineWidth: 0 };
 
 function drawPlayer(x, p, sess) {
-  _skin.base = (p.charDef.tint && p.charDef.tint[0]) || PAL.SKIN;
-  _skin.sh = (p.charDef.tint && p.charDef.tint[1]) || PAL.SKIN_SH;
+  /* 外观：**已经折好的值**（`newSession` 从存档里折一次存进玩家对象）。
+     所以这里只做一次取色，不调任何规则入口 —— 渲染层每帧都要它。
+     缺省（`p.look` 为 null）逐位退回改造前的两行：职业本色 + 职业脸型。
+     ⚠ 取色**走后端那一个口**（`Appearance.skinFor` / `eyesOf`），
+       不再在这里写 `p.charDef.tint[0]` 与 `p.charDef.face || 'stern'` ——
+       那两行以前与 `sprites.ts` 各写了一遍（加一种脸型要改三处）。 */
+  if (p.look && p.look.skin && p.look.skin.base) {
+    _skin.base = p.look.skin.base;
+    _skin.sh = p.look.skin.sh || p.look.skin.base;
+    /* 高光也跟色板走：`wheat`（缺省档）的 `hi` 就是白色，
+       于是"没捏人"与"捏了缺省色"是同一件事。 */
+    _skin.hi = p.look.skin.hi || '#fffdf2';
+    _skin.dp = p.look.skin.dp || _skin.sh;
+  } else {
+    _skin.base = (p.charDef.tint && p.charDef.tint[0]) || PAL.SKIN;
+    _skin.sh = (p.charDef.tint && p.charDef.tint[1]) || PAL.SKIN_SH;
+    _skin.hi = '#fffdf2';
+    _skin.dp = PAL.SKIN_DP;
+  }
 
   // 显示帧插值后的位置（alpha=1 时就是 p.x/p.y，与改造前一致）
   var ppx = R.lerpPos(p.px === undefined ? p.x : p.px, p.x);
@@ -1139,14 +1157,17 @@ function drawPlayer(x, p, sess) {
     _parts.seed = seed;
     _parts.face = Math.cos(p.aim) > 0.2 ? 1 : (Math.cos(p.aim) < -0.2 ? -1 : 0);
     _parts.mood = p.hurtFlash > 0 ? 'hurt' : 'idle';
-    _parts.eyeStyle = p.charDef.face || 'stern';
+    /* 脸型**只走一个口**（`Appearance.eyesOf`：捏人挑的 > 职业本色 > stern）。
+       这一行与 `sprites.ts` 的预热各写过一遍 `charDef.face || 'stern'` ——
+       加一种脸型就要改三处，而漏改不会报错。 */
+    _parts.eyeStyle = (p.look && p.look.eyeStyle) ? p.look.eyeStyle : Appearance.eyesOf(p.charDef, '');
     _parts.dots = true;
 
     // 身体走**姿态图集**：一次 drawImage 顶掉原本 300+ 次绘制调用。
     // 首次进场先把呼吸的所有档位烘完（否则每跨一档现烘一张，会有一帧抖动）
     if (!_atlasWarm) {
       _atlasWarm = true;
-      S.warmPlayerAtlas(p.charDef, { r: p.r, skin: _skin, seed: seed, eyeStyle: p.charDef.face || 'stern' });
+      S.warmPlayerAtlas(p.charDef, { r: p.r, skin: _skin, seed: seed, eyeStyle: _parts.eyeStyle });
     }
     // 手臂/武器仍是矢量（它们每帧都在转），用的是同一个骨架、同一套部件层序。
     var body = S.playerBodySprite(p.charDef, {
@@ -1185,6 +1206,14 @@ function drawPlayer(x, p, sess) {
       S.drawWeapon(x, w.def.kind, rot, w.def.tints, w.swing || 0, 0.82);   // 无 DOM 降级
     }
     x.restore();
+  }
+
+  /* 配件（时装）：画在身体与武器**之后** —— 它是戴在头上的东西，
+     压在眼睛那一线的护目镜更必须在五官之后（否则会被脸盖住）。
+     ⚠ 只有捏过人才有它（`p.accessory` 缺省是空串 → 一次都不调）。
+     dy 按身体半径走（`Appearance.accessoryShape`），所以换个角色不会陷进头里。 */
+  if (p.accessory) {
+    S.drawAccessory(x, ppx, ppy + an.bob - ry * 0.72, ry, p.accessory);
   }
 
   // 受击红闪（平涂色块覆盖，非发光）

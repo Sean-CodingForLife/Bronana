@@ -1224,6 +1224,108 @@ interface CharDef {
   hidden?: boolean;
 }
 
+/* ---------------- 外观系统（appearance.ts，R50 第 9 条：时装） ----------------
+   全部**程序化**：一份外观就是一个色板 id + 一张脸 + 一件配件 id。
+   零素材是 B02 / R30 的硬约束，所以"时装"在这里只能是配色与配件的变体。 */
+interface AppearancePaletteDef {
+  id: string; name: string; note: string;
+  /** 亮面 / 暗面；**缺省档（wheat）两者为空串** —— 它的意思是"用角色本色" */
+  base: string; sh: string; hi: string;
+}
+interface AppearanceFaceDef { id: string; name: string; note: string }
+interface AppearanceAccessoryDef {
+  id: string; name: string; note: string;
+  /** 相对头顶往上多少倍身体半径（0 = 贴着头顶；负数 = 压到眼睛那一线） */
+  dy: number;
+}
+interface AppearanceApi {
+  PALETTES: AppearancePaletteDef[];
+  FACES: AppearanceFaceDef[];
+  ACCESSORIES: AppearanceAccessoryDef[];
+  DEFAULT_PALETTE: string;
+  DEFAULT_FACE: string;
+  DEFAULT_ACCESSORY: string;
+  hasPalette(id: unknown): boolean;
+  hasFace(id: unknown): boolean;
+  hasAccessory(id: unknown): boolean;
+  palette(id: unknown): AppearancePaletteDef | null;
+  accessory(id: unknown): AppearanceAccessoryDef | null;
+  accessoryShape(id: unknown): { id: string; dy: number } | null;
+  skinFor(paletteId: unknown, charDefTint?: string[] | null, charHi?: string | null): {
+    base: string | null; hi: string; sh: string | null; dp: string | null;
+  };
+  /** **唯一**的"眼睛风格从哪来"分派处（捏人挑的 > 角色本色 > stern） */
+  eyesOf(charDef: CharDef | null | undefined, face?: string | null): string;
+  pick(ids: string[], seed: number): string;
+  describe(): string;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
+
+/* ---------------- 存档角色（character.ts，R50 第 2 + 5 条） ----------------
+   "这个档里的那个人"。改造前没有这个对象：选人是**每局一次**的动作，
+   不进存档，也没有名字与外观。 */
+interface CharacterLook { palette: string; face: string; accessory: string }
+interface CharacterEntryPick { skill: string; stat: string; talent: string }
+interface CharacterDef {
+  /** 初始职业（`data_chars.ts` 的 id） */
+  charId: string;
+  /** 名字（空 → 缺省名；超长截断；控制字符去掉） */
+  name: string;
+  look: CharacterLook;
+  /** 入门三选（捏人最后一步）：选了哪一项，不是数值 */
+  init: { entry: CharacterEntryPick };
+}
+interface CharacterRenderLook { skin: ReturnType<AppearanceApi['skinFor']>; eyeStyle: string; accessory: string }
+interface CharacterApi {
+  NAME_MAX: number;
+  DEFAULT_NAME: string;
+  normalize(raw: unknown, fallbackCharId?: string): CharacterDef;
+  create(charId: string, raw?: unknown): CharacterDef;
+  randomLook(seed: number): CharacterLook;
+  exists(c: CharacterDef | null | undefined): boolean;
+  displayName(c: CharacterDef | null | undefined): string;
+  professionOf(c: CharacterDef | null | undefined): string;
+  renderLook(c: CharacterDef | null | undefined, charDef: CharDef | null | undefined): CharacterRenderLook;
+  describe(c: CharacterDef | null | undefined): string;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
+
+/* ---------------- 入门三选（openings.ts，捏人最后一步） ----------------
+   初始技能 / 初始属性 / 初始天赋各一档，折成**一份 `OpeningLoadout`**
+   交给 `Game.newRun` —— 于是它是"开局条件"（回放能重建），
+   不是运行期的隐藏加成。 */
+interface OpeningChoiceDef {
+  id: string; name: string; note: string;
+  stats?: Record<string, number>;
+  weapons?: string[];
+  items?: string[];
+  scrap?: number;
+  material?: number;
+}
+interface OpeningColumnDef {
+  key: string; name: string; note: string;
+  list: OpeningChoiceDef[];
+}
+interface OpeningsApi {
+  COLS: OpeningColumnDef[];
+  /** 三列的键（`skill` / `stat` / `talent`）—— **唯一出处** */
+  COL_KEYS: string[];
+  LIST: OpeningChoiceDef[];
+  DEFAULT_ENTRY: CharacterEntryPick;
+  col(key: string): OpeningChoiceDef[] | null;
+  has(col: string, id: string): boolean;
+  byId(col: string, id: string): OpeningChoiceDef | null;
+  /** 三选 → 每一列**该显示哪一档**（坏输入落第一档） */
+  resolve(entry: Partial<CharacterEntryPick> | null | undefined): CharacterEntryPick;
+  /** 三选 → 一份开局条件（**唯一出口**） */
+  fold(charId: string, entry: Partial<CharacterEntryPick> | null | undefined): OpeningLoadout;
+  /** 一档各自给人的一行 */
+  lines(d: OpeningChoiceDef | null): string[];
+  describe(): string;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
+
+
 interface EnemyDef {
   id: string; name: string; shape: string; color: string; dark: string;
   hp0: number; speed: number; dmg0: number; scale: number; cost: number;
@@ -1615,6 +1717,11 @@ interface Player {
   animT: number; moveBlend: number; moving: boolean;
   rage: number; scrap?: number; _regenAcc?: number;
   charDef: CharDef;
+  /** **外观**（R50 时装系统）：`newSession` 从存档折一次存进来。
+   *  `null` = 没捏过人 → 渲染层退回职业本色（与改造前逐位相同）。 */
+  look?: CharacterRenderLook | null;
+  /** 捏人戴的那件配件 id（空串 = 不戴）；渲染层画在身体之后 */
+  accessory?: string;
   /** 骨架实例（Skeleton 组件）：豆豆的骨头与武器挂点都在这里 */
   rig?: RigInstance | null;
 }
@@ -2348,7 +2455,11 @@ interface SpritesApi {
   cacheStats(): SpriteCacheStats;
   domCanvas(w: number, h: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; width: number; height: number; scale: number } | null;
   drawBronana(x: any, cx: number, cy: number, rx: number, ry: number, skin: any, seed?: number, opts?: any): void;
-  bronanaPortrait(size: number, charDef: CharDef): Sprite | null;
+  bronanaPortrait(size: number, charDef: CharDef, look?: CharacterLook | null): Sprite | null;
+  /** 外观配件（R50 时装系统）：画在身体之**后**。
+   *  `cx, cy` 是头顶中心（调用方按身体半径算好），`r` 是身体半径。
+   *  @returns 有没有真的画（认不出的 id 返回 false，不抛） */
+  drawAccessory(x: any, cx: number, cy: number, r: number, kind: string): boolean;
   /** 枢纽"站点"的头像（NPC 与设施各一张；未知 id 走兜底牌） */
   stationPortrait(id: string, size?: number): Sprite | null;
   warmPlayerAtlas(charDef: CharDef, opts?: { r?: number; sy?: number; minSy?: number; maxSy?: number; skin?: any; seed?: number; eyeStyle?: string }): number;
@@ -2606,6 +2717,8 @@ interface ProfileSnapshot {
   codex: Record<string, number>;
   done: string[];
   perChar: Record<string, PerCharRecord>;
+  /** 槽位号 -> 这一份档里的那个人（R50） */
+  characters: Record<string, CharacterDef>;
   daily: Record<string, DailyRecord>;
   /** 每周挑战：'YYYY-Www' -> 当周最好的一局 */
   season: Record<string, DailyRecord>;
@@ -2711,6 +2824,36 @@ interface ProfileApi {
   lastError(): string | null;
   writeOk(): boolean;
   snapshot(): ProfileSnapshot;
+    /* ---- 存档角色（"这个档里的那个人"，R50） ----
+       为什么它住在**账号档案**而不是别处：一份存档 = 一个槽位的一份档案，
+       而"这个档的那个人是谁"正是**份**的属性。选人（`UI.selectedChar`）
+       改造前是每局一次的动作、不进存档 —— 于是"选择存档"那一步没有可靠的判据。
+       ⚠ 键是**槽位号**（`Slots.current()`）：一个槽 = 一份档 = 一个人。 */
+    /** 当前槽位的那个人（没有就是 null —— 这就是"新档 / 老档"的判据） */
+    character(): CharacterDef | null;
+    /** 建一个人（捏人页的"确定"走它）。返回归一之后的形状 */
+    saveCharacter(raw: unknown, charId?: string): CharacterDef | null;
+    /** 改名字 / 改外观 / 改入门三选（局部更新；null 表示不改这一项） */
+    setCharacterMeta(patch: {
+      name?: string | null;
+      look?: Partial<CharacterLook> | null;
+      charId?: string | null;
+      entry?: Partial<CharacterEntryPick> | null;
+    }): CharacterDef | null;
+    /** 这份档里有没有人（界面用它决定"开始新档 / 继续这个档"） */
+    hasCharacter(): boolean;
+    /** **把这个档里的人拿掉**（R50 的"返回"要撤回一个刚建起来、还没出发的人）。
+     *  ⚠ 只动 `characters` 那一格，**不碰进度** —— 与 `clear()` 是两件事。
+     *  返回"真的拿掉了"（本来就没人是 false）。 */
+    dropCharacter(): boolean;
+    /** 存档角色 + 职业本色 → 渲染层要的三样（**外观唯一的分派处**） */
+    renderLookOf(charDef: CharDef | null | undefined): CharacterRenderLook;
+    /** **捏人页要画的三列选项**（技能 / 属性 / 天赋各一档，每档给什么）
+     *  —— 界面照它画，不自己去翻 `openings.ts` 的两张表。 */
+    creationOptions(): Array<{
+      key: string; name: string; note: string;
+      list: Array<{ id: string; name: string; note: string; lines: string[]; picked: boolean }>;
+    }>;
     /** 接上技能表（**注入**而不是 import：那会构成一条向上的依赖边） */
     useSkills(api: SkillsApi | null): boolean;
     /* ---- 技能构筑（**角色身份**；与天赋那份"局外成长"分开记账）---- */
@@ -2885,8 +3028,8 @@ interface ProfileApi {
   forgeNode(id: string): { ok: boolean; reason: string; cost: number; core: number };
   /** 图纸的折叠修正（开局交给 Game.newRun） */
   forgeMods(): ForgeMods;
-  clear(): boolean;
-  reset(): ProfileSnapshot;
+  clear(opts?: { keepCharacter?: boolean }): boolean;
+  reset(opts?: { keepCharacter?: boolean }): ProfileSnapshot;
 }
 
 /* ---------------- 离线产出（offline.ts） ---------------- */
@@ -4293,7 +4436,7 @@ interface UIApi {
   replayStep?: (x: number, y: number, frame: number) => void;
 }
 
-type GameStateName = 'title' | 'chars' | 'station' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'skills' | 'keep' | 'hub' | 'end';
+type GameStateName = 'title' | 'slots' | 'chars' | 'create' | 'station' | 'playing' | 'levelup' | 'shop' | 'camp' | 'paused' | 'howto' | 'settings' | 'records' | 'codex' | 'talents' | 'skills' | 'keep' | 'hub' | 'end';
 
 /** 这一间的一扇门（"玩家自己选房间"的数据来源，见 Game.doors()） */
 interface DoorInfo {
@@ -4496,6 +4639,29 @@ interface GameApi {
   keepBuy(id: string): { ok: boolean; reason: string; cost: number; core?: number; toLevel: number };
   /** 洗点（**材料在这里扣**，`Profile.respecTalents` 只改状态） */
   respecTalents(charId: string): { ok: boolean; reason: string; cost: number };
+  /* ---- **存档角色**（R50）：改哪一份存档、这一档的那个人是谁 ----
+     与 `Game.material` / `Game.keepBuy` 同一条纪律：界面走**一个口**，
+     于是"这个人归哪一层"只有一个答案。真正的账在 `profile.ts`
+     （`data.characters[槽位]`），这几个口只是转发，一行逻辑都不加。 */
+  /** 当前槽位的那个人（没有就是 null —— 这就是"新档 / 老档"的判据） */
+  character(): CharacterDef | null;
+  /** 这份档里有没有人 */
+  hasCharacter(): boolean;
+  /** 建一个人（捏人页的"确定"走它）；返回归一之后的形状 */
+  saveCharacter(raw: unknown, charId?: string): CharacterDef | null;
+  /** 改名字 / 外观 / 职业 / 入门三选（`null` = 不改这一项） */
+  setCharacterMeta(patch: {
+    name?: string | null;
+    look?: Partial<CharacterLook> | null;
+    charId?: string | null;
+    entry?: Partial<CharacterEntryPick> | null;
+  }): CharacterDef | null;
+  /** 存档角色 + 职业本色 → 渲染层要的三样（**外观唯一的分派处**） */
+  renderLookOf(charDef: CharDef | null | undefined): CharacterRenderLook;
+  /** 捏人页要画的三列（技能 / 属性 / 天赋） */
+  creationOptions(): ReturnType<ProfileApi['creationOptions']>;
+  /** 一次**确定性的**随机外观（同一种子 → 同一套） */
+  randomLook(seed: number): CharacterLook;
   /* ---- 据点：**局内**（M1 第二块，2026-09）----
      v3 §二：据点属于经营模块的"建造"那一半，所以它的等级是这一局的状态。
      以前 `S.keep` 只是开局快照（从账号读一次、折成 `kmods` 后再也不变）。 */

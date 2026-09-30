@@ -10,6 +10,9 @@ import { Arena } from './arena.ts';
 import { Boons } from './boons.ts';
 import { Comp } from './comp.ts';
 import { Containers } from './containers.ts';
+/* **存档角色**（R50）：`Game.character/saveCharacter/setCharacterMeta/renderLookOf`
+   转发给档案层 —— 外观的唯一分派处是 `character.ts` + `appearance.ts`。 */
+import { Character } from './character.ts';
 import { Chars } from './data_chars.ts';
 import { Elems } from './data_elems.ts';
 import { Items } from './data_items.ts';
@@ -220,15 +223,26 @@ var Ch: ChamberApi = makeChamber({
      · UI.refresh() 缺 howto 分支 → 帮助浮层消失但游戏没恢复
    现在：合法转换写在表里，所有写入走 setState，UI 由 stateChange 事件驱动。
    ========================================================= */
-Game.STATES = ['title', 'chars', 'station', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
+Game.STATES = ['title', 'slots', 'chars', 'create', 'station', 'playing', 'levelup', 'shop', 'camp', 'paused', 'howto', 'settings', 'records', 'codex', 'talents', 'skills', 'keep', 'hub', 'end'];
 
 Game.TRANSITIONS = {
   /* ⚠ 标题页 / 选人页**没有** `hub`：枢纽是局内的一间（见下面 hub 那一档），
-     局外菜单不摆局内的门 —— 它的入口在大厅与暂停里。 */
-  title: ['chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
+     局外菜单不摆局内的门 —— 它的入口在大厅与暂停里。
+     ⚠ 「开始游戏」落的是 **`slots`（选存档）**，不是选人页（R50）：
+     用户的流程原话是「点击开始游戏按钮，**选择存档**，进入游戏，第一个到的是大厅」。 */
+  title: ['slots', 'chars', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
+  /* 选存档（R50）：三张档位卡。
+       · 这个档**有人** → 「继续」直接进大厅（`station`）
+       · 这个档**没人** → 「开始新档」去选职业（`chars`），再捏人（`create`）
+     ⚠ 两条路都不经过 `playing`：进对局只有 `newRun` 一条路（它先建好会话再切状态），
+       直接从这一屏切 `playing` 会出现"playing 但没有会话"，模拟层访问 S 直接崩。 */
+  slots: ['title', 'chars', 'create', 'station', 'howto', 'settings', 'records', 'codex'],
   // 注意：chars 不能直接进 playing —— 那样会出现"playing 但没有会话"的状态，
   // 模拟层访问 S 会直接崩。进入对局必须走 newRun（它用 force 建好会话再切状态）。
-  chars: ['title', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
+  chars: ['title', 'slots', 'create', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
+  /* 捏人（R50）：名字 / 外观 / 初始职业 / 入门三选。
+     出去只有两条正经路 —— 回选存档（换一个档）、或者确定出发（`station`）。 */
+  create: ['title', 'slots', 'chars', 'station', 'howto', 'settings'],
   /* ⚠ `station`（大厅）也在出边里：它是**局内**的一屏，走的是"暂停 → 回大厅"。
      少了这条边，`UI.startRun` 里那句 `setState('station')` 会被状态机**直接拒绝** ——
      表现是"点了出发，游戏开局了，但界面还停在选人页"。 */
@@ -245,11 +259,11 @@ Game.TRANSITIONS = {
   // 因为返回就是沿来处那条边回去（缺一条边 = 从那里进来就退不回去）。
   // 覆盖层之间**互不相通**：允许 A→B 就会出现"A 的来处被 B 改写"，
   // 于是 A⇄B 来回弹、永远回不到真正的那一屏。
-  howto: ['title', 'chars', 'playing', 'paused', 'shop', 'levelup', 'hub'],
-  settings: ['title', 'chars', 'paused', 'hub'],
-  records: ['title', 'chars', 'paused', 'end', 'hub'],
-  codex: ['title', 'chars', 'paused', 'end', 'hub'],
-  talents: ['title', 'chars', 'paused', 'hub', 'skills', 'station'],
+  howto: ['title', 'slots', 'chars', 'create', 'playing', 'paused', 'shop', 'levelup', 'hub'],
+  settings: ['title', 'slots', 'chars', 'create', 'paused', 'hub'],
+  records: ['title', 'slots', 'chars', 'paused', 'end', 'hub'],
+  codex: ['title', 'slots', 'chars', 'paused', 'end', 'hub'],
+  talents: ['title', 'slots', 'chars', 'paused', 'hub', 'skills', 'station'],
   /* 技能构筑与天赋是**并列的两个可返回覆盖层**（可以互相跳），
      所以两者的出边都包含对方 —— 缺一条就是「从这里进去退不回来」。 */
   skills: ['title', 'chars', 'paused', 'hub', 'talents', 'station'],
@@ -270,7 +284,7 @@ Game.TRANSITIONS = {
      （存档点还在，但手里的局没了）。`title` 只当兜底出口 —— 与大厅的
      "回标题"同一条纪律：放下这一局。 */
   hub: ['title', 'paused', 'station', 'howto', 'settings', 'records', 'codex', 'talents', 'keep'],
-  end: ['chars', 'title', 'records', 'codex', 'hub']
+  end: ['chars', 'title', 'slots', 'records', 'codex', 'hub']
 };
 
 /** 可返回覆盖层：进入时记住来处，退出时沿那条边走回去 */
@@ -386,10 +400,23 @@ function applySkillBuild(sess, charId, build) {
 }
 
 function newSession(charDef, seed, danger, opening, smods, skillBuild) {
+  /* **外观**（R50）：在这一刻从存档里折一次，存进玩家对象。
+     为什么不是每帧现算：`render.ts` 的 `drawPlayer` 每帧都要它，
+     现算就是每帧新建一个对象（`test/render-check.mjs` 的"每帧新建对象"那一栏盯着）。
+
+     ⚠ **没有存档角色时它是 `null`**（不是"一份等于本色的外观"）：
+       两者的区别是**可判定**的 —— `p.look === null` 就是"这一局没捏过人"，
+       而"一份恰好等于本色的外观"要靠逐字段比才认得出来。
+       渲染层据此退回职业本色与职业脸型，与改造前逐位相同 ——
+       这是行为指纹不变的前提（挑战 / CLI / 无头测试都走那条路）。 */
+  var me = Profile.character();
+  var look = me ? Game.renderLookOf(charDef) : null;
   // 玩家也走原型：字段由组件声明，不再手写字面量
   // （骨架由 player 原型的生成钩子随对象一起造出来，见 bronana.ts 的 Comp.onSpawn）
   var p: Player = Comp.spawn('player', {
     charDef: charDef,
+    look: look,
+    accessory: look ? (look.accessory || '') : '',
     x: Arena.W / 2, y: Arena.H / 2,
     r: 20,
     face: 1,
@@ -3880,6 +3907,25 @@ Game.newRun = function (charId, seed, danger, opening, smods, skillBuild) {
   Game.events.emit('runStart', def);
   return s;
 };
+
+/* =========================================================
+   **存档角色**（R50）：改哪一份存档、这一档的那个人是谁
+   ---------------------------------------------------------
+   为什么这几个口开在 `Game` 而不是让界面直接读 `Profile`：
+   与 `Game.material` / `Game.keepBuy` 同一条纪律 —— 界面走一个口，
+   于是"这个人归哪一层"只有一个答案。真正的账在 `profile.ts`
+   （`data.characters[槽位]`），这里只是**转发**，一行逻辑都不加。
+   ========================================================= */
+Game.character = function () { return Profile.character(); };
+Game.hasCharacter = function () { return Profile.hasCharacter(); };
+Game.saveCharacter = function (raw, charId) { return Profile.saveCharacter(raw, charId); };
+Game.setCharacterMeta = function (patch) { return Profile.setCharacterMeta(patch); };
+/** 存档角色 + 职业本色 → 渲染层要的三样（外观的**唯一**分派处） */
+Game.renderLookOf = function (charDef) { return Profile.renderLookOf(charDef); };
+/** 捏人页要画的三列（技能 / 属性 / 天赋）—— 界面照它画，不自己翻表 */
+Game.creationOptions = function () { return Profile.creationOptions(); };
+/** 一次**确定性的**随机外观（捏人页的"随机"按钮）：同一种子 → 同一套 */
+Game.randomLook = function (seed) { return Character.randomLook(seed); };
 
 /* =========================================================
    存档：一局怎么序列化由玩法层自己决定

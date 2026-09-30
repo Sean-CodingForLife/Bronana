@@ -45,6 +45,57 @@
       <div class="title-foot">WASD 移动 · 武器自动开火 · 波次结束进商店</div>
     </section>
 
+    <!-- 选存档（R50）：用户流程的第二步 ——「点击开始游戏按钮，**选择存档**」。
+         这一屏之前**不存在**：三个槽位只在「设置 → 存档槽位」里切换，
+         而开局没有"选哪一个档"这一步。判据是**这个档里有没有人**
+         （`Profile.character()`），不是 `Slots.used()` —— 后者只看"写过键没有"，
+         随手切一下槽位或某一局写到一半就会让它变真。 -->
+    <section id="scr-slots" class="screen">
+      <h2 class="scr-h">选 择 存 档</h2>
+      <div class="slot-grid" id="slot-grid"></div>
+      <div class="slot-detail" id="slot-detail"></div>
+      <div class="row center">
+        <button class="btn" data-act="back-title">返回</button>
+        <button class="btn tiny" data-act="slot-export">导 出 本 档</button>
+        <button class="btn tiny" data-act="slot-import">导 入 到 本 档</button>
+        <button class="btn danger tiny" data-act="slot-wipe">清 空 本 档</button>
+      </div>
+    </section>
+
+    <!-- 捏人（R50）：用户原话「选择新存档，就会需要**捏人选择初始角色外观，
+         选择初始角色职业**，然后就能确定这个角色的**初始技能，初始属性，
+         初始天赋**等确定人物以后开始世界冒险」。
+         全部**程序化**（B02 / R30：零素材）—— 外观 = 色板 + 脸型 + 配件三份数据。 -->
+    <section id="scr-create" class="screen">
+      <h2 class="scr-h">捏 人</h2>
+      <div class="create-body">
+        <div class="create-left">
+          <canvas id="create-preview" class="create-preview" width="256" height="256"></canvas>
+          <div class="create-name">
+            <span class="set-label">名字</span>
+            <input class="text-in" id="create-name" maxlength="10" autocomplete="off" spellcheck="false">
+          </div>
+          <button class="btn tiny" data-act="create-random">随 机 一 套 外 观</button>
+        </div>
+        <div class="create-right">
+          <div class="set-row"><span class="set-label">初始职业</span><span class="set-value" id="create-job"></span></div>
+          <div class="set-label">外 观（色板）</div>
+          <div class="opt-row" id="create-palette"></div>
+          <div class="set-label">脸 型</div>
+          <div class="opt-row" id="create-face"></div>
+          <div class="set-label">配 件（时装）</div>
+          <div class="opt-row" id="create-accessory"></div>
+          <div class="set-label">入 门 三 选（技能 · 属性 · 天赋）</div>
+          <div class="settings codex-list" id="create-entry"></div>
+        </div>
+      </div>
+      <div class="row center">
+        <button class="btn" data-act="back-slots">返 回 选 存 档</button>
+        <button class="btn" data-act="create-job">换 职 业</button>
+        <button class="btn big" data-act="create-go">确 定 · 开 始 冒 险</button>
+      </div>
+    </section>
+
     <!-- 角色选择 -->
     <section id="scr-chars" class="screen">
       <h2 class="scr-h">选 择 角 色</h2>
@@ -56,8 +107,8 @@
         <span class="danger-info" id="danger-info"></span>
       </div>
       <div class="row center">
-        <button class="btn" data-act="back-title">返回</button>
-        <button class="btn big" id="btn-confirm-char" data-act="confirm-char">确 认 出 发</button>
+        <button class="btn" data-act="back-slots">返 回</button>
+        <button class="btn big" id="btn-confirm-char" data-act="confirm-char">下 一 步</button>
       </div>
     </section>
 

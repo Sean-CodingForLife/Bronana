@@ -337,6 +337,13 @@ src/                  ← 全部是真正的 ES 模块：import / export，没�
   music.ts            背景音乐：曲目表 + 场景映射 + 强度分层（程序化生成的占位）★
   crash.ts            运行时错误兜底（给玩家一张可行动的错误卡）
   stats.ts            属性系统与派生公式
+  /* ---- R50：外观（时装）· 入门三选 · 存档角色 ---- */
+  appearance.ts       **外观系统**（R50 第 9 条"时装"）：8 色板 × 3 脸型 × 5 配件，
+                      全是**程序化**的配色与配件（零素材）· 唯一取色入口 `skinFor` / `eyesOf` ★
+  openings.ts         **入门三选**（捏人最后一步）：初始技能 / 初始属性 / 初始天赋各一档，
+                      折成一份 `OpeningLoadout` 交给开局 —— 是**开局条件**，不是运行期加成 ★
+  character.ts        **存档角色**（"这个档里的那个人"）：名字 / 外观 / 初始职业 / 入门三选；
+                      "这个档里有没有人"就是**选存档**那一步的判据 ★
   data_tiers.ts       品级表（T1–T5，**唯一**的一张：合成台阶 + 词条上限 + 界面颜色）★
   data_elems.ts       元素表（4 种元素的名字 + 附带效果的机制名；武器 element 的值域）★
   curves.ts           数值曲线表（角色 / 怪物 / 刷怪节奏的成长：形状 + 常量 + 逐点表）★
@@ -843,11 +850,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 87 个 · 39801 行（另有 `types.d.ts` 4788 行） |
+| 模块 | 90 个 · 41494 行（另有 `types.d.ts` 4954 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 58 · `selfcheck.ts` 54 · `utils.ts` 31 |
-| 依赖最重的模块 | `game.ts` 43 · `ui.ts` 41 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 5033 · `ui.ts` 3450 · `render.ts` 1656 · `profile.ts` 1614 · `sprites.ts` 1573 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 |
+| 扇入最高的模块 | `registry.ts` 61 · `selfcheck.ts` 57 · `utils.ts` 31 |
+| 依赖最重的模块 | `game.ts` 44 · `ui.ts` 42 · `main.ts` 30 |
+| 超过 700 行的模块 | `game.ts` 5079 · `ui.ts` 3821 · `profile.ts` 1815 · `render.ts` 1685 · `sprites.ts` 1642 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -1739,9 +1746,9 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 | 维度 | 现状 |
 | --- | --- |
 | 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **57 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
+| 测试套件 | **60 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
-| 模块 | 85 个 · 39k 行（另有 `types.d.ts` 4.7k 行） |
+| 模块 | 90 个 · 41k 行（另有 `types.d.ts` 5.0k 行） |
 | 依赖环 | **0** |
 | 向上的边（低层认识高层） | **2 条**，都已逐条登记理由 |
 | 模块级可变状态 | 全部登记在 `test/persist.mjs` 的清单里（新增必须显式登记） |

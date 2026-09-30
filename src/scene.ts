@@ -44,6 +44,18 @@ var TABLE: Record<string, SceneDef> = {
     overlay: 'chars', sim: false, world: false, hud: false, strip: false, keys: 'start',
     note: '选人页：同上；从这里有且只有一条进对局的路（newRun）'
   },
+  /* 选存档 / 捏人（R50）：用户流程原话「点击开始游戏按钮，**选择存档**，进入游戏，
+     第一个到的是大厅」/「选择新存档，就会需要**捏人**选择初始角色外观，
+     选择初始角色职业，然后就能确定这个角色的初始技能，初始属性，初始天赋」。
+     两屏都是**局外**（`world:false` —— 这时候还没有会话，画不出世界）。 */
+  slots: {
+    overlay: 'slots', sim: false, world: false, hud: false, strip: false, keys: 'start',
+    note: '选存档：三张档位卡（有人的档「继续」，没人的档「开始新档」）'
+  },
+  create: {
+    overlay: 'create', sim: false, world: false, hud: false, strip: false, keys: 'start',
+    note: '捏人：名字 / 外观（色板 · 脸型 · 配件）/ 初始职业 / 入门三选（技能 · 属性 · 天赋）'
+  },
   station: {
     /* 大厅（站）：**每一次开局的起点**。它归**局内**（不是菜单）——
        从战斗回大厅是走回去，从大厅出击是回到这一局。
@@ -126,6 +138,7 @@ var REFRESH: Record<string, string> = {
      不登记它的后果实测过 —— 从暂停里"放弃本局"再回标题，存档明明还在
      （有意为之：放弃不删档），按钮却停在上一次的"没有存档"状态，续玩入口看不见也点不到。 */
   title: 'title',
+  slots: 'slots', create: 'create',
   shop: 'shop', camp: 'camp', levelup: 'cards', settings: 'settings', records: 'records',
   paused: 'pause', codex: 'codex', talents: 'talents', skills: 'skills', keep: 'keep', hub: 'hub',
   /* 大厅也要重画：三道门是**按表**画的，公告板上的账与"下一步"是**从这一局读出来的** ——

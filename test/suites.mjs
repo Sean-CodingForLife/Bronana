@@ -29,6 +29,9 @@ export const SUITES = [
   ['组件系统 / 组合与校验', 'comp.mjs'],
   ['世界系统 / 坐标·区域·网格', 'world.mjs'],
   ['对象系统 / 身份·普查·容器', 'object.mjs'],
+  /* R50：开局流程（选存档 → 选职业 → 捏人 → 大厅）与它的三张表。
+     放在 world / object 之后是顺读 —— 它们同属"引擎地基"那一批。 */
+  ['开局流程 / 存档角色·外观（时装）·入门三选', 'character.mjs'],
   ['骨架系统 / 骨头·部件·几何等价', 'rig.mjs'],
   ['碰撞体 / 帧模型 / 插值', 'frames.mjs'],
   ['三种运行形态 / web·cli·desktop', 'modes.mjs'],

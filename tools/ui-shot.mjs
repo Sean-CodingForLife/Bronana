@@ -45,9 +45,15 @@ const SIZES = arg('sizes', '1280x720').split(',').map(s => s.split('x').map(Numb
 /* 每一屏怎么到达：从标题页开始按 data-act 点（`a>b` 表示连着点两下）。
    `-` 表示"停在标题页"。 */
 const SHOTS = arg('shots',
-  // 枢纽也归**局内**：从标题点不进去，得先过大厅（与玩家真走的那条路一致）
-  'title:-,chars:start,station:start>confirm-char,hub:start>confirm-char>hub,codex:codex,settings:settings,keep:keep,' +
-  'records:records,howto:howto,talents:start>talents,' +
+  /* ⚠ **开局流程在 R50 之后是四步**：开始 → **选存档** → 选职业 → 捏人 → 大厅。
+     所以下面每条"从标题走到局内"的链都要把中间那两步点出来；
+     少一步的表现不是报错，而是**停在选存档那一屏**，拍出来的图看着像"进不去"。
+     判据是"这个档里有没有人"：所以第一次走要带 `slot-new>confirm-char`，
+     之后（页面重载但 localStorage 还在）同一个档已经有人，`slot-continue` 直接进大厅。 */
+  'title:-,slots:start,create:start>slot-new>confirm-char,' +
+  'chars:start>slot-new,station:start>slot-continue,' +
+  'hub:start>slot-continue>hub,codex:codex,settings:settings,keep:keep,' +
+  'records:records,howto:howto,talents:start>slot-continue>talents,' +
   // 开局先落**大厅（站）**：三个模块都在局内的一张图上，门要**走过去**才进 ——
   // 量尺只会点按钮，所以下面这几屏改走 main.ts 的 ?test= 钩子（不是绕近路，
   // 而是"点不动一扇门"这件事本身：门已经不在 HUD 上了）。

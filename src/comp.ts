@@ -462,7 +462,14 @@ Comp.define('Progress', { level: 1, xp: 0, xpNeed: 0, pendingLevels: 0 });
 Comp.define('Locomotion', { animT: 0, moveBlend: 0, moving: false, face: 1, rage: 0 });
 Comp.define('Wallet', { scrap: 0 });
 Comp.define('Regen', { _regenAcc: 0 });
-Comp.define('CharCore', { charDef: null });
+/* `look` / `accessory`：**存档角色的外观**（R50 的时装系统）。
+   为什么住在玩家对象上而不是 `charDef` 上：`charDef` 是**共享的**职业表一行
+   （9 个角色一共 9 个对象），把玩家捏的外观写上去会污染整张表 ——
+   而外观是**这一份档**的属性。渲染层每帧读它（`render.ts` 的 drawPlayer），
+   所以它必须是一个**已经折好的值**，不能每帧现算（那会每帧新建一个对象）。
+   缺省是 `null` + `''`：那正是"没捏人"的样子 —— 渲染层退回职业本色，
+   与改造前逐位相同（行为指纹不变的前提）。 */
+Comp.define('CharCore', { charDef: null, look: null, accessory: '' });
 Comp.define('Skeleton', { rig: null });
 /* `enraged`：超时狂暴标记（game.ts 的 overrun() 写它、渲染层据此画一圈红环 +
    ui.ts 用 `overrun` 事件说一句"怪狂暴了、奖励打折"）。

@@ -27,9 +27,11 @@ import { Craft } from './craft.ts';
 import { Daily } from './daily.ts';
 import { Danger } from './danger.ts';
 import { Envelope } from './envelope.ts';
+import { Character } from './character.ts';
 import { Forge } from './forge.ts';
 import { Items } from './data_items.ts';
 import { Offline } from './offline.ts';
+import { Openings } from './openings.ts';
 import { Registry } from './registry.ts';
 import { Season } from './season.ts';
 import { SelfCheck } from './selfcheck.ts';
@@ -79,6 +81,10 @@ var CODEX_SEEN = 1, CODEX_USED = 2, CODEX_MASTERED = 3;
 var PROFILE_SECTIONS = [
   'wallet', 'growth', 'core',
   'forge', 'unlocked', 'codex', 'done', 'perChar',
+  /* **存档角色**（R50）：槽位号 -> "这个档里的那个人"（名字 / 外观 / 初始职业 /
+     入门三选）。它属于**这一份档**，所以住在档案里；"选择存档"那一步的
+     "新档 / 老档"判据就是"这里有没有这个槽位的人"。 */
+  'characters',
   'daily', 'season', 'keep', 'keepLast', 'camp', 'campRow', 'tutorialSeen',
   'story', 'lastSeen', 'createdAt', 'updatedAt'
 ];
@@ -123,6 +129,12 @@ function blank() {
        `Profile.snapshot().perChar` 又是空对象（自相矛盾）、`talentFree` 直接冒 NaN。
        无原型的表上没有那个 setter，`__proto__` 只是一个普通键。 */
     perChar: Object.create(null),
+    /* **存档角色**（R50）：`槽位号 -> CharacterDef`。
+       为什么键是槽位号而不是 `charId`：一份存档 = 一个槽位的一份档案 =
+       一个人。一个人可以换职业（重捏），但一个槽位不会有两个人。
+       **无原型**的理由与 `perChar` 完全相同（坏档里的 `__proto__`）
+       —— 它同样是 `JSON.parse` 的产物直接进表。 */
+    characters: Object.create(null) as Record<string, CharacterDef>,
     daily: {},          // 'YYYY-MM-DD' -> 当天最好的一局（见 daily.ts）
     season: {},         // 'YYYY-Www'   -> 当周最好的一局（见 season.ts）
     /* **上一局结束时的据点快照**（`{ 设施id: 等级 }`）。
@@ -247,6 +259,21 @@ Profile.load = function () {
   // 每日 / 每周挑战记录：按时间键存"那一期最好的一局"（两者同形，共用一段读取逻辑）
   data.daily = readRunRecords(got.daily, /^\d{4}-\d{2}-\d{2}$/);
   data.season = readRunRecords(got.season, /^\d{4}-W\d{2}$/);
+
+  /* **存档角色**（R50）：键是槽位号。只收合法的槽位键，值逐个走
+     `Character.normalize` —— 坏档里的坏色板 / 超长名字 / 换行都在那里被摁死。
+     ⚠ 收口放在这里而不是 `Character` 里的理由与别处一样：
+       `Character` 是纯形状（不 import 存储），读盘这一层归本模块。 */
+  data.characters = Object.create(null) as Record<string, CharacterDef>;
+  var chs = (got.characters && typeof got.characters === 'object') ? got.characters : {};
+  for (var chk in chs) {
+    if (!Object.prototype.hasOwnProperty.call(chs, chk)) continue;
+    if (!/^\d+$/.test(chk)) continue;                       // 只认槽位号
+    var slotN = Math.floor(num(chk));
+    if (slotN < 0 || slotN >= Slots.COUNT) continue;         // 越界的槽位丢掉（加槽位之前的老档）
+    var normed = Character.normalize(chs[chk]);
+    if (normed && normed.charId) data.characters[String(slotN)] = normed;
+  }
 
   // 据点：只收真实存在的设施，等级夹回合法范围
   var kp = (got.keep && typeof got.keep === 'object') ? got.keep : {};
@@ -509,6 +536,116 @@ Profile.skillsFor = function (charId) {
 };
 
 
+/* =========================================================
+   2b. **存档角色**（R50：选存档 / 捏人）
+   ---------------------------------------------------------
+   一份存档 = 一个槽位的一份档案 = **一个人**。所以键是槽位号：
+     · `Slots.current()` 是唯一的那个槽位（它的键变换在 `slots.ts` 里）
+     · 换槽位之后 `Profile.load()` 重读，`character()` 自然答的是那一档的人
+
+   ⚠ **它是"选择存档"那一步唯一可靠的判据**：
+   `Slots.used()` 只看"这个槽位有没有写过任何一份键"—— 而设置里随手切一下
+   槽位、或某一局写到一半，它就会变真。所以界面不许用它判"这是新档吗"。
+   ========================================================= */
+function slotKeyOfCurrent() { return String(Slots.current()); }
+
+/** 当前槽位的那个人（没有就是 null —— 这就是"新档 / 老档"的判据） */
+Profile.character = function () {
+  var k = slotKeyOfCurrent();
+  var c = data.characters[k];
+  return (c && c.charId) ? c : null;
+};
+Profile.hasCharacter = function () { return !!Profile.character(); };
+
+/**
+ * **把这个档里的人拿掉**（R50 的「返回」要撤回一个刚建起来、还没出发的人）。
+ *
+ * ⚠ 只删 `characters` 那一格、**不碰进度** —— 这是它与 `clear()` / `reset()`
+ *   的根本区别：玩家点进捏人页看了看再退出来，不该顺手清掉这个档的孢子与图鉴。
+ *
+ * ⚠ 它**必须落盘**：`Profile.load()` 会拿存储里那一份覆盖内存，
+ *   所以"只清内存"在换一次槽位之后会复活（实测踩过）。
+ */
+Profile.dropCharacter = function () {
+  var k = slotKeyOfCurrent();
+  if (!data.characters[k]) return false;
+  delete data.characters[k];
+  Profile.save();
+  return true;
+};
+
+/**
+ * 建一个人（捏人页的"确定"走它）。
+ * @param charId 初始职业；缺省时用 `raw.charId`，再缺省用 `ranger`
+ * @returns 归一之后的形状（写盘失败也返回它 —— 内存里玩家确实已经建好了人）
+ */
+Profile.saveCharacter = function (raw, charId) {
+  var c = Character.create(charId || (raw && (raw as { charId?: string }).charId) || 'ranger', raw);
+  data.characters[slotKeyOfCurrent()] = c;
+  Profile.save();
+  return c;
+};
+
+/**
+ * 局部更新（名字 / 外观 / 职业 / 入门三选）。
+ * `null` 或 `undefined` = **不改这一项**（与"改成空"是两件事：
+ * 改名字传空串的语义是"落回缺省名"，由 `Character.normalize` 决定）。
+ */
+Profile.setCharacterMeta = function (patch) {
+  var cur = Profile.character();
+  if (!cur) return null;
+  var p = patch || {};
+  var raw: Record<string, unknown> = {
+    charId: p.charId ? String(p.charId) : cur.charId,
+    name: p.name === undefined || p.name === null ? cur.name : p.name,
+    look: {
+      palette: (p.look && p.look.palette) ? p.look.palette : cur.look.palette,
+      face: (p.look && p.look.face) ? p.look.face : cur.look.face,
+      accessory: (p.look && p.look.accessory) ? p.look.accessory : cur.look.accessory
+    },
+    init: {
+      entry: {
+        skill: (p.entry && p.entry.skill) ? p.entry.skill : cur.init.entry.skill,
+        stat: (p.entry && p.entry.stat) ? p.entry.stat : cur.init.entry.stat,
+        talent: (p.entry && p.entry.talent) ? p.entry.talent : cur.init.entry.talent
+      }
+    }
+  };
+  var next = Character.normalize(raw);
+  data.characters[slotKeyOfCurrent()] = next;
+  Profile.save();
+  return next;
+};
+
+/** 存档角色 + 职业本色 → 渲染层要的三样（**外观唯一的分派处**）—— 渲染层唯一的取色口 */
+Profile.renderLookOf = function (charDef) {
+  return Character.renderLook(Profile.character(), charDef);
+};
+
+/**
+ * **捏人页要画的三列**（技能 / 属性 / 天赋各一档，每档给什么、选中的是哪个）。
+ *
+ * 为什么不给界面 `Openings.COLS` 让它自己拼：那一列里"选中的是哪一档"要读
+ * **当前存档角色**，而那是本模块的事。界面拿到的应当是一份**已经拼好的视图**
+ * （与 `Profile.craftOptions` / `Profile.creationOptions` 同一个范式）。
+ */
+Profile.creationOptions = function () {
+  var me = Profile.character();
+  var picked = Openings.resolve(me && me.init ? me.init.entry : null);
+  return Openings.COLS.map(function (c) {
+    return {
+      key: c.key, name: c.name, note: c.note,
+      list: c.list.map(function (d) {
+        return {
+          id: d.id, name: d.name, note: d.note,
+          lines: Openings.lines(d),
+          picked: picked[c.key] === d.id
+        };
+      })
+    };
+  });
+};
+
 Profile.snapshot = function () {
   return {
     /** 养成代币（`孢子` 与 `合金` 合并之后的唯一余额） */
@@ -519,6 +656,9 @@ Profile.snapshot = function () {
     codex: copyOf(data.codex),
     done: Object.keys(data.done),
     perChar: copyOf(data.perChar),
+    /* **存档角色**（R50）：槽位号 -> "这个档那个人"。放进快照是因为界面
+       （选存档那一屏）要一次读全三个槽位，而 `character()` 只答当前槽位。 */
+    characters: copyOf(data.characters),
     daily: copyOf(data.daily),
     season: copyOf(data.season),
     keep: copyOf(data.keep),
@@ -851,6 +991,27 @@ Profile.talentFree = function (charId) {
 Profile.openingOf = function (charId) {
   var pc = recordFor(charId);
   var out = Talent.openingFor(charId, pc.talents || []);
+  /* **捏人的"入门三选"并进来**（R50）。
+     它必须走**这一个**出口，而不是让界面把两份开局条件各传一半 ——
+     `Game.newRun` 只收一份 `OpeningLoadout`，而"两份拼起来"正是 R38 那一类
+     "同一处开局写了两份"的老毛病。
+     折叠规则与天赋同一套：`stats` 相加、`weapons`/`items` 追加、`scrap`/`material` 相加。
+     ⚠ 没有存档角色时（老档 / 挑战 / 无头测试）这一节**整个不发生** ——
+       于是那些路径的开局条件逐位照旧（行为指纹不变的前提）。 */
+  var me = Profile.character();
+  if (me && me.charId === charId) {
+    var ent = Openings.fold(charId, me.init && me.init.entry);
+    var k;
+    for (k in ent.stats) {
+      if (Object.prototype.hasOwnProperty.call(ent.stats, k)) {
+        out.stats[k] = (out.stats[k] || 0) + ent.stats[k];
+      }
+    }
+    for (var w = 0; w < ent.weapons.length; w++) out.weapons.push(ent.weapons[w]);
+    for (var it = 0; it < ent.items.length; it++) out.items.push(ent.items[it]);
+    out.scrap += ent.scrap;
+    out.material = Math.max(0, Math.round((out.material || 0) + (ent.material || 0)));
+  }
   var km = Profile.keepMods();
   // 「靶场」：多带 N 件（N 来自据点表）。**按局数轮换**，不掷骰子：
   // 开局条件要在建会话之前算好，那时还没有本局种子。
@@ -1533,13 +1694,38 @@ Profile.craftOptions = function (mods, mat, fx) {
 /* =========================================================
    8. 清档（设置页的"清空存档"要连它一起清）
    ========================================================= */
-Profile.clear = function () {
+/**
+ * @param opts.keepCharacter 保留"这个档的那个人"（R50）。
+ *
+ * ⚠ 为什么需要这个开关：**"清空存档"与"这个档是谁"是两件事**。
+ *   `Profile.clear` / `reset` 的语义是"把进度清零、从头开始" ——
+ *   玩家的第一直觉里，那个人不是"进度"，是"我建的那个人物"。
+ *   改造前没有这个区别，因为**那时候存档里没有人**（选人是每局一次的动作）。
+ *
+ * ⚠ 更要紧的是**读盘 > 内存**这条纪律：`Profile.load()` 会拿存储里那一份
+ *   覆盖内存，所以"清掉内存里的 characters"在换一次槽位之后会**复活**
+ *   （那份档的键还在）。要真的清掉，只能像这里一样**清内存 → 立刻落盘**。
+ *   实测踩过这个坑：界面上"返回"清掉了内存里的人，切一下槽位他又回来了。
+ */
+Profile.clear = function (opts) {
+  var keep = !!(opts && (opts as { keepCharacter?: boolean }).keepCharacter);
+  var keepChar = keep ? copyOf(data.characters) : null;
   data = blank();
+  if (keepChar) data.characters = keepChar as Record<string, CharacterDef>;
   loadedFrom = 'defaults';
   return Slots.clear(Storage.KEYS.profile);
 };
-Profile.reset = function () {
+Profile.reset = function (opts) {
+  var keep = !!(opts && (opts as { keepCharacter?: boolean }).keepCharacter);
+  var keepChar = keep ? copyOf(data.characters) : null;
+  /* ⚠ **先回 0 号槽**：`reset` 的语义是"从头开始"，而它现在会**写盘** ——
+     停在 5 号槽上按下它，写出来的就是 5 号槽的空档，而 0 号槽那位玩家的
+     进度一点没动（他看到的却是"重置成功"）。这不报错，所以必须显式钉住。
+     ⚠ `Slots.select` 会通知订阅者（界面那一份会跟着重读），所以这一句要
+       在 `data = blank()` **之前** —— 否则界面读回的是我们已经清掉的那一份。 */
+  Slots.select(0);
   data = blank();
+  if (keepChar) data.characters = keepChar as Record<string, CharacterDef>;
   Profile.save();
   return Profile.snapshot();
 };
@@ -1603,9 +1789,24 @@ Profile.audit = function () {
   if (ghost.length !== data.campRow.length) {
     problems.push('campRow 里有 ' + (data.campRow.length - ghost.length) + ' 项不是"真的建了"的设施（相邻组合会按幽灵位置判定）');
   }
+  /* **存档角色**（R50）：表里的每一项都必须是"这个档真的有人"，
+     而且**必须落在合法槽位内** —— 越界的键永远读不到（`character()` 只查当前槽位），
+     于是它会以一个"悄悄占了存档体积、界面上不存在的人"的形式烂在那里。 */
+  for (var ck in data.characters) {
+    if (!Object.prototype.hasOwnProperty.call(data.characters, ck)) continue;
+    var cc = data.characters[ck];
+    if (!/^\d+$/.test(ck) || Number(ck) >= Slots.COUNT) {
+      problems.push('characters 里有越界的槽位键：' + ck + '（那份档里的人永远读不到）');
+    }
+    if (!cc || !cc.charId) problems.push('characters.' + ck + ' 没有职业 id（开局会崩在找职业那一步）');
+    if (!cc || !cc.name) problems.push('characters.' + ck + ' 没有名字（名牌会是空的）');
+    if (cc && (!cc.look || !cc.init || !cc.init.entry)) {
+      problems.push('characters.' + ck + ' 缺 look / init（捏人页读到一半会返回 undefined）');
+    }
+  }
   return {
     ok: problems.length === 0, problems: problems,
-    counts: { sections: real.length, campFacilities: Object.keys(data.camp).length }
+    counts: { sections: real.length, campFacilities: Object.keys(data.camp).length, characters: Object.keys(data.characters).length }
   };
 };
 SelfCheck.register('Profile', Profile.audit);

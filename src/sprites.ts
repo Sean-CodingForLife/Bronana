@@ -5,6 +5,7 @@ sprites.ts — 程序化绘制总库
 ========================================================= */
 
 import { D } from './draw2d.ts';
+import { Appearance } from './appearance.ts';
 import { Art } from './art_spec.ts';
 import { Bronana } from './bronana.ts';
 import { ArtShaders } from './art_shaders.ts';
@@ -334,19 +335,87 @@ S.emblemSprite = function (id) {
   return cached('pk-' + id, em.w, em.h, function (x) { S.drawEmblem(x, em, 1); });
 };
 
-/** 用于 UI（卡片 / 角色选择）的静态豆豆肖像 */
-S.bronanaPortrait = function (size, charDef) {
-  var key = 'port-' + charDef.id + '-' + size;
+/* =========================================================
+   2c. 外观配件（时装那一半：头上顶一件东西）
+   ---------------------------------------------------------
+   R50 第 9 条（时装系统）的**画法那一半**。声明在 `appearance.ts` 的
+   `ACCESSORIES` 表里（id / 名字 / dy），画法在这里 —— 两边必须一一对应：
+   **表里多一件而这里少一支画法 = 玩家选中一件什么也看不见**，
+   那是最坏的一种假声明，所以 `test/appearance.mjs` 会静态扫这两张表。
+
+   美术宪法照旧：粗黑描边（`D` 的默认描边）+ 纯色平涂。
+   坐标：`cx, cy` 是**头顶中心**（调用方按身体半径算好），`r` 是身体半径。
+   ========================================================= */
+S.drawAccessory = function (x, cx, cy, r, kind) {
+  var shape = Appearance.accessoryShape(kind);
+  if (!shape || shape.id === 'none') return false;
+  var y = cy - r * shape.dy;
+  /* ⚠ 一律**不传** `o` —— 那就是美术宪法的默认（`PAL.INK` 描边 + 默认线宽）。
+     显式写 `D.O.none` 会让配件变成没有黑边的一块色，与角色身体接不上。 */
+  switch (shape.id) {
+    case 'cap': {
+      /* 扁帽子 + 一条横檐（檐往前伸，于是"朝哪边"看得出来） */
+      var w = r * 0.78, h = r * 0.30;
+      D.rect(x, cx - w / 2, y - h, w, h, '#4a5a6e');
+      D.rect(x, cx - w * 0.62, y - h * 0.18, w * 1.24, h * 0.34, '#3a4757');
+      return true;
+    }
+    case 'horns': {
+      /* 两根弯角：每边两段折线，从头顶两侧长出来 */
+      var hx = r * 0.42, hy = r * 0.34;
+      D.rect(x, cx - hx - r * 0.06, y - hy, r * 0.13, hy * 1.2, '#e8dcc0');
+      D.rect(x, cx - hx - r * 0.16, y - hy * 1.5, r * 0.13, hy * 0.62, '#e8dcc0');
+      D.rect(x, cx + hx - r * 0.07, y - hy, r * 0.13, hy * 1.2, '#e8dcc0');
+      D.rect(x, cx + hx + r * 0.03, y - hy * 1.5, r * 0.13, hy * 0.62, '#e8dcc0');
+      return true;
+    }
+    case 'antenna': {
+      /* 一根细须 + 顶端一个亮点（菌类的样子） */
+      D.rect(x, cx - r * 0.035, y - r * 0.62, r * 0.07, r * 0.62, '#7a6f5c');
+      D.circle(x, cx, y - r * 0.70, r * 0.11, '#e8c24a');
+      return true;
+    }
+    case 'goggles': {
+      /* 一条横带 + 两个圆镜片 —— 压在眼睛那一线（dy 为负） */
+      var gw = r * 0.84;
+      D.rect(x, cx - gw / 2, y - r * 0.10, gw, r * 0.20, '#3a4757');
+      D.circle(x, cx - r * 0.26, y, r * 0.15, '#8ab84f');
+      D.circle(x, cx + r * 0.26, y, r * 0.15, '#8ab84f');
+      return true;
+    }
+    default:
+      /* 认不出的配件什么也不画（表与画法对不上由测试抓，
+         这里**不抛** —— 一个坏 id 不该让整帧渲染炸掉）。 */
+      return false;
+  }
+};
+
+/** 用于 UI（卡片 / 角色选择）的静态豆豆肖像。
+ *
+ *  `look` 是**外观系统**（`appearance.ts`）的那三样；省略时逐位退回
+ *  改造前的行为（角色表里的 `tint` / `face`、不戴配件）——
+ *  这是"外观系统在没人用它的时候不改动任何像素"的落地处。 */
+S.bronanaPortrait = function (size, charDef, look) {
+  var key = 'port-' + charDef.id + '-' + size +
+    (look ? ('-' + (look.palette || '') + '-' + (look.face || '') + '-' + (look.accessory || '')) : '');
   var box = size + 8;
   return cached(key, box, box, function (x) {
     var r = size * 0.40;
-    var tint = charDef.tint || [PAL.SKIN, PAL.SKIN_SH];
-    var skin = { base: tint[0], hi: '#ffffff', sh: tint[1], dp: tint[1], dot: PAL.BRONANA_DOT };
+    /* ⚠ 取色与取脸**只走 `Appearance`**（`skinFor` / `eyesOf`）——
+       改造前这里与 `render.ts` 各写了一遍 `charDef.tint` / `charDef.face || 'stern'`，
+       加一种脸型就要改三处而漏改不报错。 */
+    var skin = Appearance.skinFor(look && look.palette, charDef.tint, null);
+    var eye = Appearance.eyesOf(charDef, look && look.face);
     x.translate(size / 2 + 4, size / 2 + 4);
     // 地面小影
     D.ellipse(x, 0, r * 1.05, r * 1.05, r * 0.32, 0, 'rgba(16,13,12,0.18)', D.O.none);
     S.drawBronana(x, 0, 0, r, r * 0.96, skin, U.seedFromStr(charDef.id) % 100,
-      { eyeStyle: charDef.face || 'stern', mood: 'idle', dots: true });
+      { eyeStyle: eye, mood: 'idle', dots: true });
+    /* 配件画在**身体之后**（它是"戴在头上的东西"）。dy 按身体半径走 ——
+       写死像素的话换个角色就会陷进头里或飘在半空。 */
+    if (look && look.accessory) {
+      S.drawAccessory(x, 0, -r * 0.72, r, look.accessory);
+    }
   });
 };
 

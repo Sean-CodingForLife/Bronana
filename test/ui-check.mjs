@@ -197,7 +197,12 @@ const DYNAMIC_CLASSES = new Set([
   // 工坊的配方页签与"造不了"的行
   'craft-tabs', 'craft-note', 'on', 'dim',
   // 技能栏的格子（按 sess.skills.slots **动态生成**：一个技能一格）
-  'sk-slot', 'ready', 'cooling', 'dry'
+  'sk-slot', 'ready', 'cooling', 'dry',
+  /* R50 的两屏（选存档 / 捏人）：卡片与选项都是**按存档和表动态生成**的 ——
+     `.slot-card`（三个槽位）、`.entry-row` 那一族（入门三选的三列九档）。
+     它们不在 index.html 里，因为"有几个槽位""有几档"分别是 `slots.ts` 与
+     `openings.ts` 说了算，界面只是照画。 */
+  'slot-card', 'entry-row', 'en-name', 'en-note', 'en-give'
 ]);
 
 const missingId = [...cssIds].filter(id => !htmlIds.has(id));
@@ -514,7 +519,7 @@ if (loadErr) { console.log('\n\x1b[31m无法继续\x1b[0m\n'); process.exit(1); 
   console.log('    · 动作分布：' + gnames.map(g => g + ' ' + groups[g].length).join('  ·  '));
 }
 
-const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger, Station } = g;
+const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger, Station, Slots, Appearance } = g;
 
 /* =========================================================
    1c. 文案的单源检查（"别散落到各处"）
@@ -1101,7 +1106,10 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   ok(enabled3 === 4, '解锁到第 3 级后 0-3 可选', enabled3);
 
   /* 端到端：选的难度真的进了这一局 —— 而**开局落在大厅（站）**，不是直接落进战斗。
-     用户的设想：点开始 → 选角色 → 进大厅 → 从大厅的门去三个模块（全都在局内）。 */
+     用户的设想（R50 之后是三步）：开始 → **选存档** → 选职业 → 捏人 → 大厅。
+     ⚠ 这一节要先建一个存档角色：`confirm-char` 现在会分叉 ——
+       **这个档已经有人** = "换职业"（直接开局）；**还没有人** = 去捏人（`create`）。 */
+  Profile.saveCharacter({ name: '测试人', look: { palette: 'frost' } }, 'ranger');
   UI.selectedDanger = 2;
   clickAct('confirm-char');
   ok(Game.state === 'station', '确认出发进入大厅（站）——三个模块都在局内的一张图上', Game.state);
@@ -1185,16 +1193,43 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
    而标题页 / 选人页那对局外入口已经删掉（上面那条"玩家真走的路"就是从标题点过来的）。
    ========================================================= */
 {
-  Profile.reset();
   Game.setState('title', true);
   UI.refresh();
   /* 枢纽的入口在**局内**（2026-09 用户拍板）：标题页 / 选人页都没有它，
-     要先进大厅 —— 也就是玩家真走的那条路：开始 → 选角色 → 确认出发 → 大厅。 */
+     要先进大厅 —— 也就是玩家真走的那条路（R50 之后是四步）：
+       **开始 → 选存档 → 开始新档 → 选职业 → 捏人确定 → 大厅**。 */
   clickAct('start');
-  ok(Game.state === 'chars', '「开始游戏」进选人页', Game.state);
+  ok(Game.state === 'slots', '「开始游戏」进**选存档**（R50 的第一步）', Game.state);
+  ok(registry['scr-slots']._classes.has('active'), '选存档那一屏是亮的', String(Game.state));
+  const emptyCards = registry['slot-grid'].children.filter(c => c._classes.has('empty')).length;
+  ok(emptyCards === Slots.COUNT, '空档案下 ' + Slots.COUNT + ' 个槽位都标成空档', emptyCards);
+  clickAct('slot-new');
+  ok(Game.state === 'chars', '「开始新档」→ 选职业', Game.state);
   clickEl(registry['char-grid'].children.find(c => c.dataset.char === 'ranger'));
   clickAct('confirm-char');
-  ok(Game.state === 'station', '确认出发 → 大厅（枢纽的入口在这一屏）', Game.state);
+  ok(Game.state === 'create', '还没有人 → 确认之后去**捏人**（R50 的第二步）', Game.state);
+  ok(!!Profile.character(), '捏人页一进来就已经有这个档的人（接下来改的都是他）');
+  /* 捏人页四块都要在：名字 / 外观三列 / 初始职业 / 入门三选 */
+  ok(registry['create-palette'].children.length === Appearance.PALETTES.length,
+    '色板一排 ' + Appearance.PALETTES.length + ' 档', registry['create-palette'].children.length);
+  ok(registry['create-face'].children.length === Appearance.FACES.length, '脸型一排也在');
+  ok(registry['create-accessory'].children.length === Appearance.ACCESSORIES.length, '配件一排也在');
+  const entryRows = registry['create-entry'].children.filter(c => c._classes.has('entry-row'));
+  const entryTotal = Game.creationOptions().reduce((n, c) => n + c.list.length, 0);
+  ok(entryRows.length === entryTotal,
+    '入门三选一共 ' + entryTotal + ' 档（技能 / 属性 / 天赋各一列）', entryRows.length);
+  ok(String(registry['create-job'].textContent).indexOf('全能人') >= 0,
+    '捏人页顶上写着初始职业', registry['create-job'].textContent);
+  /* 点一下外观 → 真的落进存档（不是只在界面上高亮） */
+  clickEl(registry['create-palette'].children[3]);
+  ok(Profile.character().look.palette === Appearance.PALETTES[3].id,
+    '点一个色板 → 存档里的外观跟着变', Profile.character().look.palette);
+  /* 「随机一套」必须**确定**：同一个种子两次得到同一套（可复现） */
+  const rA = Game.randomLook(777), rB = Game.randomLook(777);
+  ok(rA.palette === rB.palette && rA.face === rB.face && rA.accessory === rB.accessory,
+    '随机外观是确定性的（同一种子 → 同一套）', JSON.stringify(rA));
+  clickAct('create-go');
+  ok(Game.state === 'station', '确定 · 开始冒险 → 大厅（枢纽的入口在这一屏）', Game.state);
   clickAct('hub');
   ok(Game.state === 'hub' && registry['scr-hub']._classes.has('active'),
     '大厅底栏能进枢纽（枢纽也归局内）', Game.state);
@@ -1283,7 +1318,7 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
     walk(root);
     return out.join(' ');
   };
-  for (const st of ['title', 'chars', 'hub', 'codex', 'keep', 'talents', 'settings', 'records', 'howto']) {
+  for (const st of ['title', 'slots', 'chars', 'create', 'hub', 'codex', 'keep', 'talents', 'settings', 'records', 'howto']) {
     Game.setState(st, true);
     UI.refresh();
     const ov = Scene.overlayOf(st);
@@ -1293,7 +1328,7 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
     const hit = txt.indexOf('**');
     if (hit >= 0) bad.push(st + ' → ' + txt.slice(Math.max(0, hit - 24), hit + 24).replace(/\s+/g, ' '));
   }
-  ok(bad.length === 0, '九屏渲染出来的文案里没有残留 markdown（**加粗** 之类）', bad.join(' | '));
+  ok(bad.length === 0, '十一屏渲染出来的文案里没有残留 markdown（**加粗** 之类）', bad.join(' | '));
   Game.setState('title', true);
   UI.refresh();
 }
