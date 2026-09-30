@@ -1300,9 +1300,11 @@ NPC / 剧情那一间（"局与局之间的家"是旧说法）。用户一句话
 | `vite build` | ✅ 441ms · `dist/index-CQ2Cr-7c.js` 654.70 kB（gzip 243.43 kB） |
 | `node tools/readme-stats.cjs` | ✅ README 存量表随行数刷新（84 个模块 · 37964 行） |
 | `tools/ui-shot.mjs`（1280×720） | ✅ 20 屏全装得下、没有被裁的文字；大厅底栏的「枢纽」+角标、枢纽的「去大厅」与「门口」新文案都在框内（这两屏的截图逐字看过） |
-| CI（`.github/workflows/ci.yml`） | 🕐 推送后核对（本行与下面的链接在 CI 绿之后补上） |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success** |
 
 ⚠ 与 R44 / R45 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，那次核对不成立。
+
+CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864738>
 
 
 ---
