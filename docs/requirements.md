@@ -1448,6 +1448,16 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 3. 要加**全屏后处理**（泛光 / 扭曲 / 屏幕光照）—— 这条 Canvas2D 无论如何做不到；
 4. 要做**离屏 / Worker 渲染**，把主线程让给模拟与 UI。
 
+#### 证据（本轮**没有代码改动** —— 盘点用的读数都是现场量的）
+
+| 命令 | 读数 |
+| --- | --- |
+| `node test/perf.mjs` | ✅ 三场景最差 P95 **1.284 ms** / 16.6ms 预算（占 7.7%） |
+| `node test/render-check.mjs` | ✅ 稳态绘制调用中位 **290 次/帧**（预算 <900）· 每帧新建选项对象 **0.0 个**（改造前 37/帧 ≈ 2247 次/秒）· 贴花 299 次/帧（改造前 605）· 密集场景 300 怪：enemies 1300 / underlay 788 / particles 440 · 换波烘焙帧 51,096 次（上界 60000） |
+| `node tools/draw-census.mjs` | ✅ 空场 58 次/帧（按来源：fill 19 · drawDoors 14.7 · ink 9） |
+| `node tools/verify.mjs --quick` | ✅ 16 / 16 门（`test` 那道 57 套在 CI 上跑全量） |
+| `git push` / CI | ✅ `17001e1..5bc183c` · **completed / success**（[run 36758546959](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36758546959)） |
+
 ⚠ 与 §六 / §九 同一套写法：**"暂不换"不等于"永不换"** —— 上面四条是可判定的，
 满足哪一条就重新开一轮（那时这一节就是施工说明的起点）。
 
