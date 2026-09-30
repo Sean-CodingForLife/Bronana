@@ -1372,6 +1372,8 @@ interface DiagApi {
   world(): string;
   /** 对象系统的一行（几类原型 / 几个容器 / 场上几个 / 身份到几号） */
   objects(): string;
+  /** 对白那一行（这一局说过哪几句 bark / 打字机速度）—— R41 */
+  talk(): string;
   depth(): string;
   registry(): string;
   cache(): string;
@@ -2908,6 +2910,13 @@ interface ProfileApi {
   linesFor(npcId: string): StoryLineDef[];
   /** 他说了这一句（once 的从此不再出现） */
   say(lineId: string): boolean;
+  /* ---- 对话的分支（R41）：判定在 `story.ts`，这里只喂 ctx 与 said ---- */
+  /** 这一句现在能选哪几个（条件不满足的**不出现**，不是灰着） */
+  choicesFor(line: StoryLineDef | null): StoryChoiceDef[];
+  /** 挑了一条选项之后该看哪一句（null = 这次对话结束） */
+  branchOf(line: StoryLineDef | null, choiceId: string): StoryLineDef | null;
+  /** 这一条台词有没有分支 */
+  hasChoices(line: StoryLineDef | null): boolean;
   hasStoryNews(): boolean;
   /** 每个 NPC 各有几句新话（界面画"!"） */
   newsByNpc(): Record<string, number>;
@@ -3305,10 +3314,22 @@ interface StoryNpcDef {
   /** 解锁条件（null = 一开始就在） */
   unlock: StoryWhen | null;
 }
+/** 对话选项（R41 补的那一半：改造前只有"▽ 继续说"）。
+ *  ⚠ `to` 为空串 = **说完就结束**；有值 = 跳到那条台词。
+ *  两者在界面上长得一样（对话都结束了），所以"指向一条不存在的台词"只能靠总账查。 */
+interface StoryChoiceDef {
+  id: string; text: string;
+  /** 下一条台词的 id（空串 = 这次对话到此为止） */
+  to: string;
+  /** 这个选项什么时候出现（null = 一直在） */
+  when: StoryWhen | null;
+}
 interface StoryLineDef {
   npc: string; id: string; text: string; when: StoryWhen;
   /** 说过就不再出现（枢纽对话要有"清空"的进度感） */
   once: boolean;
+  /** **分支**（R41）：有它就列选项，"继续说"那条路让位 */
+  choices?: StoryChoiceDef[] | null;
 }
 /**
  * 枢纽里的一个**站点**（"家"里站着的人，或者摆着的一件设施）。
@@ -3343,7 +3364,6 @@ interface StoryCtx {
 interface StoryApi {
   /** NPC 名单（`bonds.ts` 的**同源**来源；不要另抄一份） */
   NPCS: StoryNpcDef[];
-  NPCS: StoryNpcDef[];
   /** 枢纽站点（4 位 NPC + 4 件设施）—— 枢纽界面的**唯一**数据来源 */
   STATIONS: StoryStationDef[];
   LINES: StoryLineDef[];
@@ -3367,8 +3387,58 @@ interface StoryApi {
   /** 这一层的旁白（翻层横幅用；不带条件，不剧透） */
   narration(floor: number): string | null;
   NARRATION: StoryNarrationDef[];
+  /** 按 id 找一条台词（选完分支之后跳到它） */
+  lineById(id: string): StoryLineDef | null;
+  /** 这一句现在能选哪几个（条件不满足的**不出现**，不是灰着） */
+  choicesOf(line: StoryLineDef | null, ctx: StoryCtx | null, said: Record<string, boolean> | null): StoryChoiceDef[];
+  /** 挑了一条选项之后该看哪一句（null = 这次对话结束） */
+  branchOf(line: StoryLineDef | null, choiceId: string): StoryLineDef | null;
+  hasChoices(line: StoryLineDef | null): boolean;
   describe(): string;
   audit(): { ok: boolean; problems: string[]; counts: any };
+}
+
+/* ---------------- 对话引擎（dialogue.ts，R41"缺的那一半"） ----------------
+   打字机 / 跳到整句 / 自动 / 对话历史 / 战斗短句 —— 它们的共同点是
+   **都是时间的函数**，所以与界面无关，能被无头测试直接跑。
+   ⚠ 本模块是**纯的**：不读时钟（`t` 由调用方喂）、没有模块级可变状态。 */
+interface BarkDef { id: string; when: string; text: string; note: string }
+interface DialogueHistoryEntry { who: string; name: string; text: string; line: string; at: number }
+interface DialogueApi {
+  /** 每个字的秒数（打字机速度的**唯一**出处） */
+  CHAR_SEC: number;
+  /** 露完之后停多久才算"读完了"（自动模式用） */
+  HOLD_SEC: number;
+  /** 一句话最多打多久（超长台词不许让人干等） */
+  MAX_TYPE_SEC: number;
+  /** 短句飘多久（秒） */
+  BARK_SEC: number;
+  BARKS: BarkDef[];
+  /** 触发条件的唯一出处（每一个都必须至少有一句，否则那条事件永远不出声） */
+  WHENS: string[];
+  /** 这句话有几个字（按**码点**数，代理对算一个） */
+  len(text: unknown): number;
+  /** 按**码点**切前 n 个字（句尾不会出现半个字） */
+  slice(text: unknown, n: number): string;
+  /** 打完这句话要多久 */
+  durationOf(text: unknown): number;
+  /** 第 t 秒该露出几个字 */
+  indexAt(text: unknown, t: number): number;
+  /** 全露出来 */
+  full(text: unknown): string;
+  done(text: unknown, t: number): boolean;
+  /** 自动模式：露完 + 停够了吗 */
+  autoDue(text: unknown, t: number, auto: boolean): boolean;
+  skipDue(skip: boolean): boolean;
+  HISTORY_MAX: number;
+  /** 往历史里塞一条（返回**新数组**，不改传进来的那个） */
+  pushHistory(list: DialogueHistoryEntry[] | null, entry: Partial<DialogueHistoryEntry> | null): DialogueHistoryEntry[];
+  /** 最近 n 条，**倒序**（最新的在最上面） */
+  recent(list: DialogueHistoryEntry[] | null, n: number): DialogueHistoryEntry[];
+  /** 某个事件该说哪一句（`nth` = 这一局里第几次触发；确定，一轮内不重复） */
+  barkFor(when: string, nth: number): BarkDef | null;
+  byId(id: string): BarkDef | null;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
 
 /* ---------------- 地牢地图（dungeon.ts） ---------------- */
@@ -4639,6 +4709,11 @@ interface GameApi {
   keepBuy(id: string): { ok: boolean; reason: string; cost: number; core?: number; toLevel: number };
   /** 洗点（**材料在这里扣**，`Profile.respecTalents` 只改状态） */
   respecTalents(charId: string): { ok: boolean; reason: string; cost: number };
+  /** **这一局说过哪些战斗短句**（`dialogue.ts` 的 bark id；**不进存档**）——
+   *  它是"一局一次"那条去重的账，界面/测试读它，模拟层不读。 */
+  barksSaid(): string[];
+  /** 短句表一共几条（诊断面板要"说过几 / 共几"） */
+  barkTotal(): number;
   /* ---- **存档角色**（R50）：改哪一份存档、这一档的那个人是谁 ----
      与 `Game.material` / `Game.keepBuy` 同一条纪律：界面走**一个口**，
      于是"这个人归哪一层"只有一个答案。真正的账在 `profile.ts`

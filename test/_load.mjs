@@ -60,6 +60,8 @@ export const MODULES = {
   appearance: '../src/appearance.ts',
   openings:   '../src/openings.ts',
   character:  '../src/character.ts',
+  /* 对话引擎（R41 补的那一半）：纯函数、不认识 DOM，与 story.ts 同层 */
+  dialogue:   '../src/dialogue.ts',
   tiers:   '../src/data_tiers.ts',
   elems:   '../src/data_elems.ts',
   curves:  '../src/curves.ts',
@@ -121,6 +123,8 @@ export const SIM_MODULES = [
   /* **外观与入门三选**（R50）：两者都只依赖 registry / selfcheck（openings 还读 stats），
      所以它们坐在这一批的最前面 —— `character` 读 `appearance`，顺序必须如此。 */
   'appearance', 'openings', 'character',
+  /* 对话引擎（R41）：只依赖 registry / selfcheck —— 与 `appearance` 同一批 */
+  'dialogue',
   'tiers', 'elems', 'curves',
   /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
   'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station', 'hall',

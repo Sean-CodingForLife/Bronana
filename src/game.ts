@@ -20,6 +20,7 @@ import { Tiers } from './data_tiers.ts';
 import { Weapons } from './data_weapons.ts';
 import { Col } from './collide.ts';
 import { Danger } from './danger.ts';
+import { Dialogue } from './dialogue.ts';
 import { Dungeon } from './dungeon.ts';
 import { Emit } from './emit.ts';
 import { Enemies } from './enemies.ts';
@@ -411,6 +412,11 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
        这是行为指纹不变的前提（挑战 / CLI / 无头测试都走那条路）。 */
   var me = Profile.character();
   var look = me ? Game.renderLookOf(charDef) : null;
+  /* **短句那两本账必须跟着新一局清空**（R41）：它们是"这一局说过什么"的记账，
+     留着会让第二局一句话都不说（而且不报错）。它们与 `hallRoom` 同性质 ——
+     模块级可变状态，所以登记在 `test/persist.mjs` 的清单里。 */
+  _barkN = Object.create(null);
+  _barkSaid = Object.create(null);
   // 玩家也走原型：字段由组件声明，不再手写字面量
   // （骨架由 player 原型的生成钩子随对象一起造出来，见 bronana.ts 的 Comp.onSpawn）
   var p: Player = Comp.spawn('player', {
@@ -1646,6 +1652,7 @@ var ROOM_FX: Record<string, RoomFxDef> = {
       S.growth = (S.growth || 0) + alloy;
       S.secretsFound = (S.secretsFound || 0) + 1;
       Game.events.emit('secretFound', { room: S.roomId, floor: S.floor, count: S.secretsFound, alloy: alloy });
+      bark('secret');
       return '密室：+' + m + ' 废料 · +' + mat + ' 材料 · 合金 +' + alloy;
     }
   }
@@ -1860,6 +1867,7 @@ function endWave() {
     wave: Game.wave, bonus: bonus,
     room: room ? room.id : null, type: room ? room.type : null
   });
+  bark('waveClear');
 
   /* 关底：打完**最后一层**的 Boss 房 = 通关。
      改造前的通关条件是"撑到第 finalWave 波并清场"，有了楼层之后那个条件是错的：
@@ -1890,6 +1898,7 @@ function winRun() {
   S.won = true;
   Game.events.emit('runWin', { wave: Game.wave, danger: S.danger, floor: S.floor });
   Game.setState('end');
+  bark('bossDown');
   Game.events.emit('gameOver', buildSummary(true));
 }
 
@@ -1948,6 +1957,7 @@ function checkLevelUp() {
     rollLevelCards();
     Game.setState('levelup');
     Game.events.emit('levelup', { level: p.level });
+    bark('levelUp');
   }
 }
 
@@ -2512,6 +2522,11 @@ function killEnemy(e, opt?) {
        做成掉落会让"捡不捡得到"取决于走位，而它该取决于"你打没打倒 Boss"。 */
     S.coreEarned = (S.coreEarned || 0) + CORE_PER_BOSS;
     Game.events.emit('bossDown', { id: e.def.id, name: e.def.name, floor: S.floor, core: CORE_PER_BOSS });
+    /* 短句（R41）：打赢一个器官就说一句 —— **允许重复**（`repeat`），
+       而且 `barkFor` 按表长轮转，所以第二次打赢换一句。
+       这与 hurtHard / lowHp 那几条"一局一次"的刻意不同：那些是状态，
+       这是**事件**，每一次都值得说。 */
+    bark('bossDown', true);
   }
 
   // 掉落废料
@@ -2555,6 +2570,47 @@ function killEnemy(e, opt?) {
   sfx('kill');
 }
 
+/**
+ * **战斗短句**（R41 补的那一栏："战斗中短句（barks）" ❌ → ✅）。
+ *
+ * 它是一句**飘过去就没**的话，不是对话框 —— 所以它不进会话、不改任何数值，
+ * 只**广播**一条 `bark` 事件给界面。三条纪律：
+ *
+ *   1. **不许 `Math.random`**：`record.ts` 只录种子与逐帧输入，
+ *      随机短句会让同一盘带子放出不同的话。所以"第几次触发"是**记账**的
+ *      （`_barkN`），由 `Dialogue.barkFor` 按表长轮转 —— 确定，且一轮内不重复。
+ *   2. **同一个条件一局只说一次**（`lowHp` 那种尤其）：反复喊同一句就不再是脾气，
+ *      是噪音。`_barkSaid` 记账，与 `_barkN` 一起在 `newSession` 里清空。
+ *   3. **它不认识界面**：这里只发事件，画在哪、飘多久由 `ui.ts` 决定
+ *      （与 `sfx` 那条"只广播意图"同一条纪律）。
+ *
+ * ⚠ `_barkN` / `_barkSaid` 是**接入层的记账**（不进存档、不进会话）——
+ *   它们与 `hallRoom` 同一性质：模块级可变状态，所以登记在 `test/persist.mjs`。
+ */
+var _barkN: Record<string, number> = Object.create(null);
+var _barkSaid: Record<string, boolean> = Object.create(null);
+
+/**
+ * @param repeat 允许同一条件在一局里说多次（默认**不**）——
+ *   "打赢一个器官说一句"要 repeat（每一次都值得说，而且轮转会换一句），
+ *   而"挨了重击"不要（反复喊同一句就不再是脾气，是噪音）。
+ */
+function bark(when: string, repeat?: boolean) {
+  if (!S || !S.player) return null;
+  if (!repeat && _barkSaid[when]) return null;
+  var nth = _barkN[when] || 0;
+  var def = Dialogue.barkFor(when, nth);
+  if (!def) return null;
+  _barkN[when] = nth + 1;
+  _barkSaid[when] = true;
+  Game.events.emit('bark', { id: def.id, when: def.when, text: def.text, x: S.player.x, y: S.player.y });
+  return def;
+}
+/** 一局里说过哪些短句（界面/测试读它；**不进存档**） */
+Game.barksSaid = function () { return Object.keys(_barkSaid); };
+/** 短句表一共几条（诊断面板要"说过几 / 共几"—— 它不该 import `dialogue.ts`） */
+Game.barkTotal = function () { return Dialogue.BARKS.length; };
+
 function hurtPlayer(raw) {
   var p = S.player;
   if (p.invuln > 0) return;
@@ -2577,8 +2633,13 @@ function hurtPlayer(raw) {
   addStain(p.x + (S.rnd() - 0.5) * 10, p.y + 6, 9 + S.rnd() * 4, PAL.BLOOD);
   sfx('hurt');
   recalcStats();
+  /* 短句（R41）：两条 —— "一次挨掉两成以上生命"与"掉到三成以下"。
+     两条都由**同一份账**去重（一局各说一次），所以不必在这里判重复。 */
+  if (dmg >= s.maxHp * 0.2) bark('hurtHard');
+  if (p.hp > 0 && p.hp <= s.maxHp * 0.3) bark('lowHp');
   if (p.hp <= 0) {
     p.hp = 0;
+    bark('die');
     Game.setState('end');
     Game.events.emit('gameOver', buildSummary(false));
   }
@@ -2924,6 +2985,7 @@ function overrun() {
     e.enraged = true;
   }
   Game.events.emit('overrun', { wave: Game.wave, left: S.enemies.length });
+  bark('overrun');
 }
 
 /* ---------------- 玩家 ---------------- */

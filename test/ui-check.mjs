@@ -202,7 +202,11 @@ const DYNAMIC_CLASSES = new Set([
      `.slot-card`（三个槽位）、`.entry-row` 那一族（入门三选的三列九档）。
      它们不在 index.html 里，因为"有几个槽位""有几档"分别是 `slots.ts` 与
      `openings.ts` 说了算，界面只是照画。 */
-  'slot-card', 'entry-row', 'en-name', 'en-note', 'en-give'
+  'slot-card', 'entry-row', 'en-name', 'en-note', 'en-give',
+  /* R41 · 对话补完的那几块（按台词与分支动态生成，不在 HTML 里）：
+     玩家侧那一行、打字光标、选项、读法工具条、对话历史。 */
+  'tx-row', 'tx-me', 'tx-caret', 'tx-choices', 'tx-choice', 'tx-tools', 'tx-hint',
+  'tx-log', 'tx-log-row'
 ]);
 
 const missingId = [...cssIds].filter(id => !htmlIds.has(id));
@@ -519,7 +523,7 @@ if (loadErr) { console.log('\n\x1b[31m无法继续\x1b[0m\n'); process.exit(1); 
   console.log('    · 动作分布：' + gnames.map(g => g + ' ' + groups[g].length).join('  ·  '));
 }
 
-const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger, Station, Slots, Appearance } = g;
+const { UI, Game, R, Chars, Weapons, Stats, Scene, Save, Settings, Input, Profile, Challenges, Danger, Station, Slots, Appearance, Dialogue } = g;
 
 /* =========================================================
    1c. 文案的单源检查（"别散落到各处"）
@@ -1263,12 +1267,49 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   ok(registry['hub-talk'].hidden === false, '按 E 之后对话框出现');
   const firstLine = Profile.linesFor('mother')[0];
   const talkText = () => deepText(registry['hub-talk']);
-  ok(!!firstLine && talkText().indexOf(firstLine.text) >= 0,
-    '对话框里是他现在要说的那一句', talkText().slice(0, 40));
+  const talkFind = (sel) => registry['hub-talk'].querySelectorAll(sel);
+  /* =========================================================
+     R41 · 对话补完（普查里那五栏 ❌ → ✅）
+     ---------------------------------------------------------
+     这一节守的是**五样独立的东西**，所以逐样断言，不合成一条：
+       ① 打字机：第一帧只露零个字，时间走过去才出整句
+       ② 点一下跳到整句（"跳过"）—— 它只改读法，不记账
+       ③ 玩家侧头像（改造前是单向广播）
+       ④ 选择/分支（下面单独一节：`m3` 那一条要 runs≥3，这一局拿不到）
+       ⑤ 对话历史 + 自动开关 + 「继续说」的记账
+     ========================================================= */
+  ok(!!firstLine && firstLine.id === 'm1', '菌母现在要说的是 m1（第一次进游戏）',
+    firstLine && firstLine.id);
+  ok(talkText().indexOf(firstLine.text) < 0,
+    '① 刚开口时**整句还没出来**（打字机在打，不是一次倒完）', talkText().slice(0, 30));
+  ok(talkFind('.tx-caret').length === 1, '① 还在打的时候句尾有一个光标');
+  /* 推进到"打完"：`Dialogue.durationOf` 是它该花的时间，多喂几帧保险 */
+  const ticks = Math.ceil(Dialogue.durationOf(firstLine.text) / Game.cfg.fixedDt) + 4;
+  for (let i = 0; i < ticks; i++) UI.hallSync();
+  ok(talkText().indexOf(firstLine.text) >= 0,
+    '① 打字机打完之后整句在框里（' + ticks + ' 帧）', talkText().slice(0, 40));
+  ok(talkFind('.tx-caret').length === 0, '① 打完之后光标收掉（不留一个闪的东西在句尾）');
+  /* ③ 玩家侧 */
+  ok(talkFind('.tx-me').length === 1,
+    '③ 玩家侧也有一栏（改造前是单向广播：说话的人有脸，听的人没有）');
+  /* ⑤ 三个读法入口都在 */
+  ok(talkFind('[data-act="hub-skip"]').length === 1, '⑤ 有「跳过」');
+  ok(talkFind('[data-act="hub-auto"]').length === 1, '⑤ 有「自动」（说完就往下走）');
+  ok(talkFind('[data-act="hub-log"]').length === 1, '⑤ 有「历史」（对话历史是一栏 ❌）');
+  /* ② 「跳过」/「自动」只改读法，不记账、不换句 */
+  const beforeSkip = Profile.linesFor('mother').length;
+  clickEl(talkFind('[data-act="hub-skip"]')[0]);
+  ok(Profile.linesFor('mother').length === beforeSkip,
+    '② 「跳过」只影响读法，**不记账、不换句**', beforeSkip + ' → ' + Profile.linesFor('mother').length);
+  /* ⑤ 历史摊开：说过的那一句能在回顾里看到 */
+  clickEl(talkFind('[data-act="hub-log"]')[0]);
+  ok(talkText().indexOf(firstLine.text) >= 0,
+    '⑤ 历史摊开之后，说过的那一句能在回顾里看到', talkText().slice(0, 60));
+  clickEl(talkFind('[data-act="hub-log"]')[0]);            // 收起来
 
   // 说一句：说过的不再出现，下一句顶上来（一次只倒一句）
   const beforeCount = Profile.linesFor('mother').length;
-  clickEl(registry['hub-talk'].querySelectorAll('[data-act="hub-say"]')[0]);
+  clickEl(talkFind('[data-act="hub-say"]')[0]);
   ok(Profile.linesFor('mother').length === beforeCount - 1,
     '点"继续说"把这一句记成说过了', beforeCount + ' → ' + Profile.linesFor('mother').length);
 

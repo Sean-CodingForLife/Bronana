@@ -573,6 +573,12 @@
 
     <div id="toast-wrap"></div>
 
+    <!-- 战斗短句（R41：barks）：一句话飘过去就没。
+         它是**表现层**的东西 —— 模拟层只广播一条 `bark` 事件（见 game.ts 的 `bark()`），
+         说什么、说几次由 `dialogue.ts` 那张表轮转（**不用随机**，回放才可复现），
+         飘多久、飘在哪由这里决定。空的时候 `hidden`（不吃鼠标）。 -->
+    <div id="bark-line" class="bark-line" hidden></div>
+
     <!-- 诊断面板（?diag=1 打开）：把扩展点总账 / 容器账目 / 深度层带 / 缓存预算显示出来。
          引擎里这是 debug overlay —— 没有它，那些"系统"就只是代码里的数字。 -->
     <div id="diag" hidden>

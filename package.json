@@ -83,6 +83,7 @@
     "test:world": "node test/world.mjs",
     "test:object": "node test/object.mjs",
     "test:character": "node test/character.mjs",
+    "test:dialogue": "node test/dialogue.mjs",
     "test:rig": "node test/rig.mjs",
     "test:frames": "node test/frames.mjs",
     "test:states": "node test/states.mjs",

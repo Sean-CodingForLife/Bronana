@@ -14,6 +14,7 @@ import { Boons } from './boons.ts';
 import { Challenges } from './challenges.ts';
 import { Daily } from './daily.ts';
 import { Danger } from './danger.ts';
+import { Dialogue } from './dialogue.ts';
 import { Dungeon } from './dungeon.ts';
 import { Economy } from './economy.ts';
 import { Items } from './data_items.ts';
@@ -198,6 +199,8 @@ UI.init = function () {
   el.createFace = q('create-face');
   el.createAccessory = q('create-accessory');
   el.createEntry = q('create-entry');
+  /* R41 · 战斗短句那一条（表现层的东西：模拟层只广播 `bark` 事件） */
+  el.barkLine = q('bark-line');
 
   /* 标题是**画出来的**（`sprites.ts` 的 promo 那一类），所以在 init 时烘一次塞进画布。
      为什么不用 CSS 文字：标题要锁死字形间距与 3px 描边 + 4px 硬边投影，
@@ -735,6 +738,67 @@ function renderCodex() {
    ========================================================= */
 var _hubNpc = '';          // 当前开口的 NPC（界面状态，不进档案；走开自动清）
 var _boardOn = false;      // 公告板是不是摊开着（同上：走开自动收）
+/* =========================================================
+   R41 · 对话的那几样"读法"状态（**全是界面状态，不进档案**）
+   ---------------------------------------------------------
+   改造前这一屏只有"这一句 + ▽继续说"。补上的东西各有各的一份状态，
+   而它们的共同点是**都不该被持久化**：下次走进这间屋必须是干净的
+   （"上次读到哪"不该跨局、跨存档带着走）—— 与 `_hubNpc` 同一条纪律。
+   ========================================================= */
+var _talkIdx = 0;          // 这一轮聊到说话人自己的第几句（`_hubNpc` 换了就归零）
+var _talkLineT = 0;        // 当前这一句已经打了多久（秒）—— 打字机的唯一输入
+var _talkSkip = false;     // 这一句别慢慢打（"点一下跳到整句"）
+var _talkAuto = false;     // 说完就自己往下走（可以一边走一边读）
+var _talkLine = '';        // 当前这一句的 id（换了就重置 `_talkLineT`）
+var _talkBranch: StoryLineDef | null = null;   // 选了分支之后正在看的那一句
+var _talkLog: DialogueHistoryEntry[] = [];     // 对话历史（上限在 dialogue.ts）
+var _talkLogOpen = false;  // 历史摊开没有
+var _barkTimer: number | null = null;          // 短句那条动画的复位句柄
+
+/** 把"当前正在看的那一句"清干净（换人、走开、重进都要它） */
+function talkReset() {
+  _talkIdx = 0; _talkLineT = 0; _talkSkip = false;
+  _talkLine = ''; _talkBranch = null; _talkLogOpen = false;
+  /* ⚠ `_talkAuto` **不在这里清**：它是"读法"（一个模式），不是"这一句的状态"——
+     走开再回来还得是自动模式，否则玩家每换一个人都要再按一次。 */
+}
+
+/** 当前该显示的那一条台词（没有就 null） */
+function talkLineNow() {
+  if (!_hubNpc) return null;
+  if (_talkBranch) return _talkBranch;
+  var lines = Profile.linesFor(_hubNpc);
+  if (!lines.length) return null;
+  return lines[Math.min(_talkIdx, lines.length - 1)];
+}
+
+/** 这一轮还剩几句（公告/提示里用） */
+function talkRest() {
+  if (!_hubNpc || _talkBranch) return 0;
+  return Math.max(0, Profile.linesFor(_hubNpc).length - _talkIdx - 1);
+}
+
+/** 玩家侧头像（R41："玩家侧也有头像"）——用**这条存档的角色**，不是职业本色 */
+function playerCanvas(size) {
+  var cc = S.domCanvas(size + 8, size + 8);
+  var cv = cc ? cc.canvas : document.createElement('canvas');
+  var cx = cc ? cc.ctx : cv.getContext('2d');
+  var me = Profile.character();
+  var def = Chars.BY_ID[(me && me.charId) || UI.selectedChar] || Chars.LIST[0];
+  var port = S.bronanaPortrait(size, def, me ? me.look : null);
+  if (port) cx.drawImage(port.canvas, 0, 0, port.width, port.height);
+  return cv;
+}
+
+/** 把这一句记进对话历史（**只记真的说出口的**，不记"正在打"的） */
+function talkLogPush(line, speakerName, text) {
+  if (!line || !text) return;
+  /* 同一条台词 id 不重复进历史（重画一帧就塞一条的话，历史会被同一句灌满） */
+  for (var i = _talkLog.length - 1; i >= 0; i--) if (_talkLog[i].line === line.id) return;
+  _talkLog = Dialogue.pushHistory(_talkLog, {
+    who: _hubNpc, name: speakerName, text: text, line: line.id, at: _talkLog.length
+  });
+}
 
 /** 档案那一带：回答"档案里攒了什么"（一横条，每项 nowrap，永不折字）。
     以前它在枢纽屏的常驻状态带里；站点卡删掉之后，它并进**公告板**那张
@@ -803,7 +867,15 @@ function renderHub() {
   /* 对话框：只画**当前这一句**。
      一次把七八句话倒出来等于什么都没说；"说一句 → 重画 → 下一句顶上来"
      才是 Hades 那种"跟人聊天"的节奏。没新话时说一句"他没别的说了"，
-     而不是留一片空白（空白会让人以为界面坏了）。 */
+     而不是留一片空白（空白会让人以为界面坏了）。
+
+     R41 之后这一屏多了五样（每条对着一次普查里标 ❌ 的那一栏）：
+       · **打字机** —— 一个字一个字地出（`Dialogue.indexAt`）；点一下跳整句
+       · **玩家侧头像** —— 左边是他、右边是你（改造前是单向广播）
+       · **选择/分支** —— 这一句有 `choices` 就列选项，"继续说"让位
+       · **读法工具条** —— 跳过 / 自动 / 历史（两个模式 + 一块回顾）
+       · **对话历史** —— 说过的话可回看（上限在 `dialogue.ts`）
+     ⚠ 台词与分支**全在 `story.ts`**，这里只负责画与"怎么读"。 */
   if (el.hubTalk) {
     U.clear(el.hubTalk);
     el.hubTalk.hidden = !still;
@@ -813,15 +885,82 @@ function renderHub() {
       var who = U.el('div', 'tx-name', still.name);
       who.appendChild(U.el('span', 'tx-role', still.role));
       body.appendChild(who);
-      var lines = Profile.linesFor(still.npc);
-      if (lines.length) {
-        body.appendChild(U.el('div', 'tx-line', lines[0].text));
-        // 一个小按钮（键盘/手柄/鼠标）：往前走一句
-        var more = lines.length - 1;
-        var nx = U.el('button', 'btn tiny tx-next',
-          '▽ 继续说' + (more > 0 ? '（还有 ' + more + ' 句）' : '（最后一句）'));
-        nx.dataset.act = 'hub-say';
-        body.appendChild(nx);
+      var line = talkLineNow();
+      if (line) {
+        /* 打字机：`_talkLineT` 由 `hallSync` 每显示帧推进（**不在渲染里推进**：
+           重画一次就多打一个字的话，帧率会变成打字速度）。 */
+        var shown = _talkSkip ? line.text : Dialogue.slice(line.text, Dialogue.indexAt(line.text, _talkLineT));
+        var lineEl = U.el('div', 'tx-line', shown);
+        if (!_talkSkip && !Dialogue.done(line.text, _talkLineT)) {
+          lineEl.appendChild(U.el('span', 'tx-caret', ''));   // 还在打：句尾一个光标
+        }
+        body.appendChild(lineEl);
+        /* 打完之后才**记进历史**（"正在打"的半句话不该进回顾） */
+        if (Dialogue.done(line.text, _talkLineT)) talkLogPush(line, still.name, line.text);
+
+        /* 选择：两档以上就列选项。条件不满足的**不出现**（`choicesOf` 已经滤过） */
+        var choices = Profile.choicesFor(line);
+        if (choices.length) {
+          var box = U.el('div', 'tx-choices');
+          choices.forEach(function (ch) {
+            var b = U.el('button', 'btn tiny tx-choice', '▸ ' + ch.text);
+            b.dataset.act = 'hub-pick';
+            b.dataset.choice = ch.id;
+            box.appendChild(b);
+          });
+          body.appendChild(box);
+        } else {
+          // 一个小按钮（键盘/手柄/鼠标）：往前走一句
+          var more = talkRest();
+          var nx = U.el('button', 'btn tiny tx-next',
+            _talkBranch ? '▽ 说完了' : ('▽ 继续说' + (more > 0 ? '（还有 ' + more + ' 句）' : '（最后一句）')));
+          nx.dataset.act = 'hub-say';
+          body.appendChild(nx);
+        }
+
+        /* 玩家侧：右边那一栏是你（R41 补的"玩家侧也有头像"）。
+           改造前对话框是**单向广播** —— 说话的人有脸，听的人没有。
+           ⚠ 角色名走**这条存档**的那一份（`Profile.character()`），
+             昵称没建过就退回"你" —— 与标题页/档位卡同一条取法。 */
+        var meRow = U.el('div', 'tx-row tx-me');
+        meRow.appendChild(playerCanvas(40));
+        var meBody = U.el('div', 'tx-body');
+        var meName = U.el('div', 'tx-name', Profile.character() ? Profile.character().name : '你');
+        meName.appendChild(U.el('span', 'tx-role', '你'));
+        meBody.appendChild(meName);
+        meRow.appendChild(meBody);
+        body.appendChild(meRow);
+
+        /* 读法工具条：跳过（这一句）/ 自动（之后每一句）/ 历史（回看） */
+        var tools = U.el('div', 'tx-tools');
+        var skipBtn = U.el('button', 'btn tiny' + (_talkSkip ? ' sel' : ''), '跳过');
+        skipBtn.dataset.act = 'hub-skip';
+        tools.appendChild(skipBtn);
+        var autoBtn = U.el('button', 'btn tiny' + (_talkAuto ? ' sel' : ''), '自动');
+        autoBtn.dataset.act = 'hub-auto';
+        tools.appendChild(autoBtn);
+        var logBtn = U.el('button', 'btn tiny' + (_talkLogOpen ? ' sel' : ''), '历史');
+        logBtn.dataset.act = 'hub-log';
+        tools.appendChild(logBtn);
+        tools.appendChild(U.el('span', 'tx-hint',
+          _talkAuto ? '自动：说完就往下走' : '点这一句跳到整句'));
+        body.appendChild(tools);
+
+        /* 历史：倒序（最新的在最上面） */
+        if (_talkLogOpen) {
+          var logBox = U.el('div', 'tx-log');
+          if (!_talkLog.length) {
+            logBox.appendChild(U.el('div', 'tx-log-row', '（还没说过什么）'));
+          } else {
+            Dialogue.recent(_talkLog, Dialogue.HISTORY_MAX).forEach(function (h) {
+              var r = U.el('div', 'tx-log-row');
+              r.appendChild(U.el('b', '', h.name + '：'));
+              r.appendChild(U.el('span', '', h.text));
+              logBox.appendChild(r);
+            });
+          }
+          body.appendChild(logBox);
+        }
       } else {
         body.appendChild(U.el('div', 'tx-quiet', '……他没别的要说了。下次回来再看。'));
       }
@@ -833,12 +972,57 @@ function renderHub() {
      这里不再重复一份：同一个元素两个写入处 = 迟早有一处忘了跟着改。 */
 }
 
-/** 让当前选中的 NPC 说一句（说过的不再出现）—— 由"说下去"按钮调用 */
+/**
+ * 让当前选中的 NPC 说一句（说过的不再出现）—— 由"说下去"按钮调用。
+ *
+ * R41 之后它多了三件事，都是"节奏"而不是"规则"：
+ *   ① **打完才记**：还在打字的时候按"继续说"= **跳到整句**（不是跳下一句）——
+ *      这是打字机界面的通用约定，少了它玩家会觉得自己按太快漏了话
+ *   ② **分支就让位**：这一句有选项时不走这里（界面列的是选项，见 `hubPick`）
+ *   ③ 说完把计时归零、`skip` 复位，下一句从头开始打
+ */
 function hubSay() {
-  var lines = Profile.linesFor(_hubNpc);
-  if (!lines.length) return false;
-  Profile.say(lines[0].id);
+  var line = talkLineNow();
+  if (!line) return false;
+  /* ① 还在打 → 这一次点击是"跳到整句"，不记账、也不换句 */
+  if (!_talkSkip && !Dialogue.done(line.text, _talkLineT)) {
+    _talkSkip = true;
+    renderHub();
+    return true;
+  }
+  /* ② 有选项的那一句不由"继续说"推进（界面列的是选项） */
+  if (Profile.hasChoices(line) && !_talkBranch) return false;
+  Profile.say(line.id);
+  /* 分支那一条看过就走（它是一次性的"回答"，不该留在池子里再出现一次） */
+  _talkBranch = null;
+  _talkIdx++;
+  _talkSkip = false;
+  _talkLine = '';
+  _talkLineT = 0;
   // 说完立刻重画：下一句顶上来，这就是"一句话一句话地聊"
+  renderHub();
+  refreshContinueButton();
+  return true;
+}
+
+/**
+ * 挑了一条选项（R41 的"选择/分支"）。
+ *
+ * ⚠ 它**只推进对话**，不碰任何账本 —— `story.ts` 那条硬约束
+ * （"叙事线一个铜板都不碰"）在这里同样成立：分支是**语气**的分支，
+ * 不是"选左给钱、选右扣钱"。要给东西的话那是 NPC 交易该干的事（另一条路）。
+ */
+function hubPick(choiceId) {
+  var line = talkLineNow();
+  if (!line) return false;
+  var next = Profile.branchOf(line, choiceId);
+  /* 这一句记成说过了 —— 分支台词于是不会每次进屋都重问一遍 */
+  Profile.say(line.id);
+  _talkBranch = next;          // null = 这条选项通向"说完就结束"
+  if (!next) _talkIdx++;
+  _talkSkip = false;
+  _talkLine = '';
+  _talkLineT = 0;
   renderHub();
   refreshContinueButton();
   return true;
@@ -856,6 +1040,8 @@ function hubSay() {
 function hallTalk(npcId) {
   if (!npcId) return;
   if (_hubNpc === npcId) { hubSay(); return; }
+  /* 换人 = 换一轮对话：打字计时、分支、这一句的"跳过"全部归零 */
+  talkReset();
   _hubNpc = npcId;
   renderHub();
 }
@@ -888,11 +1074,51 @@ function hallSync() {
   }
   if (room === 'hub') {
     var who = (h && h.near && h.near.npc) ? h.near.npc : '';
-    if (_hubNpc && _hubNpc !== who) { _hubNpc = ''; renderHub(); }
+    if (_hubNpc && _hubNpc !== who) {
+      _hubNpc = '';
+      talkReset();
+      renderHub();
+      return;
+    }
+    /* R41 · 打字机 / 自动：**每显示帧推进一次**。
+       ⚠ 为什么推进放在这里而不是 `renderHub` 里：`renderHub` 会被重画调用很多次
+         （任何一次界面刷新都会），在渲染里推进等于"重画一次就多打一个字" ——
+         帧率会变成打字速度。这里是"每一显示帧恰好一次"的那一处
+         （main.ts 对 hall 那两屏每帧调一次，与帧率无关地喂 dt）。
+
+       ⚠ `_talkLine` 是"当前这一句的**身份**"（`说话人:序号:分支id`）：
+         它一变就说明换句了，计时必须归零 —— 否则新句会**接着上一句的进度**打
+         （表现是"有时候一句话一出来就是完整的"，而这是最容易漏掉的一处）。 */
+    if (_hubNpc) {
+      var line = talkLineNow();
+      if (line) {
+        var sig = _hubNpc + ':' + _talkIdx + ':' + (_talkBranch ? _talkBranch.id : '');
+        if (sig !== _talkLine) { _talkLine = sig; _talkLineT = 0; _talkSkip = false; }
+        var prev = Dialogue.indexAt(line.text, _talkLineT);
+        /* 用**固定步长**推进（不是真实 dt）：无头测试与 2× 速度下打字速度一致，
+           而且"重画"与"打字"彻底解耦（见上面那条）。 */
+        _talkLineT += Game.cfg.fixedDt;
+        if (Dialogue.done(line.text, _talkLineT)) {
+          /* 自动模式：露完再停 `HOLD_SEC` 就往下走 */
+          if (Dialogue.autoDue(line.text, _talkLineT, _talkAuto)) {
+            if (Profile.hasChoices(line) && !_talkBranch) {
+              /* 有选项的那一句**不自动往下走**：那等于替玩家做了选择。
+                 停在"打完了"的状态上等他点（计时不再涨，所以不会反复触发）。 */
+              _talkLineT = Dialogue.durationOf(line.text);
+            } else {
+              hubSay();
+              return;
+            }
+          }
+        }
+        /* 只有"露出的字数变了"才重画 —— 否则每帧重建一次 DOM（60 次/秒） */
+        if (_talkSkip || Dialogue.indexAt(line.text, _talkLineT) !== prev) renderHub();
+      }
+    }
     return;
   }
   /* 不在屋里（暂停菜单 / 已经换屏）：两样都收起来，下次进来是干净的 */
-  if (_boardOn || _hubNpc) { _boardOn = false; _hubNpc = ''; }
+  if (_boardOn || _hubNpc) { _boardOn = false; _hubNpc = ''; talkReset(); }
 }
 
 /* =========================================================
@@ -2371,6 +2597,15 @@ var ACT_HUB: ActMap = {
     Game.setState(from && Game.canSetState(from) ? from : 'title');
   },
   'hub-say': function () { hubSay(); },
+  /* R41 · 对话补完的四条动作（普查里那几栏 ❌ → ✅） */
+  'hub-pick': function (t) { hubPick((t.dataset && t.dataset.choice) || ''); },
+  'hub-skip': function () { _talkSkip = !_talkSkip; renderHub(); },
+  'hub-auto': function () {
+    _talkAuto = !_talkAuto;
+    UI.toast(_talkAuto ? '自动：说完就往下走（有选项的那句会停下等你选）' : '自动：关', '');
+    renderHub();
+  },
+  'hub-log': function () { _talkLogOpen = !_talkLogOpen; renderHub(); },
 };
 
 var ACT_CODEX: ActMap = {
@@ -2494,6 +2729,25 @@ function wireEvents() {
      （接入层不替界面决定；见 game.ts 的 `Game.hallAct`）。 */
   G.on('hallTalk', function (d) { hallTalk(d && d.id); });
   G.on('hallBoard', function () { hallBoard(); });
+
+  /* R41 · 战斗短句（barks）：模拟层只广播"说了哪一句 + 说的人在哪儿"，
+     画在哪、飘多久在这里决定（与 `sfx` 那条"只广播意图"同一条纪律）。
+     用一个**时序**（`setTimeout`）把元素收起来 —— 不收的话它会挂着最后一句话
+     等下一次触发（而 CSS 动画只跑一次）。 */
+  G.on('bark', function (d) {
+    if (!el.barkLine || !d || !d.text) return;
+    el.barkLine.textContent = String(d.text);
+    el.barkLine.hidden = false;
+    /* 重新触发动画：先摘掉类、强制重排、再挂回去（否则同一个类不会重播） */
+    el.barkLine.classList.remove('on');
+    void el.barkLine.offsetWidth;
+    el.barkLine.classList.add('on');
+    if (_barkTimer !== null) clearTimeout(_barkTimer);
+    _barkTimer = setTimeout(function () {
+      _barkTimer = null;
+      if (el.barkLine) el.barkLine.hidden = true;
+    }, Math.round(Dialogue.BARK_SEC * 1000));
+  });
 
   // 状态变化 → 界面刷新（唯一驱动源，避免各处手动 refresh 漏掉某个状态）
   G.on('stateChange', function (d) {

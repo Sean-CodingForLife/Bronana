@@ -85,7 +85,12 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
        它不影响任何玩法数值，不进存档；见 types.d.ts 的 HallState 注释）。
        登记在这里是因为它确实是"模块级可变状态"，而这份盘点的规矩是
        "可变就必须被看见" —— 不是"进了存档才登记"。 */
-    'game.ts': ['S', 'hallRoom', '_seat', '_cand', '_candT', '_candRaw', '_segQ'],
+    'game.ts': ['S', 'hallRoom', '_seat', '_cand', '_candT', '_candRaw', '_segQ',
+      /* R41 · 战斗短句的两本账（见 game.ts 的 `bark()`）：
+         `_barkN` = 每个触发条件说过几次（`barkFor` 按它轮转），
+         `_barkSaid` = 这一局说过哪些（"一局一次"那条去重的账）。
+         它们与 `hallRoom` 同性质：**不进存档**，但"可变就必须被看见"。 */
+      '_barkN', '_barkSaid'],
     'emit.ts': ['S', 'STEP_CTX'],
     'render.ts': ['w', 'h', '_skin', '_pose', '_parts', '_seat', '_flashOpt', 'pf', '_atlasWarm',
       // 横幅（"第 N 间 · 房型"）的文本与倒计时：**纯表现**，所以它住在渲染层而不是会话上
@@ -141,7 +146,16 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
       /* 捏人页那枚"随机"按钮的种子（R50）：**确定性地**推进，于是
          "同一个种子两次得到同一套外观"这条可测。它不是随机数发生器，
          只是一个自增的种 —— 换档 / 重进页面不必重置它。 */
-      '_createSeed'],
+      '_createSeed',
+      /* R41 的对话状态：`_talkIdx`（聊到第几句）/ `_talkLineT`（这一句打了多久）/
+         `_talkSkip`（这一句跳不跳）/ `_talkAuto`（读法：自动往下）/
+         `_talkLine`（当前这一句的身份签名）/ `_talkBranch`（分支里正在看的那句）/
+         `_talkLog`（对话历史）/ `_talkLogOpen`（历史摊开没有）。
+         它们**全是界面状态**：下次走进这间屋必须是干净的（"上次读到哪"不该
+         跨局、跨存档带着走）—— 与 `_hubNpc` / `_boardOn` 同一条纪律。 */
+      '_talkIdx', '_talkLineT', '_talkSkip', '_talkAuto', '_talkLine', '_talkBranch', '_talkLog', '_talkLogOpen',
+      /* 战斗短句那条动画的复位句柄（表现层；不登记的话它是个"没人看得见的状态"） */
+      '_barkTimer'],
     // 惰性解析出来的摇杆 DOM 引用（缓存）+ 手柄按键的复用缓冲 + 改键回调 + 一次性的"已解析"标记
     // `_padHeld`：上一帧手柄有没有按住键（只在"有→无"时清一次缓冲，避免每帧分配两个对象）
     'input.ts': ['hasDOM', '_capture', '_padKeys', '_padOnce', '_padHeld', '_stickEl', '_knobEl', '_stickReady'],

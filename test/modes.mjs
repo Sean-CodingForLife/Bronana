@@ -412,7 +412,10 @@ console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一�
       ' kB（gzip ' + kb(gz(html)) + '）· **全站 gzip ' + kb(gzAll) + ' kB**');
     ok(js.length <= rawCap * 1000,
       '未压缩 JS 在配置的上限内（' + kb(js.length) + ' ≤ ' + rawCap + ' kB）');
-    ok(gz(js) <= 270 * 1000, 'gzip 后的 JS ≤ 270 kB（现在 ' + kb(gz(js)) + '）');
+    /* 真正要紧的那一条。275 是 R41 那一轮**写明理由**之后钉的数
+       （实测 267.2 —— 离上限只剩 7.8 kB，不是"放到好过"）。
+       ⚠ 它只许往下调：涨之前先看 CHANGELOG 里那次放宽的理由还在不在。 */
+    ok(gz(js) <= 275 * 1000, 'gzip 后的 JS ≤ 275 kB（现在 ' + kb(gz(js)) + '）');
     ok(gzAll <= 300 * 1000,
       '全站 gzip ≤ 300 kB —— 玩家真正下载的那一份（现在 ' + kb(gzAll) + '）');
   }

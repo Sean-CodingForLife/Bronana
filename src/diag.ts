@@ -113,10 +113,21 @@ Diag.objects = function () {
     Containers.names().length + ' 容器  场上 ' + live + '  身份 #' + c.spawned;
 };
 
+/** 对话 / 短句：这一局说过哪几句 bark（R41 补的那一栏）。
+ *
+ *  ⚠ 这里**只读 `Game` 的口**（`barksSaid` / `barkTotal`），不 import `dialogue.ts`：
+ *    诊断面板只该"读各系统的账"，多一条到 L0 表的边就多一条要维护的依赖
+ *    （`test/debug.mjs` 有一条判据盯着这件事，实测就是它抓出来的）。 */
+Diag.talk = function () {
+  var said = Game.barksSaid();
+  var all = Game.barkTotal();
+  return '对白  ' + (said.length ? (said.length + '/' + all + ' 条短句说过：' + said.join(' ')) : '（这一局还没说短句）');
+};
+
 /** 汇总：面板就显示这几行 */
 Diag.lines = function () {
   return [Diag.header(), Diag.frame(), Diag.world(), Diag.objects(), Diag.containers(),
-    Diag.depth(), Diag.registry(), Diag.cache()];
+    Diag.depth(), Diag.registry(), Diag.cache(), Diag.talk()];
 };
 
 Diag.text = function () { return Diag.lines().join('\n'); };

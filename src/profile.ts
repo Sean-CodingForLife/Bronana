@@ -1446,6 +1446,21 @@ Profile.say = function (lineId) {
 };
 /** 枢纽上有没有"新话"（标题页那个"!"） */
 Profile.hasStoryNews = function () { return Story.hasNews(Profile.storyCtx(), data.story.said); };
+
+/* ---- 对话的分支（R41：改造前只有"▽ 继续说"）----
+   判定全在 `story.ts`（纯函数：这一句能选哪几个、选完去哪一句），
+   这里只把**当前那份 ctx 与 said** 喂进去 —— 与 `linesFor` 同一条纪律。 */
+/** 这一句现在能选哪几个（条件不满足的**不出现**） */
+Profile.choicesFor = function (line) {
+  return Story.choicesOf(line, Profile.storyCtx(), data.story.said);
+};
+/** 挑了一条选项之后该看哪一句（null = 这次对话结束） */
+Profile.branchOf = function (line, choiceId) {
+  return Story.branchOf(line, choiceId);
+};
+/** 这一条台词有没有分支（界面据此决定"继续说"还是"列选项"） */
+Profile.hasChoices = function (line) { return Story.hasChoices(line); };
+
 /** 每个 NPC 各有几句新话（界面按它决定要不要画"!"） */
 Profile.newsByNpc = function () {
   var out: Record<string, number> = {};

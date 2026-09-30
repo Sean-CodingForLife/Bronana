@@ -116,15 +116,45 @@ var FLAGS: Record<string, string> = {
      flag       : 某个布尔 flag 为真（必须在 FLAGS 里登记）
    `once: true` 的台词说过就不再出现（枢纽的对话要有"清空"的进度感）。
    ========================================================= */
-function L(npc, id, text, when?, once?) {
-  return { npc: npc, id: id, text: text, when: when || {}, once: once !== false };
+function L(npc, id, text, when?, once?, choices?) {
+  return { npc: npc, id: id, text: text, when: when || {}, once: once !== false, choices: choices || null };
+}
+
+/**
+ * 一条**带选择**的台词（R41 补的那一半：改造前只有"▽ 继续说"）。
+ *
+ * 为什么选项挂在台词上而不是另起一棵对话树：
+ *   · 本作的对话是**一句话一句话地聊**（见 `hubSay` 的注释），不是节点图；
+ *   · 选项要能用**同一套条件语言**（`when`）—— 那套语言已经在这里了，
+ *     另起一套就多一份要维护的判定；
+ *   · `to` 指向**下一条台词的 id**（不是节点），于是"分支"天然可以**收拢**
+ *     （两条选项指向同一句 = 殊途同归，那是最常见的一种写法）。
+ *
+ * ⚠ `to` 为空串 = **说完就结束这次对话**（不开新分支）。这与"没有选项"不同：
+ *   没有选项 = 玩家只能"继续说"；有选项而不指向任何地方 = 玩家在**做选择**。
+ */
+function C(id, text, to?, when?) {
+  return { id: id, text: text, to: to || '', when: when || null };
 }
 
 var LINES: StoryLineDef[] = [
   /* ---- 菌母：核心设定，随局数与通关推进 ---- */
   L('mother', 'm1', '……你醒了。好。别急着问自己是什么。', { runs: 0 }),
   L('mother', 'm2', '你是我从土里挤出来的。你身上有我。', { runs: 1 }),
-  L('mother', 'm3', '外面那片荒漠，本来不是荒漠。', { runs: 3 }),
+  /* **第一条带选择的台词**（R41）：玩家第一次能"问回去"。
+     两个选项各通向一句回答，回答里再不分支 —— 这就是"再收拢"的写法。
+     ⚠ 选项**不碰任何钱**（§6.5 的硬约束在 next; 见 `Story.audit` 里那条"不许有经济操作"）。 */
+  L('mother', 'm3', '外面那片荒漠，本来不是荒漠。', { runs: 3 }, true, [
+    C('m3a', '那是什么把它变成这样的？', 'm3a_r'),
+    C('m3b', '我不关心。', 'm3b_r'),
+    /* **带条件的选项**：玩过 6 局之后才多出这一问。
+       条件不满足时它**不出现**（不是灰着）—— 与"隐藏角色连卡都不出现"同一条纪律。
+       这一条同时是"条件选项"那条代码路径的**唯一实测点**（`test/dialogue.mjs` [2]）。 */
+    C('m3c', '你自己是什么？', 'm3c_r', { runs: 6 })
+  ]),
+  L('mother', 'm3a_r', '问得好。……是一层正在长的东西。它本来是我们家的一部分。', { runs: 3 }),
+  L('mother', 'm3b_r', '……好。你会关心的。', { runs: 3 }),
+  L('mother', 'm3c_r', '……我不记得了。你问这个做什么。', { runs: 6 }),
   L('mother', 'm4', '菌毯在长。它不吃土，它吃"还活着的东西"。', { floor: 2 }),
   L('mother', 'm5', '你死一次，我就多记得一点。别怕死，怕白死。', { runs: 5 }),
   L('mother', 'm6', '那四个……是它的器官。你砍一个，它就慢一点。', { bosses: 1 }),
@@ -136,7 +166,13 @@ var LINES: StoryLineDef[] = [
   L('picker', 'p1', '别把材料全塞进枪里。墙也是能用的。', { runs: 0 }),
   L('picker', 'p2', '你在营地里摆东西的顺序，比摆什么更要紧。', { runs: 2 }),
   L('picker', 'p3', '我见过有人把营火和哨塔挨着放，两样都变强了。别问我为什么。', { floor: 2 }),
-  L('picker', 'p4', '菌床那老东西给你产孢子？省着花。孢子是给墙的，不是给枪的。', { runs: 4 }),
+  /* 第二条带选择的：两个选项通向"省着花"与"告诉我怎么花"两种语气 */
+  L('picker', 'p4', '菌床那老东西给你产孢子？省着花。孢子是给墙的，不是给枪的。', { runs: 4 }, true, [
+    C('p4a', '那把枪的钱从哪来？', 'p4a_r'),
+    C('p4b', '我自己的钱我自己定。', 'p4b_r')
+  ]),
+  L('picker', 'p4a_r', '打啊。你不是挺能打吗。', { runs: 4 }),
+  L('picker', 'p4b_r', '行。亏了别来找我。', { runs: 4 }),
   L('picker', 'p5', '有些墙是空的。你打两下就知道了。', { secrets: 1 }),
   L('picker', 'p6', '打得准不如打得久。你懂我意思。', { wins: 1 }),
 
@@ -295,6 +331,52 @@ Story.linesFor = function (npcId, ctx, said) {
   return out;
 };
 
+/* =========================================================
+   7b. 选择（R41：改造前只有"▽ 继续说"）
+   ---------------------------------------------------------
+   三件事，都是纯函数：
+     · `choicesOf(line, ctx, said)` —— 这一句现在能选哪几个
+     · `lineById(id)`            —— 选完之后去哪一句
+     · `branchOf(line, choiceId)`—— 那一条选项通向哪里
+   ⚠ 选项也可以带 `when`：**没有选择的选择是假选择**，所以条件不满足的选项
+     直接**不出现**（而不是灰着）—— 与"隐藏角色连卡都不出现"同一条纪律。
+   ========================================================= */
+Story.lineById = function (id) {
+  for (var i = 0; i < LINES.length; i++) if (LINES[i].id === id) return LINES[i];
+  return null;
+};
+
+/** 这一句现在能选哪几个（顺序 = 表里的顺序 = 界面上从上到下） */
+Story.choicesOf = function (line, ctx, said) {
+  if (!line || !line.choices || !line.choices.length) return [];
+  var out: StoryChoiceDef[] = [];
+  for (var i = 0; i < line.choices.length; i++) {
+    var c = line.choices[i];
+    if (c.when && !Story.match(c.when, ctx)) continue;
+    out.push(c);
+  }
+  return out;
+};
+
+/**
+ * 挑了一条选项之后该看哪一句。
+ * @returns 下一条台词定义；`to` 为空（或指向一条不存在的台词）= null（这次对话结束）
+ */
+Story.branchOf = function (line, choiceId) {
+  if (!line || !line.choices) return null;
+  for (var i = 0; i < line.choices.length; i++) {
+    if (line.choices[i].id !== choiceId) continue;
+    var to = line.choices[i].to;
+    return to ? Story.lineById(to) : null;
+  }
+  return null;
+};
+
+/** 这一条台词有没有分支（界面据此决定"继续说"还是"列选项"） */
+Story.hasChoices = function (line) {
+  return !!(line && line.choices && line.choices.length);
+};
+
 /** 枢纽里该出现哪些 NPC（没解锁的不出现，而不是灰着） */
 Story.npcsFor = function (ctx) {
   var out = [];
@@ -389,6 +471,10 @@ Story.audit = function () {
     if (!NPCS[i].name || !NPCS[i].role || !NPCS[i].note) problems.push(NPCS[i].id + ' 缺名字/职责/说明');
   }
   // 台词：id 唯一、归属真实、条件合法
+  /* ⚠ `flagUses` 声明在循环**之前**：选项那一节（下面）会往里塞，
+     而它原先声明在循环之后 —— 那样第一次跑就是 `undefined.push`。
+     实测踩过。 */
+  var flagUses = [];
   var i;
   for (i = 0; i < LINES.length; i++) {
     var l = LINES[i];
@@ -402,9 +488,45 @@ Story.audit = function () {
         problems.push(l.id + ' 用了未知的条件键：' + wk[w]);
       }
     }
+    /* ---- 选项（R41）：四条判据，每一条对着一种"玩家那里看着不对"的表现 ---- */
+    if (l.choices) {
+      if (l.choices.length < 2) {
+        problems.push(l.id + ' 只有一个选项 —— 那不叫选择（要么给两个，要么别给）');
+      }
+      var cid: Record<string, boolean> = Object.create(null);
+      for (var ci = 0; ci < l.choices.length; ci++) {
+        var ch = l.choices[ci];
+        if (!ch.id) { problems.push(l.id + ' 的第 ' + ci + ' 个选项没有 id'); continue; }
+        if (cid[ch.id]) problems.push(l.id + ' 的选项 id 重复：' + ch.id);
+        cid[ch.id] = true;
+        if (!ch.text) problems.push(l.id + '.' + ch.id + ' 没有文案（界面上是个空按钮）');
+        /* **指向一条不存在的台词**：表现是"点了之后对话直接结束"——
+           而那与"故意结束"（to 为空串）在界面上长得一模一样，所以只能在这里查。 */
+        if (ch.to && !LINES.some(function (x) { return x.id === ch.to; })) {
+          problems.push(l.id + '.' + ch.id + ' 指向不存在的台词：' + ch.to +
+            '（玩家点了之后对话会莫名其妙地结束）');
+        }
+        /* 选项条件里的 flag 也要声明（与台词条件同一条防线） */
+        var cwk = Object.keys(ch.when || {});
+        for (var cw = 0; cw < cwk.length; cw++) {
+          if (['runs', 'wins', 'floor', 'fragments', 'bosses', 'secrets', 'endings', 'flag'].indexOf(cwk[cw]) < 0) {
+            problems.push(l.id + '.' + ch.id + ' 用了未知的条件键：' + cwk[cw]);
+          }
+        }
+        if (ch.when && ch.when.flag) flagUses.push({ id: l.id + '.' + ch.id, flag: ch.when.flag });
+      }
+      /* **两个选项不许给出同一份文案与同一个去处**（那就是同一个按钮放了两遍） */
+      for (var ca = 0; ca < l.choices.length; ca++) {
+        for (var cb = ca + 1; cb < l.choices.length; cb++) {
+          var x = l.choices[ca], y = l.choices[cb];
+          if (x.text === y.text && (x.to || '') === (y.to || '')) {
+            problems.push(l.id + ' 的第 ' + ca + ' 与第 ' + cb + ' 个选项完全相同（文案与去处都一样）');
+          }
+        }
+      }
+    }
   }
   // **flag 必须声明**：写错一个字母，那条台词就永远取不到，而界面上毫无异常
-  var flagUses = [];
   for (i = 0; i < LINES.length; i++) {
     if (LINES[i].when && LINES[i].when.flag) flagUses.push({ id: LINES[i].id, flag: LINES[i].when.flag });
   }
@@ -552,6 +674,31 @@ Registry.family('storySource', {
 Registry.family('storyFlag', {
   note: '剧情 flag（台词条件里能用的布尔量；拼错一个字母台词就永远取不到）', owner: 'story.ts',
   values: function () { return Object.keys(FLAGS); }
+});
+/* 选项（R41）：**去处必须是一条真实存在的台词**。
+   写错一个字母的表现是"点了之后对话莫名其妙地结束" —— 而那与"故意结束"（to 为空串）
+   在界面上长得一模一样，所以只能靠总账这条引用查。 */
+Registry.family('storyLine', {
+  note: '台词（一句话一条；选项的去处指向这里的 id —— 写错 = 点了之后对话静默结束）',
+  owner: 'story.ts',
+  values: function () { return LINES.map(function (l) { return l.id; }); }
+});
+Registry.family('storyChoice', {
+  note: '对话选项（R41 补的那一半：改造前只有"▽ 继续说"）', owner: 'story.ts',
+  entries: function () {
+    var out: RegistryEntry[] = [];
+    for (var i = 0; i < LINES.length; i++) {
+      var l = LINES[i];
+      if (!l.choices) continue;
+      for (var j = 0; j < l.choices.length; j++) {
+        out.push({
+          id: l.id + ':' + l.choices[j].id,
+          refs: [{ field: 'to', value: l.choices[j].to, family: 'storyLine' }]
+        });
+      }
+    }
+    return out;
+  }
 });
 
 export { Story };
