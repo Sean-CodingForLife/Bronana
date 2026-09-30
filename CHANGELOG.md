@@ -46,6 +46,12 @@
 ⚠ 与 `hardcode-audit` 同一条规矩：**预算只能变小**。真长过 270 / 300 kB 只有两条路 ——
 砍体积，或者在这里写明为什么长；**不许把数默默调高**。
 
+证据：`npx vite build` ✅ 369ms（**警告消失**，dist 只剩 3 个文件）·
+`node test/modes.mjs` ✅ 新增 [9] 体积预算（6 条断言）·
+`node tools/verify.mjs` ✅ **17 / 17 门**（门数不变）·
+`git status` / `git log origin/main..HEAD` ✅ 干净 / 空（推送 `e820eda..53609e9`）·
+CI ✅ **completed / success**（[run 36756183608](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36756183608)）。
+
 ---
 
 ## 未发布 · 大厅与枢纽：两间**能走的房**，HUD 上的按钮列表全部删掉

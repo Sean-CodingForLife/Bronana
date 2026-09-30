@@ -1395,6 +1395,8 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 | `npx vite build` | ✅ 369ms · **警告消失** · dist 只剩 3 个文件（不再有 .map） |
 | `node test/modes.mjs` | ✅ 新增 [9] 体积预算一节（6 条断言，含"上限只有一处"与 gzip 实测值） |
 | `node tools/verify.mjs` | ✅ **17 / 17 门**（门数不变：预算搭在既有的 `test` 门里，不新开一道） |
+| `git status` / `git log origin/main..HEAD` | ✅ 干净 / 空（推送 `e820eda..53609e9`，本地改动只剩用户自己的 `pnpm-lock.yaml`） |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36756183608](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36756183608)） |
 
 ---
 
