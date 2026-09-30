@@ -117,6 +117,29 @@ var Stats = ({
   },
 
   /**
+   * 护甲倍率（**两侧共用**）：`armor` 点的护甲把一击乘成几倍。
+   *
+   * 为什么必须共用：敌人侧以前是 `dmg = dmg − armorFlat`（每击减**固定值**），
+   * 与这里不是同一条公式。固定减伤对**低单击武器是惩罚、对高单击几乎无效**：
+   * 第一层 Boss（`warden`，`armorFlat` 3）在房间 5，而开局武器单击只有 3~5 点
+   * （`smg` 3 / `turretgun` 4 / `knife` 4 / `pistol` 5）——
+   * `max(1, 3−3) = 1` 把 smg「高射速低单击」的定位整个抹掉（单击 −67%），
+   * 而同一场里的 `quake`（20 点）只被削 15%。**同一个词条，两种命运。**
+   *
+   * 危害还不止当下：这个偏差随玩家成长**自己会消失**（后期单击几十点，
+   * 3 点减免变 5%~10%），方向正好和"难度递增"相反 ——
+   * 早期最狠、后期无感，而护甲本来是拿来表达"这东西很硬"的。
+   *
+   * 外部依据：Isaac 的护甲是**百分比 + 9% 伤害下限**；Dead Cells 玩家护甲也是百分比。
+   * 本作玩家侧本来就是百分比，所以这条只是让敌人侧回到同一个世界观。
+   */
+  armorMul: function (armor) {
+    var a = Number(armor);
+    if (!isFinite(a)) a = 0;                              // NaN / ±∞ 的护甲按 0 算，绝不放行 ∞
+    return Math.max(0, 1 - Math.min(0.78, a / (Math.abs(a) + 14)));
+  },
+
+  /**
    * 护甲减伤：护甲越高收益递减。
    *
    * `armor / (armor + 14)` 在 `armor = -14` 处有一个**极点**：分母跨 0 →
@@ -128,12 +151,12 @@ var Stats = ({
    * 所以分母取 `|armor| + 14`：**正侧逐位不变**（a ≥ 0 时 |a| = a，与改造前同一条公式），
    * 负侧变成一条**单调、有界、无极点**的曲线（-3 → ×1.18、-14 → ×1.5、-∞ → ×1.74）。
    * 语义没变（护甲越低越疼），只是不再爆炸。
+   *
+   * ⚠ 公式本体已抽到 `armorMul`（敌人侧也要用同一条）—— 这里逐位保持原样：
+   * `raw × (1 − red)` 与 `raw × armorMul(a)` 的浮点结果完全相同。
    */
   damageTaken: function (s, raw) {
-    var armor = Number(s.armor);
-    if (!isFinite(armor)) armor = 0;                     // NaN / ±∞ 的护甲按 0 算，绝不放行 ∞
-    var red = Math.min(0.78, armor / (Math.abs(armor) + 14));
-    return Math.max(1, raw * (1 - red));
+    return Math.max(1, raw * Stats.armorMul(s.armor));
   },
 
   critChance: function (s) { return U.clamp(s.critChance, 0, 1); },

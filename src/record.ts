@@ -159,7 +159,7 @@ Rec.play = function (tape, step) {
   var wasRec = rec;
   rec = false;
   // 回放会真的推进模拟，于是**一局正常结束时会触发 gameOver**。
-  // 接线层（main.ts）靠这个标记判断"这是一次回放，不是玩家在打"，
+  // 接入层（main.ts）靠这个标记判断"这是一次回放，不是玩家在打"，
   // 否则按 L 放一遍录像就会往战绩与账号档案里写一局假数据。
   replaying = true;
   var evs = tape.events.slice().sort(function (a, b) { return a.frame - b.frame; });
@@ -193,7 +193,7 @@ Rec.play = function (tape, step) {
   return true;
 };
 
-/** 正在回放？接线层用它决定"这一局的结束要不要落账" */
+/** 正在回放？接入层用它决定"这一局的结束要不要落账" */
 Rec.replaying = function () { return replaying; };
 
 Rec.stats = function () {

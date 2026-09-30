@@ -41,7 +41,10 @@ const REQUIRED = [
   'weapon', 'weaponKind', 'weaponType', 'tier', // 武器（`tier` = 品级表，武器与道具共用）
   'element', 'elementEffect',                  // 元素（名字 + 附带效果的机制名）
   'curve', 'curveShape', 'curveDomain',        // 数值曲线（角色 / 怪物 / 刷怪节奏）
-  'currency', 'currencyTier', 'loopSystem',    // 货币与三模块循环（战斗 / 经营 / 养成）
+  /* ⚠ 账本拆成四本之后（v3 §5.4-错误1），这一组家族也跟着换了：
+     `currencyTier` → `currencyRole`（代币角色），`loopSystem` → `ledgerSystem`
+     （账本的归属模块）。新增 `ledger`（四本账本身）与 `coreLink`（核心素材）。 */
+  'currency', 'currencyRole', 'ledger', 'ledgerSystem', 'coreLink',
   'affix', 'affixFamily', 'affixSlot', 'affixTag', 'affixMod', // 词条（前缀/后缀，落在装备上）
   'charSpecial',                               // 角色的专属机制（写错 = 这个角色是白板）
   'item', 'itemIcon', 'itemSpecial', 'itemCost', 'itemCostAxis', // 道具（含"改机制"与"代价"两张声明表）
@@ -143,7 +146,7 @@ console.log('\n[4] 静态契约');
   /* 设置项 ↔ **界面控件**：只有"应用分支"是不够的 ——
      一项设置如果界面上没有开关，玩家永远改不到它（等于不存在）。
      这一条是补出来的：`music` 加进设置表时，应用分支、测试、主循环都接上了，
-     唯独**设置页没有那个按钮** —— 而当时的尺子只看"有没有应用分支"，全绿。
+     唯独**设置页没有那个按钮** —— 而当时的校验只看"有没有应用分支"，全绿。
      判据用 `index.html` 的静态 id 契约（与本文件上面那些覆盖层检查同一条规矩）。 */
   const html2 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const uiSrc2 = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
@@ -192,7 +195,7 @@ console.log('\n[4] 静态契约');
   /* 映射表里不能有已经不是设置的键（否则它会越积越松） */
   const staleWidget = Object.keys(WIDGET_OF).filter(k => settingKeys.indexOf(k) < 0);
   ok(staleWidget.length === 0, '控件映射表里没有已删除的设置项', staleWidget.join(', '));
-  /* 反证：按钮没了之后，那条判据的输入确实会变 —— 尺子量的是真东西 */
+  /* 反证：按钮没了之后，那条判据的输入确实会变 —— 校验量的是真东西 */
   const brokenHtml = html2.replace('data-act="set-music"', 'data-act="set-nothing"');
   ok(!/data-act="set-music"/.test(brokenHtml),
     '（对照）去掉按钮之后正则确实匹配不到 —— 判据不是空转');
@@ -213,7 +216,6 @@ console.log('\n[4] 静态契约');
     'boonOffer', 'boonPick',                         // 层间契约：给出候选 / 挑定一条
     'combine',                                       // 武器合成（制造那一侧）
     'craft',                                         // 制造（经营那一侧的主行动）
-    'buyBuild',                                      // 建材包（花材料买建材）
     'shake',                                         // 渲染层反馈（模拟层只发意图）
     'sfx'                                            // 音效意图（同上：模拟层不认识 audio.ts）
   ];

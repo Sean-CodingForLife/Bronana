@@ -93,7 +93,7 @@ var STATIONS: StoryStationDef[] = [
    自检会验"台词里用到的 flag 都在这张表里"，测试会验"每个 flag 都被声明且可达"。
    ========================================================= */
 var FLAGS: Record<string, string> = {
-  keepClocktower: '据点里买下过钟楼（接线层在 keepBuy 成功后置位）',
+  keepClocktower: '据点里买下过钟楼（接入层在 keepBuy 成功后置位）',
   deepPit: '下到过第 4 层「深井」（地图层进入该层时置位）',
   sawSecret: '发现过至少一间密室（破墙成功时置位）',
   firstWin: '第一次通关（结算时置位）'
@@ -211,7 +211,7 @@ var ENDINGS: StoryEndingDef[] = [
    `chars` 的 id 必须真实存在（测试会验）。
    ========================================================= */
 var PASTS: StoryPastDef[] = [
-  { char: 'ranger', line: '均衡豆豆不记得自己为什么是均衡的。它只记得有人给它量过尺寸。', epilogue: '它把量尺折了，插进土里。' },
+  { char: 'ranger', line: '全能人不记得自己为什么是均衡的。它只记得有人给它量过尺寸。', epilogue: '它把量尺折了，插进土里。' },
   { char: 'brawler', line: '狂战士是被菌毯吐出来的。它记得被吐出来的那一下。', epilogue: '它回去，把那口吐它的地方砸平了。' },
   { char: 'mage', line: '元素法师读过记录，所以它一直在找第四片。', epilogue: '它找到的时候，手抖得读不下去。' },
   { char: 'engineer', line: '工程师修过钟。它知道钟为什么停。', epilogue: '它没修好它 —— 它把钟拆了，重新装成别的。' },
@@ -261,7 +261,7 @@ Story.narration = function (floor) {
 /* =========================================================
    7. 纯函数：条件判定 / 取可用台词 / 挑下一片碎片
    ========================================================= */
-/** 条件是否满足（`ctx` 由接线层喂进来；这里只看数字与 flag） */
+/** 条件是否满足（`ctx` 由接入层喂进来；这里只看数字与 flag） */
 Story.match = function (when, ctx) {
   if (!when) return true;
   var c: any = ctx || {};

@@ -106,11 +106,6 @@
               <button class="btn pack" id="btn-pack-deluxe" data-act="pack-deluxe">
                 高级道具包 <span id="pack-deluxe-cost"></span>
               </button>
-              <!-- 建材包：商店的"原料"那一栏。建材是工坊的本钱，
-                   出击时主要在宝箱/补给/密室里捡；这里是"我这一波就是要开工"的应急口 -->
-              <button class="btn pack" id="btn-pack-build" data-act="pack-build">
-                建材 ×4 <span id="pack-build-cost"></span>
-              </button>
             </div>
             <div class="pack-odds" id="pack-odds"></div>
           </div>
@@ -327,6 +322,14 @@
         <span class="set-label">角色</span>
         <div class="danger-row" id="talent-char"></div>
         <span class="danger-info" id="talent-points"></span>
+            <!-- 训练 = 养成模块的局内行动（花全局货币换养成代币）。见 src/training.ts。 -->
+            <div class="settings codex-list" id="train-list"></div>
+            <!-- NPC 关系（v3 §8-3 的"共享关系状态"）：叙事与养成读同一份。见 src/bonds.ts。 -->
+            <div class="settings codex-list" id="bond-list"></div>
+            <!-- 训练 = 养成模块的局内行动（花全局货币换养成代币）。见 src/training.ts。 -->
+            <div class="settings codex-list" id="train-list"></div>
+            <!-- NPC 关系（v3 §8-3 的"共享关系状态"）：叙事与养成读同一份。见 src/bonds.ts。 -->
+            <div class="settings codex-list" id="bond-list"></div>
       </div>
       <div class="settings" id="talent-head"></div>
       <div class="settings codex-list" id="talent-list"></div>
@@ -384,6 +387,7 @@
         <div class="settings" id="codex-summary"></div>
         <div class="settings codex-list" id="codex-challenges"></div>
         <div class="settings codex-list" id="codex-catalog"></div>
+        <div class="settings codex-list" id="codex-affixes"></div>
         <div class="settings codex-list" id="codex-story"></div>
         <div class="settings codex-list" id="codex-daily"></div>
       </div>

@@ -17,7 +17,7 @@
       成绩码那条线根本不读时间，所以改时钟只坑自己。
 
    本模块是纯函数：只吃"过了多少毫秒 + 菌床等级"，吐"该给多少孢子"。
-   状态（上次见面时间）在 profile.ts，接线在 main.ts。
+   状态（上次见面时间）在 profile.ts，接入在 main.ts。
    ========================================================= */
 
 import { Registry } from './registry.ts';
@@ -47,31 +47,31 @@ Offline.rateAt = function (level) {
  * 结算一次离线产出。
  * @param elapsedMs 距上次结算过了多少毫秒（负数/NaN 一律当 0）
  * @param sporebedLevel 菌床等级（0 = 没买 → 不产出）
- * @returns { spores, minutes, minutesCounted, capped, reason }
- *          spores 为 0 时 reason 说明为什么（界面据此决定要不要提示）
+ * @returns { growth, minutes, minutesCounted, capped, reason }
+ *          growth 为 0 时 reason 说明为什么（界面据此决定要不要提示）
  */
 Offline.settle = function (elapsedMs, sporebedLevel) {
   var lv = Math.max(0, Math.min(Offline.MAX_LEVEL, Math.floor(Number(sporebedLevel) || 0)));
   var rate = Offline.rateAt(lv);
   var ms = Number(elapsedMs);
   if (!isFinite(ms) || ms <= 0) {
-    return { spores: 0, minutes: 0, minutesCounted: 0, capped: false, reason: '没有有效的间隔' };
+    return { growth: 0, minutes: 0, minutesCounted: 0, capped: false, reason: '没有有效的间隔' };
   }
   var minutes = ms / 60000;
   if (rate <= 0) {
-    return { spores: 0, minutes: minutes, minutesCounted: 0, capped: false, reason: '还没买菌床' };
+    return { growth: 0, minutes: minutes, minutesCounted: 0, capped: false, reason: '还没买菌床' };
   }
   if (minutes < Offline.MIN_MINUTES) {
-    return { spores: 0, minutes: minutes, minutesCounted: 0, capped: false, reason: '间隔太短' };
+    return { growth: 0, minutes: minutes, minutesCounted: 0, capped: false, reason: '间隔太短' };
   }
   var maxMin = Offline.MAX_HOURS * 60;
   var counted = Math.min(minutes, maxMin);
-  var spores = Math.floor(counted * rate);
-  if (spores <= 0) {
-    return { spores: 0, minutes: minutes, minutesCounted: counted, capped: minutes > maxMin, reason: '产出不足 1 点' };
+  var growth = Math.floor(counted * rate);
+  if (growth <= 0) {
+    return { growth: 0, minutes: minutes, minutesCounted: counted, capped: minutes > maxMin, reason: '产出不足 1 点' };
   }
   return {
-    spores: spores,
+    growth: growth,
     minutes: minutes,
     minutesCounted: counted,
     capped: minutes > maxMin,

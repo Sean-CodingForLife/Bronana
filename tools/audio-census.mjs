@@ -49,7 +49,7 @@ const STRICT = process.argv.includes('--strict');
 const JSON_OUT = process.argv.includes('--json');
 
 /* ---------------- 读源码 ----------------
-   ⚠ 三条纪律，每一条都是"尺子先于结论"：
+   ⚠ 三条纪律，每一条都是"校验先于结论"：
 
    ① 用共享扫描器（`tools/src-files.cjs`）而不是 `readdirSync` ——
       目录化之后子目录里的模块会被静默漏掉，而本工具照样全绿。
@@ -67,7 +67,7 @@ for (const rel of relFiles) {
      `\n};` 这样的形状定位 —— `\r` 会让它们全部匹配不上。
      这一条在第一版里就咬人了：`SFX_BY_INTENT` 明明在，正则却说找不到。
      两个选择：把正则写成 `\r?\n`（每个都要记得）或者在这里统一成 LF（只有一处）。
-     选后者 —— 尺子要读的是**代码，不是行尾风格**。 */
+     选后者 —— 校验要读的是**代码，不是行尾风格**。 */
   raw[name] = fs.readFileSync(path.join(SRC, rel), 'utf8').replace(/\r\n/g, '\n');
   code[name] = raw[name]
     .replace(/\/\*[\s\S]*?\*\//g, '')          // 块注释
@@ -84,7 +84,7 @@ const audioSrc = code['audio.ts'] || '';
 const listBlock = /Sfx\.LIST\s*=\s*\[([\s\S]*?)\n\];/.exec(audioSrc);
 if (!listBlock) {
   console.error('[audio-census] 在 src/audio.ts 里找不到 `Sfx.LIST = [` —— 解析失败。');
-  console.error('  这是**尺子坏了**，不是代码坏了：请先修本文件的解析，别去改 audio.ts。');
+  console.error('  这是**校验坏了**，不是代码坏了：请先修本文件的解析，别去改 audio.ts。');
   process.exit(2);
 }
 /* 每一条的形状是 `{ id: 'xxx', label: …, note: … }` */
@@ -155,7 +155,7 @@ for (const f of files) {
   }
 }
 
-/* ---------------- B/C. 意图桥：模拟层广播 ↔ 入口接线 ----------------
+/* ---------------- B/C. 意图桥：模拟层广播 ↔ 入口接入 ----------------
    模拟层的唯一广播点是 `game.ts` 的 `sfx()` 助手（守卫 `test/arch.mjs` [4]
    就是用 `\bsfx\('name'` 这个正则对齐两边的）。这里跟着它走。
    ⚠ 这一段要在 A″ 之前：A″ 要用 `intentBlock` 的行号范围把"模拟层广播"
@@ -170,11 +170,11 @@ const mainSrc = code['main.ts'] || '';
    真实那行的类型里有一个 `=>`（`(arg?: string) => void`），
    而 `[^=]*` 会在**那个等号**上停住 —— 后面期待 `=\s*{` 于是匹配失败。
    第一版就是这么崩的，而且崩得很响（exit 2 说"解析失败"）——
-   这正是要的：**尺子坏了要喊，不要静默变绿。** */
+   这正是要的：**校验坏了要喊，不要静默变绿。** */
 const intentBlock = /var SFX_BY_INTENT[\s\S]*?=\s*\{([\s\S]*?)\n\};/.exec(mainSrc);
 if (!intentBlock) {
   console.error('[audio-census] 在 src/main.ts 里找不到 `var SFX_BY_INTENT = {…}` —— 解析失败。');
-  console.error('  这是**尺子坏了**，不是代码坏了：请先修本文件的解析，别去改 main.ts。');
+  console.error('  这是**校验坏了**，不是代码坏了：请先修本文件的解析，别去改 main.ts。');
   process.exit(2);
 }
 const wired = Object.create(null);
@@ -267,17 +267,17 @@ console.log('  \x1b[90m  · 事件名     —— 挂在 `G.on(…)` 上（升级
 console.log('  \x1b[90m  · 界面手点   —— 只跟玩家的手走（按钮 / 点击）。这也是对的，只是保证不同。\x1b[0m');
 
 console.log('\n[B] 模拟层广播的音效意图（' + Object.keys(emittedSet).length + ' 个）\n');
-console.log('  ' + PAD('意图', 14) + PAD('入口接线', 10) + '转发到');
+console.log('  ' + PAD('意图', 14) + PAD('入口接入', 10) + '转发到');
 for (const k of Object.keys(emittedSet).sort()) {
   const fw = forwards.find(f => f.intent === k);
   console.log('  ' + (wired[k] ? '\x1b[32m✔\x1b[0m' : '\x1b[31m✘\x1b[0m') + ' ' +
     PAD(k, 12) + PAD(wired[k] ? '有' : '无', 10) + (fw ? 'Sfx.' + fw.sfx : '\x1b[31m——\x1b[0m'));
 }
 
-console.log('\n[C] 入口接线里没人广播的意图\n');
+console.log('\n[C] 入口接入里没人广播的意图\n');
 if (!neverEmitted.length) console.log('  \x1b[32m✔ 无\x1b[0m');
 else for (const k of neverEmitted) {
-  console.log('  \x1b[33m!\x1b[0m ' + k + ' —— 接了线，但模拟层从来不发它（死键）');
+  console.log('  \x1b[33m!\x1b[0m ' + k + ' —— 接上了，但模拟层从来不发它（死键）');
 }
 
 console.log('\n[D] 调用点指向的音效是否存在\n');
@@ -297,7 +297,7 @@ const defects = neverCalled.length + notWired.length + unknownCalls.length + bad
 console.log('  ' + (defects
   ? '\x1b[31m缺陷级\x1b[0m ' + defects + ' 个 \x1b[31m✘\x1b[0m'
   : '\x1b[32m✔ 每个声明过的音效都有调用点、每个意图都被接上了\x1b[0m'));
-console.log('  \x1b[36m提示级\x1b[0m：没人广播的接线 ' + neverEmitted.length +
+console.log('  \x1b[36m提示级\x1b[0m：没人广播的接入 ' + neverEmitted.length +
   ' · 从未调用的音效 ' + neverCalled.length);
 if (neverCalled.length) {
   console.log('\n  修法二选一：① 在真正发生那件事的地方调用它（这才是"补上声音"）；');

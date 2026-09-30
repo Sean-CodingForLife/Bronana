@@ -1532,7 +1532,7 @@ Art.noteOwner('fx', 'sprites.ts');
 Art.noteOwner('promo', 'sprites.ts');
 /* 白闪：`enemyFlash` 用的是 shader 库里的 `hitFlash`。
    登记"谁用了哪条 shader"与"谁生产了哪类资源"是两件事 ——
-   前者回答"这条效果接线了吗"，后者回答"这类资源有人做吗"。 */
+   前者回答"这条效果接入了吗"，后者回答"这类资源有人做吗"。 */
 ArtShaders.noteUse('hitFlash', 'sprites.ts');
 ArtShaders.noteUse('elite', 'sprites.ts');
 

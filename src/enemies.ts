@@ -35,7 +35,7 @@ E.LIST = [
   {
     id: 'brute', name: '重装巨块', shape: 'blob', color: '#b0603c', dark: '#83442a',
     hp0: 40, speed: 34, dmg0: 6, scale: 1.55, cost: 4, eyes: 2, mouth: 'wave',
-    legs: 'thick', minWave: 4, behavior: 'chase', armorFlat: 2
+    legs: 'thick', minWave: 4, behavior: 'chase', armorFlat: 5
   },
   {
     id: 'splitter', name: '分裂粘体', shape: 'blob', color: '#8ab84f', dark: '#5a7a2f',
@@ -74,14 +74,14 @@ E.LIST = [
     id: 'warden', name: '荒原暴君', shape: 'blob', color: '#4a423b', dark: '#2c2724',
     hp0: 420, speed: 32, dmg0: 10, scale: 3.0, cost: 30, eyes: 3, mouth: 'angry',
     legs: 'thick', minWave: 5, behavior: 'boss', atkCd: 2.2, projSpeed: 240, projDmg: 7,
-    keepDist: 0, projColor: '#e2564f', pattern: 'fan', fanCount: 7, armorFlat: 3,
+    keepDist: 0, projColor: '#e2564f', pattern: 'fan', fanCount: 7, armorFlat: 8,
     boss: true
   },
   {
     id: 'digger', name: '掘地者', shape: 'spiky', color: '#7a5a3c', dark: '#4f3a26',
     hp0: 380, speed: 46, dmg0: 11, scale: 2.6, cost: 30, eyes: 1, mouth: 'angry',
     legs: 'thick', minWave: 5, behavior: 'burrow', atkCd: 2.0, projSpeed: 260, projDmg: 8,
-    keepDist: 0, projColor: '#d9a83c', pattern: 'ring', ringCount: 8, armorFlat: 2,
+    keepDist: 0, projColor: '#d9a83c', pattern: 'ring', ringCount: 8, armorFlat: 5,
     boss: true
   },
   {

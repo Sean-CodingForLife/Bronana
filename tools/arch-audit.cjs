@@ -15,7 +15,7 @@
           node tools/arch-audit.cjs --json   给脚本用
 
    `analyze()` 是导出的：`test/arch.mjs` 直接拿它的结果做断言 ——
-   尤其是**尺子自己的精度**（见下面 `deadOf` 的注释：这一节曾经 6 条全错）。
+   尤其是**校验自己的精度**（见下面 `deadOf` 的注释：这一节曾经 6 条全错）。
    ========================================================= */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -38,7 +38,7 @@ function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
    一旦文件进了子目录（`src/sim/game.ts`），import 会写成 `'./combat.ts'`
    而 key 是 `'sim/game.ts'` —— **对不上**，于是 `if (!mods[d]) continue`
    会把所有跨目录依赖**静默跳过**：环检测、扇入、分层方向全都会"变绿"，
-   因为它们根本没看见那些边。这类"尺子读漏了"的失效在本项目栽过多次。
+   因为它们根本没看见那些边。这类"校验读漏了"的失效在本项目栽过多次。
 
    现在分两层：
      · `files`  —— **完整相对路径**（`sim/game.ts`），目录化后依然唯一
@@ -180,8 +180,8 @@ function membersOf(file, ns) {
  *        `globalThis.UI.actNames()`   ← 原来的左边界 `(?<![\w$.])` 把 `.` 挡掉了
  *        `const UIx = globalThis.UI`  ← 别名从没被登记
  *        `const g = globalThis` + `g.UI.x` ← 全局对象的别名
- *   漏掉的后果不是"少报"，而是**把活代码报成"真死，可删"**：
- *   实测这一节 6 条"真死"里 6 条是活的（精度 0%），而 `test/arch.mjs` 现在钉住了这一条。
+ *   漏掉的后果不是"少报"，而是**把活代码报成"无引用，可删"**：
+ *   实测这一节 6 条"无引用"里 6 条是活的（精度 0%），而 `test/arch.mjs` 现在钉住了这一条。
  */
 function namespaceAliases(mods) {
   const map = {};
@@ -515,7 +515,7 @@ function main() {
 
   console.log('\n[7] 死接口 / 内部成员（文本近似：全仓库没人按名字引用）\n');
   const deadAll = A.unused.dead.concat(A.members.dead);
-  console.log('  【真死，可删】' + (deadAll.length ? '' : ' 无 ✔'));
+  console.log('  【无引用，可删】' + (deadAll.length ? '' : ' 无 ✔'));
   if (deadAll.length) console.log(deadAll.map(u => '    ' + u).join('\n'));
   const internals = A.unused.internal.concat(A.members.internal);
   console.log('  【只在本文件内用】' + internals.length + ' 个（不算死，只是不必对外声明）');

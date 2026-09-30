@@ -16,14 +16,25 @@
 
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
+import { Fold } from './fold.ts';
 
 var Danger = {} as DangerApi;
 
 /* =========================================================
    1. 修正键与折叠规则
    ========================================================= */
-/** 每个键的折叠方式：mul 相乘 / add 相加 / or 取真 */
-var FOLD: Record<string, string> = {
+/**
+ * 每个键的折叠方式。取值来自 `fold.ts` 的 `foldOp` 家族（`FoldOp` 联合类型）——
+ * 写错一个字母当场编译不过，而不是等数值表现不对才被发现
+ *（"表现不对"通常会被当成配平问题，这是这类错最难查的原因）。
+ *
+ * ⚠ 这张表**不是**全项目唯一的折法声明：`boons.MOD_KEYS` / `dungeon.MOD_KEYS` /
+ * `data_items.COST_KINDS` 各自声明自己键集的折法。以前 `game.ts` 折 boons 的那一组时
+ * 借用了这张表，于是同一个键有两份声明、改一份不会同步（实测：把 boons 的 enemyHp
+ * 改成 add，17 道门全绿而两条路径一个加一个乘）。现在折谁的就读谁的表，
+ * 重叠键的一致性由 `test/fold.mjs` 的跨表对账守着。
+ */
+var FOLD: Record<string, FoldOp> = {
   enemyHp: 'mul',
   enemyDmg: 'mul',
   enemySpeed: 'mul',
@@ -128,11 +139,9 @@ Danger.modsFor = function (level) {
     if (!def) continue;
     for (var key in def.mods) {
       if (!Object.prototype.hasOwnProperty.call(def.mods, key)) continue;
-      var how = FOLD[key];
-      if (how === 'mul') out[key] = out[key] * def.mods[key];
-      else if (how === 'add') out[key] = out[key] + def.mods[key];
-      else if (how === 'min') out[key] = Math.min(out[key], def.mods[key]);
-      else if (how === 'or') out[key] = out[key] || !!def.mods[key];
+      /* 唯一的折法实现（fold.ts）。以前这里是手写的四路 if/else ——
+         而同样的四路在 game / dungeon / boons / data_items 里各写了一遍。 */
+      out[key] = Fold.apply(FOLD[key], out[key], def.mods[key]);
     }
   }
   return out;
@@ -196,17 +205,19 @@ Danger.describe = function (level) {
      · `audit()` 能验：等级连续、键有折叠方式、说明与方向表对得上、没有死键
      · `audit()` **验不了**："这个键有没有人读" —— 那要 `fs.readFileSync` 扫源码，
        是**检查期**的活，留在 `test/danger.mjs` 第 5 节。
-   两把尺子各管一段，谁都不能替谁。
+   两条校验各管一段，谁都不能替谁。
 
    每一条都对着一个真实的静默故障：
      · 等级号跳号 → `BY_LEVEL[lv]` 取不到 → 那一级**整个不生效**且不报错
-     · 键漏了 `FOLD` → `modsFor` 的 `else` 分支**按 add 处理**（第 133 行），
-       于是一个本该相乘的倍率静默变成加法 —— 数值表里最难查的一类错
+     · 键漏了 `FOLD` → `Fold.apply` 认不出折法、**原样返回**，于是一个本该相乘的
+       倍率静默停在基准上（这一级的修正是白写的）—— 数值表里最难查的一类错。
+       ⚠ 这条注释以前写的是"`else` 分支按 add 处理"：**代码里从来没有那个 else**，
+       漏 `FOLD` 的实际后果是"什么都不做"。注释与实现不符，一并改对了。
      · 键漏了 `NOTES` → 界面那一行说明变成空白，玩家看不到这一级加了什么
      · `DIRECTION` 写了不存在的键 → 那行方向声明永远读不到（形同注释）
      · 某个键没有任何一级用它 → 死配置：它永远等于基准值
    ========================================================= */
-var FOLD_KINDS = ['mul', 'add', 'min', 'or'];
+var FOLD_KINDS = Fold.LIST.map(function (d) { return d.id; });
 var DIRECTIONS = ['up', 'down'];
 
 Danger.audit = function () {
@@ -227,11 +238,13 @@ Danger.audit = function () {
   if (Object.keys((LEVELS[0] && LEVELS[0].mods) || {}).length) problems.push('第 0 级不是恒等（它带了修正）—— 第 0 级必须等于"没有修正"');
   if (BY_LEVEL[Danger.MAX] !== LEVELS[LEVELS.length - 1]) problems.push('BY_LEVEL 没有覆盖到最高级');
 
-  /* ---- 折叠规则：漏一个就静默变成加法 ---- */
+  /* ---- 折叠规则：漏一个就静默不动 ---- */
   for (k in BASE) {
     if (!Object.prototype.hasOwnProperty.call(BASE, k)) continue;
-    if (!FOLD[k]) problems.push('修正键 ' + k + ' 没有折叠方式（漏了它会按 add 处理，倍率表静默变加法表）');
-    else if (FOLD_KINDS.indexOf(FOLD[k]) < 0) problems.push('修正键 ' + k + ' 的折叠方式不认识：' + FOLD[k]);
+    if (!FOLD[k]) {
+      problems.push('修正键 ' + k + ' 没有折叠方式（漏了它这一级的修正**静默不生效**' +
+        '—— 四个分支一个都不匹配，值停在基准上）');
+    } else if (FOLD_KINDS.indexOf(FOLD[k]) < 0) problems.push('修正键 ' + k + ' 的折叠方式不认识：' + FOLD[k]);
     if (!NOTES[k]) problems.push('修正键 ' + k + ' 没有说明（界面上那一行会是空白）');
   }
   for (k in FOLD) {

@@ -10,7 +10,7 @@
      · 它的**实现证据**是什么（文件 / 导出名 / 界面节点）
      · 它**是不是真的可运行**（靠下面那几条检查，而不是靠文件名）
 
-   ⚠ 尺子自身的纪律：**检查不到就要报"没查到"，而不是报"有"**。
+   ⚠ 校验自身的纪律：**检查不到就要报"没查到"，而不是报"有"**。
    每一项都给出 `check` 的判据，判据写清楚"查到什么才算过"。
    查不到的项分两种，必须分开报（这两者代价完全不同）：
      · 缺 · 该做     —— 能做但还没做（有具体代价估计）
@@ -29,7 +29,7 @@ const JSON_OUT = process.argv.includes('--json');
 /* ---------------- 读源码（一次读全，下面所有检查共用） ----------------
    ⚠ **只扫实现文件，不扫类型声明与注释以外的东西**：
    第一版把 `types.d.ts` 也算进来，于是"成就"在注释「图鉴里该列出来的」里被撞词，
-   把一项**根本不存在**的功能报成了"已有"。尺子先于结论 ——
+   把一项**根本不存在**的功能报成了"已有"。校验先于结论 ——
    撞词假阳是这份工具最坏的失效方式（它会让人以为已经做了）。
 
    ⚠ 用共享扫描器（`tools/src-files.cjs`）而**不是** `readdirSync(SRC)`：
@@ -191,7 +191,8 @@ const KIT = [
   {
     id: 'achievements', name: '成就系统（独立于进度解锁）', where: '局外',
     expect: '有成就表 + 达成记录 + 界面列表，且与"解锁内容"分开',
-    /* **刻意不做**（见 README「成就：为什么我不另起一张表」）。
+    /* **刻意不做**（见 `docs/history/05-验收与全量测试.md` 的
+       「`○ 有意不做`：成就系统」那一节）。
        判据保留着 —— 如果将来 `challenges.ts` 变成"29 条全部给内容解锁"，
        这一项会自动变绿；如果始终只有内容解锁，它就一直是这一条 deferred。 */
     deferred: {
@@ -240,7 +241,7 @@ const KIT = [
       return {
         ok: mod && table && timed && wired,
         evidence: 'tutorial.ts=' + mod + '（表=' + table + ' · 时机判据=' + timed +
-          ' · 界面接线=' + wired + '）· 静态说明页=' + how
+          ' · 界面接入=' + wired + '）· 静态说明页=' + how
       };
     }
   },
@@ -298,10 +299,10 @@ const KIT = [
   },
   {
     id: 'tutorial-perf', name: '性能守门（帧预算回归）', where: '开发期',
-    expect: '有一把尺子能量帧耗时，且知道预算',
+    expect: '有一条校验能量帧耗时，且知道预算',
     check() {
-      /* ⚠ 第一版只找 `tools/*perf*`，而本作的性能尺子是 **test**（`test/perf.mjs`）——
-         工具目录里没有就叫"缺"，那是尺子找错了地方。 */
+      /* ⚠ 第一版只找 `tools/*perf*`，而本作的性能校验是 **test**（`test/perf.mjs`）——
+         工具目录里没有就叫"缺"，那是校验找错了地方。 */
       const t = tests.filter(f => /perf|frames/i.test(f));
       const budget = /预算/.test(fs.readFileSync(path.join(ROOT, 'test', 'perf.mjs'), 'utf8') || '') ||
         /budget/i.test(fs.readFileSync(path.join(ROOT, 'test', 'perf.mjs'), 'utf8') || '');
@@ -338,7 +339,7 @@ const KIT = [
     check() {
       /* ⚠ 判据要跟着**实现的名字**走：第一版找 `exportProfile/exportSave`，
          而实现叫 `Slots.exportText / importText` —— 于是"已经做了"被报成"没做"。
-         一个报假阴的尺子会让人去重做一遍已经有的东西。 */
+         一个报假阴的校验会让人去重做一遍已经有的东西。 */
       const mod = src['slots.ts'] || '';
       const exp = hasCode('slots.ts', 'exportText');
       const imp = hasCode('slots.ts', 'importText');

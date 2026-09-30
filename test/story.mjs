@@ -202,8 +202,8 @@ console.log('\n[5] 结局：普通结局按进度，真结局必须"藏得住"')
   }
 }
 
-/* ---------------- 6. 接线契约（剧情不进模拟层） ---------------- */
-console.log('\n[6] 接线契约：剧情不碰模拟层');
+/* ---------------- 6. 接入契约（剧情不进模拟层） ---------------- */
+console.log('\n[6] 接入契约：剧情不碰模拟层');
 {
   const storySrc = fs.readFileSync(path.join(ROOT, 'src', 'story.ts'), 'utf8');
   const imports = [...storySrc.matchAll(/import \{[^}]*\} from '\.\/([\w.]+)'/g)].map(m => m[1]);
@@ -213,8 +213,16 @@ console.log('\n[6] 接线契约：剧情不碰模拟层');
   ok(!/U\.rng|Math\.random/.test(storySrc), 'story.ts 里没有任何随机 —— 选台词不靠掷骰子');
 
   // 模拟层不许认识"剧情"
-  const gameSrc = fs.readFileSync(path.join(ROOT, 'src', 'game.ts'), 'utf8');
-  ok(!/Story|story\.ts/.test(gameSrc), 'game.ts 里连一个 Story 都没有（模拟层不认识剧情）');
+  /* ⚠ **射程在 M3 收窄了**：`game.ts` 是**会话层**，而 v3 §8-3 把「NPC 关系」
+   定为**养成模块的共享关系状态** —— 三个模块全在局内（§二），所以会话层
+   认识 NPC 关系是**对的**（它经过 `bonds.ts` 间接读到 `Story`）。
+   该守的是**更下面的模拟层**：那一层不该知道剧情，否则对话就会渗进确定性与指纹。 */
+/* ⚠ **先剥注释再查**：`enemies.ts` 的注释里提了一句 `story.ts`（说明碎片来源与怪物的对应），
+     不剥的话这条会变成"谁的说明文字多谁违规" —— 与 arch-audit 踩过的坑同一个。 */
+  const stripC = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const simSrc = ['enemies.ts', 'ai.ts', 'emit.ts', 'stats.ts', 'collide.ts', 'arena.ts', 'depth.ts']
+    .map(f => stripC(fs.readFileSync(path.join(ROOT, 'src', f), 'utf8'))).join('\n');
+  ok(!/Story|story\.ts/.test(simSrc), '模拟层里连一个 Story 都没有（对话不致影响确定性与指纹）');
 
   console.log('    ' + Story.describe().split('\n').join('\n    '));
 }

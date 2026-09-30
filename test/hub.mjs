@@ -1,5 +1,5 @@
 /* =========================================================
-   hub.mjs — 剧情接线（N2）：档案 ⇄ 剧情表 ⇄ 枢纽界面
+   hub.mjs — 剧情接入（N2）：档案 ⇄ 剧情表 ⇄ 枢纽界面
 
    剧情这一层最容易"看起来有、其实没通"：
      · 台词条件写了一堆，但没人把档案里的计数喂进去 → 所有台词永远停在第一句
@@ -26,7 +26,7 @@ await loadAll(SIM_MODULES);
 const { Game, Story, Profile, Storage, Scene, Enemies } = globalThis;
 console.error = function () { };
 
-console.log('\n=== Bronana · 剧情接线（N2）===\n');
+console.log('\n=== Bronana · 剧情接入（N2）===\n');
 
 /* 干净档案 + 内存存储（不碰真实 localStorage） */
 Storage.use(Storage.memory());
@@ -85,8 +85,11 @@ console.log('\n[2] ctx：条件要的每个数字都能从档案里算出来');
     'flag 默认都是假');
   ok(ctx.flags.keepClocktower === false, '没买钟楼 → keepClocktower 是假');
   // 买钟楼（花孢子）：flag 立刻变真 —— 这就是"据点 → 剧情"那条边
-  Profile.addMaterial(StrongholdCost());
-  Profile.keepBuy('clocktower');
+/* 钟楼在局内买（v3 §二）—— 钱是 `S.material` */
+if (!Game.getSession()) Game.newRun('ranger', 999, 0, null, null);
+
+  Game.addMaterial(StrongholdCost());
+  Game.keepBuy('clocktower');
   ctx = Profile.storyCtx();
   ok(ctx.flags.keepClocktower === true, '买了钟楼 → keepClocktower 变真（据点接进了剧情）');
   // 通关 + 打过一个 Boss + 发现过密室 + 下过深井
@@ -250,8 +253,13 @@ console.log('\n[8] 模拟层只报来源（它不认识剧情表）');
     '结算摘要里有层号 / 密室数 / 见过的事件',
     JSON.stringify({ floor: sm.floor, secrets: sm.secrets, events: sm.events }));
   ok(sm.bossesDown.every(id => !!Enemies.BY_ID[id]), '报的都是真有的怪物 id');
-  const gameSrc = fs.readFileSync(path.join(ROOT, 'src', 'game.ts'), 'utf8');
-  ok(!/Story|story\.ts/.test(gameSrc), 'game.ts 依然一个字都不认识剧情');
+  /* ⚠ **射程在 M3 收窄了**（与 `story.mjs` 那条同一个道理）：`game.ts` 是**会话层**，
+     而 v3 §8-3 把「NPC 关系」定为**养成模块的共享关系状态** —— 三个模块全在局内（§二），
+     所以会话层认识 NPC 关系是**对的**。该守的是**更下面的模拟层**。 */
+  const simSrc2 = ['enemies.ts', 'ai.ts', 'emit.ts', 'stats.ts', 'collide.ts', 'arena.ts', 'depth.ts']
+    .map(f => fs.readFileSync(path.join(ROOT, 'src', f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')).join('\n');
+  ok(!/Story|story\.ts/.test(simSrc2), '模拟层依然一个字都不认识剧情');
 }
 
 /* ---------------- 9. 契约：新屏幕要接的五处 ---------------- */

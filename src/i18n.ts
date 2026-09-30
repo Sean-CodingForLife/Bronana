@@ -304,7 +304,7 @@ I18n.missingKeys = function (id) {
   var loc = localeOf(id || current);
   /* 默认语言**没有"缺键"这个概念**：键就是原文，它天然全覆盖。
      第一版这里照样去查表，于是 `missingKeys('zh')` 报出 65 条 ——
-     一个吓人但毫无意义的数字（那把尺子量错了对象）。 */
+     一个吓人但毫无意义的数字（那条校验量错了对象）。 */
   if (loc && loc.id === I18n.DEFAULT) return [];
   var table = MESSAGES[(loc && loc.id) || I18n.DEFAULT] || {};
   var keys = Object.keys(MESSAGES.en || {});

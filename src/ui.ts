@@ -8,6 +8,7 @@ import { Affixes } from './affixes.ts';
 import { Chars } from './data_chars.ts';
 import { Elems } from './data_elems.ts';
 import { Camp } from './camp.ts';
+import { Bonds } from './bonds.ts';
 import { Boons } from './boons.ts';
 import { Challenges } from './challenges.ts';
 import { Daily } from './daily.ts';
@@ -123,8 +124,6 @@ UI.init = function () {
   el.rerollCost = q('reroll-cost');
   el.packBasicCost = q('pack-basic-cost');
   el.packDeluxeCost = q('pack-deluxe-cost');
-  el.packBuildCost = q('pack-build-cost');
-  el.btnPackBuild = q('btn-pack-build');
   el.packOdds = q('pack-odds');
   el.btnPackBasic = q('btn-pack-basic');
   el.btnPackDeluxe = q('btn-pack-deluxe');
@@ -144,6 +143,10 @@ UI.init = function () {
   el.codexCatalog = q('codex-catalog');
   el.talentChar = q('talent-char');
   el.talentPoints = q('talent-points');
+  el.trainList = q('train-list');
+  el.bondList = q('bond-list');
+  el.trainList = q('train-list');
+  el.bondList = q('bond-list');
   el.talentHead = q('talent-head');
   el.talentList = q('talent-list');
   el.skillWho = q('skill-who');
@@ -170,6 +173,7 @@ UI.init = function () {
   el.hubNews = q('hub-news');
   el.toastWrap = q('toast-wrap');
   el.codexStory = q('codex-story');
+  el.codexAffixes = q('codex-affixes');
   el.codexTabs = q('codex-tabs');
   el.shopBoons = q('shop-boons');
   el.shopDoors = q('shop-doors');
@@ -388,6 +392,7 @@ var _codexTab = '';        // 当前那一页（界面状态，不进档案）
 var CODEX_TABS = [
   { id: 'challenges', name: '挑 战', panel: 'codex-challenges' },
   { id: 'catalog', name: '图 鉴', panel: 'codex-catalog' },
+  { id: 'affixes', name: '词 条', panel: 'codex-affixes' },
   { id: 'story', name: '剧 情', panel: 'codex-story' },
   { id: 'daily', name: '今日 · 本周', panel: 'codex-daily' },
   { id: 'summary', name: '概 览', panel: 'codex-summary' }
@@ -427,14 +432,14 @@ function renderCodex() {
   var unlockedChars = 0;
   for (i = 0; i < Chars.LIST.length; i++) if (isCharAvailable(Chars.LIST[i])) unlockedChars++;
 
-  var s = setRow('孢子', Profile.spores());
+  var s = setRow('孢子', Game.growth());
   s += setRow('挑战完成', snap.done.length + ' / ' + Challenges.LIST.length);
   s += setRow('角色解锁', unlockedChars + ' / ' + Chars.LIST.length);
   s += setRow('解锁的武器 / 道具', Profile.unlockedIds('weapon').length + ' / ' + Profile.unlockedIds('item').length);
   el.codexSummary.innerHTML = s;
 
   // 挑战：完成的打勾；累计类给出进度；单局达成的不画进度条
-  // （局外它的读数永远是 0，画一条空进度条等于撒谎）
+  // （局外它的读数永远是 0，画一条空进度条等于给出错误读数）
   // **隐藏挑战没完成前不列出来** —— 图鉴里突然多一条，本身就是一个"你发现了什么"的信号
   var html = '';
   var lastGroup = '';
@@ -463,6 +468,9 @@ function renderCodex() {
   el.codexCatalog.innerHTML = cat;
 
   renderStoryBlock();
+
+  // 词条图鉴：19 条词条分别是什么、落在哪、每一档给多少（见 renderAffixBlock）
+  renderAffixBlock();
 
   // 每日挑战：今天的规则 + 本地最好 + 最近一局的成绩码
   renderDailyBlock();
@@ -496,11 +504,11 @@ function hubStatusHtml() {
   Chars.LIST.forEach(function (c) {
     if (!isCharListed(c)) return;
     chars++;
-    freePoints += Profile.talentFree(c.id);
+    freePoints += Game.talentFree();
   });
   var rows: { k: string; v: string; warn?: boolean }[] = [
-    { k: '材料', v: Profile.material() + '（据点用）' },
-    { k: '合金', v: Profile.alloy() + '（图纸工坊用：只由合成产出）' },
+    { k: '材料', v: Game.material() + '（据点用）' },
+    { k: '合金', v: Game.growth() + '（图纸工坊用：只由合成产出）' },
     { k: '记录碎片', v: s.fragments + ' / ' + Story.FRAGMENTS.length },
     { k: '打倒过的器官', v: s.bosses + ' / ' + Enemies.BOSSES.length },
     { k: '发现过的密室', v: String(s.secrets) },
@@ -609,6 +617,75 @@ function hubSay() {
 }
 
 /**
+ * **词条图鉴**（`词 条` 那一页）。
+ *
+ * 为什么必须有这一页：词条在界面上**只在商店出现**，而且只有卡片那么大的地方 ——
+ * 玩家没有任何地方能回答三个问题：
+ *   ① 一共有哪些词条？  ② 这条词条到底加什么？  ③ 这件装备能滚出哪些？
+ * 而这三件事系统内部**一直算得出来**（`Affixes.LIST` / `MODS[mod].note` /
+ * `Affixes.pool(kind, def)` / `Affixes.wrongReason`）—— 只是从来没有出口。
+ *
+ * 改造前更糟的是"含义"根本没渲染：`MODS` 16/16 都写了 note、`FAMILIES` 2/2 也写了，
+ * 而 `Affixes.html` 的 title 只有 `"锋锐 · 前缀 T1"` —— 于是
+ * `锋锐 +6%`（武器伤害）、`远见 +6%`（攻击范围）、`加速 +6%`（攻击速度）
+ * 在卡片上长得一模一样。这一页把 note 摆到明面上。
+ *
+ * 每一行给出四件事：**是哪一类**（前缀/后缀）、**加什么**（note）、
+ * **能落在哪**（槽位 + 细分标签）、**每一档给多少**（阶梯，T1 到该条的 cap）。
+ */
+function renderAffixBlock() {
+  if (!el.codexAffixes) return;
+  var html = '';
+  var fams = ['prefix', 'suffix'];
+  for (var fi = 0; fi < fams.length; fi++) {
+    var famId = fams[fi];
+    var fam = Affixes.FAMILIES[famId];
+    html += '<div class="codex-group">' + (fam ? fam.name + ' —— ' + fam.note : famId) + '</div>';
+    for (var i = 0; i < Affixes.LIST.length; i++) {
+      var d = Affixes.LIST[i];
+      if (d.family !== famId) continue;
+      var meta = Affixes.MODS[d.mod] || { note: '（表里没写说明）' };
+      /* 能落在哪：把声明式槽位展开成能读的一段话（`armor:heavy` → "护具（仅重型）"） */
+      var slots = [];
+      for (var si = 0; si < d.slots.length; si++) {
+        var ps = Affixes.parseSlot(d.slots[si]);
+        var baseName = ps.base;
+        for (var k = 0; k < Affixes.SLOTS.length; k++) {
+          if (Affixes.SLOTS[k].base === ps.base) baseName = Affixes.SLOTS[k].name;
+        }
+        slots.push(baseName + (ps.tag ? '（仅' + ((Affixes.TAGS[ps.tag] || {}).name || ps.tag) + '）' : ''));
+      }
+      /* 阶梯：从 T1 到这条自己的 cap（用"这一档的最低值"当代表，单调性一眼看得出来） */
+      var ladder = [];
+      for (var t = 1; t <= d.cap; t++) {
+        var lo = Math.abs(d.per) * (t - 1) + 1;
+        ladder.push(Affixes.line({ id: d.id, t: t, v: d.per < 0 ? -lo : lo }));
+      }
+      html += '<div class="set-row"><span class="set-label">' +
+        '<b>' + d.name + '</b>（' + d.en + '）：' + meta.note +
+        '</span><span class="set-value">' + slots.join(' / ') + '</span></div>';
+      html += '<div class="set-row"><span class="set-label" style="opacity:.65">' +
+        '　T1→T' + d.cap + '：' + ladder.join(' → ') +
+        '　·　权重 ' + d.w + '（只影响滚出来的概率，不影响强弱）' +
+        '</span></div>';
+    }
+  }
+  /* 滚的规则：`Affixes.pool` 一直算得出"这件装备能滚出哪些"，但没必要为 55 件装备各画一行 */
+  html += '<div class="codex-group">怎么滚</div>';
+  var rc = [];
+  for (var tt = 1; tt <= 5; tt++) rc.push('T' + tt + ' 给 ' + Affixes.rollCount(tt) + ' 条');
+  html += '<div class="set-row"><span class="set-label">' +
+    '条数跟着<b>装备品级</b>：' + rc.join(' · ') +
+    '；每条词条的<b>档位</b>上限 = min(装备品级, 该词条的 cap) —— 所以 T4 装备上的词条明显强于 T1/T2' +
+    '</span></div>';
+  html += '<div class="set-row"><span class="set-label">' +
+    '落在哪由<b>装备自己的槽位与标签</b>决定（<code>Affixes.pool</code>）；同一件上不会出现两条同名；' +
+    '合成两把同名武器时<b>各取更好的那一条</b>（<code>Affixes.merge</code>）' +
+    '</span></div>';
+  el.codexAffixes.innerHTML = html;
+}
+
+/**
  * 图鉴里的剧情一栏（N2）。
  * 两条纪律：
  *   · **没找到的碎片只说"第几片"** —— 标题与正文都不显示（收藏品不该被剧透）
@@ -658,18 +735,18 @@ function renderStoryBlock() {
    ========================================================= */
 function renderKeep() {
   if (!el.keepList) return;
-  var owned = Profile.keepOwned();
-  var spores = Profile.spores();
+  var owned = Game.keepOwned();
+  var spores = Game.growth();
   var core = Profile.core();
 
-  var head = setRow('材料', String(Profile.material()));
+  var head = setRow('材料', String(Game.material()));
   /* 核心材料单列一行：它是**唯一**一种"只有关底 Boss 掉"的资源，
      玩家看到这一行才知道"那 2 个数字要去哪挣"（而不是以为它又是孢子）。 */
   head += setRow('核心材料', String(core) + '（只有关底 Boss 掉）');
-  head += setRow('已投入', Profile.keepInvested() + ' 材料（永久，不退还）');
+  head += setRow('已投入', Game.keepInvested() + ' 材料（这一局投的，不退还）');
   // **文案不在这里写** —— 键自己带文案（stronghold.ts 的 MOD_KEYS），
   // 界面只负责把折叠出来的修正翻成人话。新增一个键不需要动这个文件。
-  var eff = Keep.effectLines(Profile.keepMods());
+  var eff = Keep.effectLines(Game.keepMods());
   head += setRow('当前效果', eff.length ? eff.join(' · ') : '（无）');
   head += setRow('两条循环', '据点解锁能力（产线 / 目录 / 离线）→ 出击收集、工坊制造 → 打得更深 → 更多孢子 → 据点更强');
   head += setRow('前置链', '有些设施要先有别的（例如档案馆要钟楼）—— 【顺序本身也是决策】');
@@ -677,7 +754,8 @@ function renderKeep() {
 
   var html = '';
   Keep.LIST.forEach(function (d) {
-    var lvl = Keep.levelOf(owned, d.id);
+    /* 等级走 `Game.keepLevel`（据点是**局内**的，界面不自己 `levelOf`）。 */
+    var lvl = Game.keepLevel(d.id);
     var chk = Keep.canBuy(owned, d.id, spores, core);
     var nextTxt;
     if (lvl >= d.levels.length) nextTxt = '已满级';
@@ -728,9 +806,9 @@ function renderKeep() {
    ========================================================= */
 function renderForge() {
   if (!el.forgeList) return;
-  var alloy = Profile.alloy();
-  var owned = Profile.forgeOwned();
-  var mods = Profile.forgeMods();
+  var alloy = Game.growth();
+  var owned = Game.forgeOwned();
+  var mods = Game.forgeMods();
   var head = setRow('合金', String(alloy) + '（只由「回收」产出：拆掉不要的装备 + 每次结算的基础产出）');
   /* 核心材料在两条局外线上是**同一笔**钱（据点与图纸都花它）：
      两处都显示它，玩家才看得出"这两个 2 是同一笔预算"。 */
@@ -743,8 +821,8 @@ function renderForge() {
 
   var html = '';
   Forge.LIST.forEach(function (d) {
-    var has = Profile.isForged(d.id);
-    var chk = Profile.canForge(d.id);
+    var has = Game.isForged(d.id);
+    var chk = Game.canForge(d.id);
     var btn;
     if (has) btn = '<button class="btn tiny" disabled>已解锁</button>';
     else if (chk.ok) btn = '<button class="btn tiny" data-act="forge-buy" data-forge="' + d.id + '">解锁 ' + chk.cost + '</button>';
@@ -791,12 +869,12 @@ function renderCamp() {
   var sess = Game.getSession();
   /* ⚠ 工坊的四样东西现在都在**档案**里（跨局），不在会话里：
        设施 / 建造顺序 / 材料 / 折叠效果。会话只提供"这一波还空着几条产线"。 */
-  var state = Profile.campOwned();
-  var row = Profile.campRowClean();
+  var state = Game.campOwned();
+  var row = Game.campRow();
   var opts = Game.campOpts();
-  var mats = Math.round(Profile.material());
+  var mats = Math.round(Game.material());
   var used = Camp.usedSlots(state);
-  var fx = Profile.campFx();
+  var fx = Game.campFx();
   var active = Camp.combosFor(row);
   var lines = Game.craftLines();
   var free = Game.craftFreeLines();
@@ -1017,10 +1095,72 @@ function renderTalents() {
     el.talentChar.appendChild(b);
   });
 
-  var earned = Profile.talentPoints(charId);
-  var spent = Profile.talentSpent(charId);
-  var free = Profile.talentFree(charId);
-  var taken = Profile.talentsOf(charId);
+  /* =========================================================
+     **训练面板：养成模块的局内行动**（M3，2026-09）
+     ---------------------------------------------------------
+     养成模块的**产出**（`growth`）以前产在战斗端（结算按波次/合成发），
+     而 v3 §5.2 没有"战斗 → 养成"那条边。现在产出点在这里：
+     **花材料（行动成本）换成长点**，每波限次。
+     ⚠ 它同时是 v3 要的**撞墙**：不训练 → 成长点不够 → 下面那些天赋点不动，
+       但战斗与经营照常（游戏没有不让玩家继续）。
+     ========================================================= */
+  if (el.trainList) {
+    U.clear(el.trainList);
+    var tLeft = Game.trainingLeft();
+    var trHead = U.el('div', 'set-row');
+    trHead.appendChild(U.el('span', 'set-label', '训练（这一波还能 ' + tLeft + ' 次）'));
+    trHead.appendChild(U.el('span', 'set-value', '材料 ' + Game.material() + ' → 成长点 ' + Game.growth()));
+    el.trainList.appendChild(trHead);
+    Game.trainingOptions().forEach(function (o) {
+      var trRow = U.el('div', 'set-row');
+      trRow.appendChild(U.el('span', 'set-label', o.name + ' —— ' + o.note));
+      var trVal = U.el('span', 'set-value');
+      if (o.ok) {
+        var trBtn = U.el('button', 'btn tiny', '花 ' + o.cost + ' → +' + o.gain);
+        trBtn.dataset.act = 'train-do';
+        trBtn.dataset.drill = o.id;
+        trVal.appendChild(trBtn);
+      } else {
+        trVal.appendChild(U.el('span', 'set-note', o.reason));
+      }
+      trRow.appendChild(trVal);
+      el.trainList.appendChild(trRow);
+    });
+  }
+  /* =========================================================
+     **NPC 关系面板：v3 §8-3 的"共享关系状态"**
+     ---------------------------------------------------------
+     叙事线（`story.ts` 的台词）与养成线（相处）读的是**同一份**信任值；
+     但只有养成这一侧能改经济 —— 相处**跨过关系阶段**时产成长点。
+     ⚠ §6.5：NPC 互动**不能花战斗/经营的钱**，所以这里没有价钱，只有"这一波还能聊几次"。
+     ========================================================= */
+  if (el.bondList) {
+    U.clear(el.bondList);
+    var bHead = U.el('div', 'set-row');
+    bHead.appendChild(U.el('span', 'set-label', '关系（每位每波 ' + Bonds.TALK_PER_WAVE + ' 次）'));
+    bHead.appendChild(U.el('span', 'set-value', '聊到新阶段会给成长点'));
+    el.bondList.appendChild(bHead);
+    Game.bondsAll().forEach(function (b) {
+      var bRow = U.el('div', 'set-row');
+      bRow.appendChild(U.el('span', 'set-label', b.stageName + ' —— ' + b.note +
+        (b.nextName ? '（再 ' + b.toNext + ' 次信任到「' + b.nextName + '」）' : '（已到顶）')));
+      var bVal = U.el('span', 'set-value');
+      if (b.left > 0) {
+        var bBtn = U.el('button', 'btn tiny', '相处（还剩 ' + b.left + ' 次）');
+        bBtn.dataset.act = 'bond-talk';
+        bBtn.dataset.npc = b.id;
+        bVal.appendChild(bBtn);
+      } else {
+        bVal.appendChild(U.el('span', 'set-note', '这一波聊够了'));
+      }
+      bRow.appendChild(bVal);
+      el.bondList.appendChild(bRow);
+    });
+  }
+  var earned = Game.talentEarned();
+  var spent = Game.talentSpent();
+  var free = Game.talentFree();
+  var taken = Game.talentsOf();
   var home = Talent.AFFINITY[charId] || '';
 
   if (el.talentPoints) {
@@ -1049,10 +1189,13 @@ function renderTalents() {
     return nd ? (td ? '[' + td.label + '] ' : '') + nd.name : id;
   }).join(' / ') : '（还没点）');
   head += setRow('开局条件', (statsTxt.join(' ') || '无属性加成') + (extra.length ? ' · ' + extra.join(' · ') : ''));
-  var freeLeft = Math.max(0, Profile.freeRespecsOf(charId) - Profile.perChar(charId).respecs);
-  var nextCost = Profile.respecCostOf(charId);
+  /* ⚠ **洗点现在算在局内**（M3）：次数是这一局的（`Game.respecsUsed`），
+     价钱与 `Game.respecTalents` 用同一个算法 —— 两处漂了的话界面显示的和实际扣的对不上，
+     而那一类错**不报错**，只是悄悄骗玩家（`talents.mjs` 有一条断言盯着）。 */
+  var freeLeft = Math.max(0, Talent.FREE_RESPECS - Game.respecsUsed());
+  var nextCost = Talent.respecCost(Game.respecsUsed(), { free: Talent.FREE_RESPECS, discount: 0 });
   head += setRow('洗点', '免费还剩 ' + freeLeft + ' 次，之后每次 ' + nextCost +
-    ' 孢子（当前孢子 ' + Profile.spores() + '）');
+    ' 材料（当前成长点 ' + Game.growth() + '）');
   el.talentHead.innerHTML = head;
 
   // 节点：共享大图按扇区分组，本职子树单独一组
@@ -1124,7 +1267,7 @@ function renderDailyBlock() {
     ? wbest.score + ' 分 · 第 ' + wbest.wave + ' 波' + (wbest.win ? ' · 通关' : '')
     : '还没打过');
   // 离线产出：要买了菌床才有（等级读**折叠值**，与结算那条路同一个来源）
-  var bedLv = Profile.keepMods().offlineLevel;
+  var bedLv = Game.keepMods().offlineLevel;
   html += setRow('离线产出', bedLv > 0
     ? '菌床 Lv.' + bedLv + ' → ' + Offline.rateAt(bedLv) + ' 孢子/分（单次最多 ' + Offline.MAX_HOURS + ' 小时）'
     : '还没买「菌床」—— 它是离线产出的开关');
@@ -1232,7 +1375,7 @@ function refreshCharSelection() {
 }
 
 /* =========================================================
-   事件接线
+   事件接入
    状态一律通过 Game.setState 切换（校验 + 发 stateChange），
    界面刷新由 stateChange 事件驱动，不再各处手动 UI.refresh()。
 
@@ -1373,7 +1516,7 @@ var ACT_SETTINGS: ActMap = {
    ---------------------------------------------------------
    为什么拆出来：`test/ui-check.mjs` 有一条"没有杂物箱"的判据 ——
    **单组超过 20 个动作就先拆开**。加了分组音量之后设置组到了 21 个，
-   于是这条尺子红了。它红得对：那一组里同时住着"开关""循环切档""改键"
+   于是这条校验红了。它红得对：那一组里同时住着"开关""循环切档""改键"
    "清空存档"四类东西，本来就该按**它管什么**分开，而不是按"哪个界面"。
 
    四条增减动作写的是同一个形状（读 `Settings.def(...).step`，不写死步长）：
@@ -1389,6 +1532,45 @@ var ACT_VOLUME: ActMap = {
   'set-musvol-down': function () { Settings.set('musicVolume', Settings.get('musicVolume') - Settings.def('musicVolume').step); renderSettings(); }
 };
 
+/**
+ * **唯一**的开局入口：把"一局该带哪些局外状态"在这一个函数里凑齐。
+ *
+ * 为什么必须只有一处：改造前它有**两份**，而且两份都漏东西 ——
+ *   · 选人页的「出发」传了 `opening` 与 `smods`，**漏了 `skillBuild`**；
+ *   · 标题页的回车（`main.ts` 那条 `Game.newRun(UI.selectedChar)`）只传了角色，
+ *     `opening` / `smods` / `skillBuild` **全漏**。
+ *
+ * 漏 `skillBuild` 的后果是**整个技能系统在正式游戏里从不发生**：
+ * `Game.newRun` 内部是 `applySkillBuild(S, charId, skillBuild || [])`，
+ * 空构筑 ⇒ 0 个技能槽 ⇒ `updateSkills` 第一行 `if (!S.skills.slots.length) return;` 直接返回。
+ *
+ * 实测（`.probe-skill2.mjs` 那一轮）：
+ *   · 选人页的写法 → 技能槽 **0**
+ *   · 显式把构筑传进去 → 技能槽 **1**，6 局释放 **2044** 次、命中 **6129** 次
+ * 所以系统本身是好的，**断的就是这一根线**。
+ *
+ * 为什么一直没被发现：`test/skill.mjs` 全程用 `Game.newRun(…, null, null, build)`
+ * 六参数形式 —— 它验的是模拟层，恰好**绕过**了这根线。测试全绿，玩家看不到技能。
+ *
+ * ⚠ 传的是 **`Profile.skillBuild`（构筑：打过哪几张卡）**，不是 `Profile.skillsFor`
+ * （折好的载荷）—— `newRun` 收下构筑之后自己调 `Skills.fold` 折。
+ * 这一点第一版写错过，是 `tsc` 抓的（载荷的类型对不上参数类型）。
+ *
+ * ⚠ 演示态（`main.ts` 的 `mode === 'loading' | 'end'`）、`Demo.stage`、`cli` 的无头跑
+ * **刻意**不走这里：它们不吃局外状态（要的是可复现的固定场景）。
+ */
+UI.startRun = function () {
+  Game.newRun(UI.selectedChar, undefined, UI.selectedDanger,
+    Profile.openingOf(UI.selectedChar),
+    /* ⚠ **据点从空开始**：它是**局内的**（v3 §二 —— 属于经营模块的建造那一半），
+       每一局自己盖。以前这里传 `Profile.keepOwned()`（账号里的跨局资产）。
+       ⚠ 别改成 `Game.keepOwned()`：开局这一刻还没有会话，它**碰巧**也是空的 ——
+       而"碰巧对"会在下一个人加了一行之后变成错。就写 `{}`。
+       图纸（`forge`）暂时仍然是账号资产，M3 搬。 */
+    { owned: {}, forge: Game.forgeOwned() },
+    Profile.skillBuild(UI.selectedChar));
+};
+
 var ACT_CHARS: ActMap = {
 
   'confirm-char': function () {
@@ -1398,9 +1580,7 @@ var ACT_CHARS: ActMap = {
       UI.toast('这个角色还没解锁：' + charUnlockHint(UI.selectedChar), 'warn');
       return;
     }
-    Game.newRun(UI.selectedChar, undefined, UI.selectedDanger,
-      Profile.openingOf(UI.selectedChar),
-      { owned: Profile.keepOwned(), forge: Profile.forgeOwned() });
+    UI.startRun();
     UI.toast('出发！第 1 波开始' +
       (UI.selectedDanger > 0 ? '（难度 ' + UI.selectedDanger + ' · ' + Danger.name(UI.selectedDanger) + '）' : ''), 'good');
   },
@@ -1464,11 +1644,6 @@ var ACT_SHOP: ActMap = {
   'toggle-set': function () { UI.showSet = !UI.showSet; renderShop(); },
   'pack-basic': function () { if (Game.buyPack('basic')) renderShop(); },
   'pack-deluxe': function () { if (Game.buyPack('deluxe')) renderShop(); },
-  /* 建材包：商店的"原料"那一栏 —— 花废料买工坊的本钱（不划算，买的是时间）。 */
-  'pack-build': function () {
-    if (Game.buyBuild()) UI.toast('建材 +4（工坊的本钱）', 'good');
-    renderShop();
-  }
 };
 
 var ACT_CAMP: ActMap = {
@@ -1495,7 +1670,7 @@ var ACT_CAMP: ActMap = {
     var fid = (t.dataset && t.dataset.camp) || '';
     if (Game.campBuy(fid)) {
       var fd = Camp.BY_ID[fid];
-      if (fd) UI.toast('工坊建成：' + fd.name + ' Lv.' + Profile.campLevel(fid), 'good');
+      if (fd) UI.toast('工坊建成：' + fd.name + ' Lv.' + Game.campLevel(fid), 'good');
     }
     renderCamp();
   },
@@ -1509,23 +1684,39 @@ var ACT_CAMP: ActMap = {
 var ACT_TALENTS: ActMap = {
 
   /* ---- 天赋（角色养成） ---- */
+  /* 训练一次：规则在 `training.ts`，钱与状态在会话（见 `Game.train`）。 */
+  'train-do': function (t) {
+    var drill = (t.dataset && t.dataset.drill) || '';
+    var r = Game.train(drill);
+    if (r.ok) UI.toast('+' + r.gain + ' 成长点（花了 ' + r.cost + ' 材料）', 'good');
+    else UI.toast(r.reason, 'warn');
+    renderTalents();
+  },
+  /* 相处一次：规则在 `bonds.ts`，状态在会话（见 `Game.talkTo`）。 */
+  'bond-talk': function (t) {
+    var npc = (t.dataset && t.dataset.npc) || '';
+    var r = Game.talkTo(npc);
+    if (r.ok) UI.toast(r.gain > 0 ? ('关系进了一步 · +' + r.gain + ' 成长点') : '聊了几句', r.gain > 0 ? 'good' : undefined);
+    else UI.toast(r.reason, 'warn');
+    renderTalents();
+  },
   'talent-take': function (t) {
     var nodeId = (t.dataset && t.dataset.talent) || '';
-    var r = Profile.takeTalent(UI.talentChar, nodeId);
+    var r = Game.takeTalent(nodeId);
     if (r.ok) UI.toast('已点：' + (Talent.BY_ID[nodeId] ? Talent.BY_ID[nodeId].name : nodeId), 'good');
     else UI.toast(r.reason, 'warn');
     renderTalents();
   },
   'talent-undo': function () {
-    var list = Profile.talentsOf(UI.talentChar);
+    var list = Game.talentsOf();
     if (!list.length) { UI.toast('还没点过天赋', 'warn'); return; }
     // 撤销上一点是**免费**的：误点不该被罚；换流派才走洗点（有成本）
-    Profile.undoTalent(UI.talentChar);
+    Game.undoTalent();
     UI.toast('已撤销上一点', '');
     renderTalents();
   },
   'talent-respec': function () {
-    var res = Profile.respecTalents(UI.talentChar);
+    var res = Game.respecTalents(UI.talentChar);
     if (res.ok) {
       UI.toast(res.cost > 0 ? '已洗点（花了 ' + res.cost + ' 孢子）' : '已洗点（免费次数内）', '');
     } else UI.toast(res.reason, 'warn');
@@ -1566,7 +1757,7 @@ var ACT_KEEP: ActMap = {
   /* ---- 据点（跨局经营） ---- */
   'keep-buy': function (t) {
     var kid = (t.dataset && t.dataset.keep) || '';
-    var kr = Profile.keepBuy(kid);
+    var kr = Game.keepBuy(kid);
     if (kr.ok) {
       var kd = Keep.BY_ID[kid];
       UI.toast('据点建成：' + (kd ? kd.name : kid) + ' Lv.' + kr.toLevel +
@@ -1578,7 +1769,7 @@ var ACT_KEEP: ActMap = {
   /* ---- 图纸工坊（跨局养成第三条腿：花合金，只解锁能力） ---- */
   'forge-buy': function (t) {
     var zid = (t.dataset && t.dataset.forge) || '';
-    var zr = Profile.forgeNode(zid);
+    var zr = Game.forgeNode(zid);
     if (zr.ok) {
       var zd = Forge.BY_ID[zid];
       UI.toast('图纸解锁：' + (zd ? zd.name : zid) + ' —— ' +
@@ -1618,7 +1809,7 @@ var ACT_CODEX: ActMap = {
 
 var ACT_CHALLENGE: ActMap = {
 
-  /* ---- 挑战：实现在 main.ts（种子/角色/录制/成绩码都属于"接线"层）——
+  /* ---- 挑战：实现在 main.ts（种子/角色/录制/成绩码都属于"接入"层）——
          界面只负责发起，不认识"今天是什么种子" ---- */
   'daily': function () {
     if (UI.dailyStart) UI.dailyStart();
@@ -2665,10 +2856,6 @@ function renderShop() {
     (deluxeOk ? '　·　高级 ' + Game.packOdds('deluxe') : '');
   (el.btnPackBasic as HTMLButtonElement).disabled = mats < basicCost;
   (el.btnPackDeluxe as HTMLButtonElement).disabled = !deluxeOk || mats < deluxeCost;
-  // 建材包（商店的"原料"栏）：废料换工坊的本钱
-  var buildCost = Game.buildPrice();
-  if (el.packBuildCost) el.packBuildCost.textContent = '(' + buildCost + ')';
-  if (el.btnPackBuild) (el.btnPackBuild as HTMLButtonElement).disabled = mats < buildCost;
 }
 
 /* =========================================================
@@ -2854,7 +3041,7 @@ function afterSlotChange() {
 UI.afterSlotChange = afterSlotChange;
 
 /* 把"换槽位 → 重读"接到总线上。
-   ⚠ 这条接线是**必须**的，而不是可选优化：`Profile` 的内存副本属于**上一个槽位**，
+   ⚠ 这条接入是**必须**的，而不是可选优化：`Profile` 的内存副本属于**上一个槽位**，
    只切键不重读会得到一份"看起来对、其实错"的档案 ——
    实测（`test/slots.mjs`）表现是"切回 0 号槽读到的是 1 号槽的孢子"，
    而且**不报任何错**。放在这里而不是 `slots.ts` 里，是因为
@@ -3025,7 +3212,7 @@ function renderEnd(sum) {
   var sess = Game.getSession();
   if (sess && sess.combineCount) {
     rows += '<div>合成 <span class="big-num">' + sess.combineCount + '</span> 次 · 合金 +' +
-      (sess.alloy || 0) + '（到据点解锁图纸）</div>';
+      (sess.growth || 0) + '（到据点解锁图纸）</div>';
   }
   // 与历史最佳对比：这一局的成绩要放在坐标里才有意义
   rows += historyLine(sum);

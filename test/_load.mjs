@@ -17,6 +17,7 @@ export const MODULES = {
   selfcheck: '../src/selfcheck.ts',
   containers: '../src/containers.ts',
   envelope: '../src/envelope.ts',
+  fold:    '../src/fold.ts',
   dungeon: '../src/dungeon.ts',
   boons:   '../src/boons.ts',
   story: '../src/story.ts',
@@ -29,6 +30,8 @@ export const MODULES = {
   camp: '../src/camp.ts',
   stronghold: '../src/stronghold.ts',
   forge: '../src/forge.ts',
+  training: '../src/training.ts',
+  bonds:   '../src/bonds.ts',
   craft: '../src/craft.ts',
   skills:  '../src/skills.ts',
   talents: '../src/talents.ts',
@@ -48,7 +51,18 @@ export const MODULES = {
   tiers:   '../src/data_tiers.ts',
   elems:   '../src/data_elems.ts',
   curves:  '../src/curves.ts',
+  /* ⚠ **账本拆成四本**（v3 §5.4-错误1："禁止统一 `economy.ts` 定义
+     五六种货币互相兑换"）。`ledger` 是机制，四个 `eco_*` 是各模块自己的账，
+     `link` 是核心素材（**在账本之外**），`economy` 只剩只读聚合。
+     顺序有讲究：`economy` 靠副作用 import 把四本账接上电，所以它排在最后。 */
+  ledger:  '../src/ledger.ts',
+  eco_combat: '../src/eco_combat.ts',
+  eco_manage: '../src/eco_manage.ts',
+  eco_grow:   '../src/eco_grow.ts',
+  eco_global: '../src/eco_global.ts',
+  link:    '../src/link.ts',
   economy: '../src/economy.ts',
+  station: '../src/station.ts',
   art_spec: '../src/art_spec.ts',
   art_tiles: '../src/art_tiles.ts',
   art_shaders: '../src/art_shaders.ts',
@@ -79,20 +93,25 @@ export const MODULES = {
   i18n:    '../src/i18n.ts',
   save:    '../src/save.ts',
   demo:    '../src/demo.ts',
+  /* 文件存储后端（Node 专用；web 包不 import 它，见 `tsconfig.json` 的 exclude） */
+  storage_fs: '../src/storage_fs.ts',
   render:  '../src/render.ts',
   ui:      '../src/ui.ts'
 };
 
 /** 模拟层（无 DOM 依赖，无头环境直接跑） */
 export const SIM_MODULES = [
-  'utils', 'registry', 'selfcheck', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves', 'economy', 'art_spec', 'affixes', 'synergy', 'weapons',
-  'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
+  'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
+  /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
+  'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station',
+  'art_spec', 'affixes', 'synergy', 'weapons',
+  'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'training', 'bonds', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
   /* 从 `game.ts` 拆出去的两块（都是"数据 ↔ 数据"的变换，不推进任何状态）：
      `levelup` = 升级池（声明表 + 两条随等级走的纯计算），
      `run_save` = 一局存档的编解码。它们排在 `game` 之后只是顺读，
      实际顺序无关 —— `game.ts` import 它们，加载器不做拓扑排序，
      但 ESM 的依赖图会先解析被 import 的那一份。 */
-  'levelup', 'run_save',
+  'levelup', 'run_save', 'storage_fs',
   'art_tiles', 'art_shaders', 'art_parallax', 'music',
   /* 技能表只依赖 `chars` / `elems` / 注册表与自检，所以它与模拟层同批加载；
      它**不认识** `Game`（模拟层反过来读它的 `fold`），所以顺序无关紧要 ——
@@ -157,7 +176,7 @@ export function enterFightRoom(sess, type) {
  *
  * 房间制之后商店是"**清完这一间**之后的地方"，所以 `setState('shop', true)` 这种
  * 硬跳会造出一个假状态：人在商店里，可是这一间还没清 —— 于是门锁着，
- * `nextWave()`（自动探索）会被拒（实测：营地那套测试的"每波回血/免费刷新"全空转）。
+ * `nextWave()`（自动探索）会被拒（实测：营地那套测试的"每波回血/免费刷新"全都不生效）。
  * 这个助手就是"把这一间打完"，也就是玩家真正走一遍的路径。
  */
 export function toShop(sess) {

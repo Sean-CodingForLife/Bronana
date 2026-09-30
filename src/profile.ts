@@ -13,7 +13,7 @@
      · `records` 是**只读统计**（最好波次、总击杀）—— 写法是"并入一局"。
      · `profile` 是**可写的账号状态**（解锁、图鉴、孢子、已完成挑战、每角色记录）。
    所以本模块**不自己算累计值**：`applyRun()` 由调用方喂进
-   "这一局的观察值 + 并入后的 totals"（main.ts 的接线层负责取，
+   "这一局的观察值 + 并入后的 totals"（main.ts 的接入层负责取，
    与 Save.addRun 的顺序是：先并入 records，再喂给 profile）。
 
    版本与迁移：用自己的版本号与迁移链（envelope.ts 的工厂），
@@ -77,9 +77,9 @@ var CODEX_SEEN = 1, CODEX_USED = 2, CODEX_MASTERED = 3;
    前四个是"漂掉了的跨局字段"，最后两个是"清单从来没管过的元数据"。
    ========================================================= */
 var PROFILE_SECTIONS = [
-  'wallet', 'spores', 'alloy', 'core',
+  'wallet', 'growth', 'core',
   'forge', 'unlocked', 'codex', 'done', 'perChar',
-  'daily', 'season', 'keep', 'camp', 'campRow', 'tutorialSeen',
+  'daily', 'season', 'keep', 'keepLast', 'camp', 'campRow', 'tutorialSeen',
   'story', 'lastSeen', 'createdAt', 'updatedAt'
 ];
 
@@ -92,10 +92,20 @@ function blank() {
        分开之后，"带出去"这件事有一个明确的落点（`applyRun` 里一行），
        而不是散在各处各自加。 */
     wallet: { material: 0 },   // 材料：带出局，只在**经营**里花（盖设施 / 建筑 / 产线）
-    spores: 0,          // 局外货币（"孢子"）：**只供养成**（天赋树与洗点）
-    /* 局外第二种货币（"合金"）：来源只有**合成**这条链（局内合成 + 每次结算的基础产出），
-       只用于图纸工坊。与孢子**互不兑换** —— 两条曲线一旦能互换，就只剩一条曲线了。 */
-    alloy: 0,
+    /* =========================================================
+       **养成代币：只有一笔**（R43，2026-09）
+       ---------------------------------------------------------
+       它以前叫两个名字 —— `孢子`（天赋树与洗点）与 `合金`（图纸工坊）。
+       而 v3 §5.1 只允许 **3 个模块代币 + 1 个全局货币 + 3 个核心素材**；
+       养成是**一个**模块（v3 §8-3："把 `talents`/`forge` 的成长接到 `growth` 上"），
+       所以它只有**一个**代币。
+
+       ⚠ 合并的另一个理由更硬：`合金` 的来源是**合成**（战斗动作），
+       而 v3 §5.2 的三条边里**没有"战斗 → 养成"** —— 那条边只能走
+       `核心素材 B`（遗物：经营 → 养成）。所以 `合金` 的**收入**本来就不合法，
+       它的产出点要搬到**养成模块内部**（M3 的工作）。
+       ========================================================= */
+    growth: 0,
     /* **核心材料**（`economy.ts` 的 `meta-rare` 那一档）：来源**只有 Boss**。
        它是"这一局值了"的那一笔，也是经营（设施 / 建筑）与养成（关键能力）的**共同门槛** ——
        于是那两个模块争的是同一笔稀有资源，而不是各花各的钱。
@@ -115,7 +125,16 @@ function blank() {
     perChar: Object.create(null),
     daily: {},          // 'YYYY-MM-DD' -> 当天最好的一局（见 daily.ts）
     season: {},         // 'YYYY-Www'   -> 当周最好的一局（见 season.ts）
-    keep: {},           // 据点设施 -> 等级（跨局永久，花**材料**）
+    /* **上一局结束时的据点快照**（`{ 设施id: 等级 }`）。
+       为什么需要它：**离线产出是局外机制**，而据点现在是局内的（`S.keep`）——
+       局内状态在局外读不到。于是结算时记一份快照，离线按"上一局把菌床盖到几级"算。
+       它不是"跨局成长"，而是**一个记录** —— 与 `daily` / `season` 同一性质。 */
+    keepLast: {} as Record<string, number>,
+    /* ⚠ **据点已经搬进局内**（M1 第二块，2026-09）：等级住在 `S.keep`、
+       钱是 `S.material`。这个字段**只保留给老档迁移**（读一次、不再写）。
+       判据 I（M1 迁移预算）盯着"还有多少地方直接读账号"。
+       ⚠ 它**不是**"据点还在账号里"的证据 —— 只是旧档的落脚处。 */
+    keep: {},
     /* **工坊（经营场景的产线）**：`{ 设施id: 等级 }` + 建造顺序。
        它原先住在**局内会话**里（`game.ts` 的 `S.camp`），每局从零开始盖 ——
        那是"经营只是个局内小游戏"的形状。搬到档案里之后：
@@ -183,8 +202,12 @@ Profile.load = function () {
   }
   loadedFrom = 'storage';
   // 逐字段收紧：坏字段不该让整个档案作废（能修的修），值域一律夹回
-  data.spores = Math.max(0, Math.floor(num(got.spores)));
-  data.alloy = Math.max(0, Math.floor(num(got.alloy)));
+  /* **养成代币只有一个余额**（R43）：`孢子` 与 `合金` 本来就是同一件事 ——
+     都归养成模块（v3 §5.1 只有 3 个模块代币）。老档里它们是两个字段，
+     这里**相加**并进来，不丢任何一笔。 */
+  data.growth = Math.max(0, Math.floor(num(got.growth))) +
+    Math.max(0, Math.floor(num(got.spores))) +
+    Math.max(0, Math.floor(num(got.alloy)));
   data.core = Math.max(0, Math.floor(num(got.core)));
   /* 钱包（材料）：**老存档没有这个字段** —— 缺了就是 0，不做版本迁移。
      为什么可以用"缺省 0"代替一次迁移：新字段的缺省值是**唯一合理值**（没钱），
@@ -232,6 +255,17 @@ Profile.load = function () {
     if (!Stronghold.BY_ID[kid]) continue;
     var klv = Math.floor(num(kp[kid]));
     if (klv > 0) data.keep[kid] = Math.min(klv, Stronghold.maxLevel(kid));
+  }
+  /* **据点快照**（上一局盖到哪了）：与 `keep` 同一套夹取。
+     为什么它需要自己的收口：读它的四个局外机制（离线产出 / 天赋点 /
+     免费洗点 / 剧情 flag）**没有任何一道自己的防线** —— 脏数据漏进来，
+     它们会各自安静地算错一个数。 */
+  var klp = (got.keepLast && typeof got.keepLast === 'object') ? got.keepLast : {};
+  for (var klk in klp) {
+    if (!Object.prototype.hasOwnProperty.call(klp, klk)) continue;
+    if (!Stronghold.BY_ID[klk]) continue;
+    var kv = Math.floor(num(klp[klk]));
+    if (kv > 0) data.keepLast[klk] = Math.min(kv, Stronghold.maxLevel(klk));
   }
   // 工坊（经营场景的产线）：与据点同一套夹取，但多一层 —— **建造顺序**也要恢复，
   // 因为相邻组合靠它判定。顺序丢了不是"少个字段"，而是**静默把组合拆了**：
@@ -477,8 +511,8 @@ Profile.skillsFor = function (charId) {
 
 Profile.snapshot = function () {
   return {
-    spores: data.spores,
-    alloy: data.alloy,
+    /** 养成代币（`孢子` 与 `合金` 合并之后的唯一余额） */
+    growth: data.growth,
     core: data.core,
     forge: Object.keys(data.forge),
     unlocked: Object.keys(data.unlocked),
@@ -488,6 +522,9 @@ Profile.snapshot = function () {
     daily: copyOf(data.daily),
     season: copyOf(data.season),
     keep: copyOf(data.keep),
+    /* **据点快照**（上一局盖到哪了）—— 离线产出、天赋点、免费洗点、
+       剧情 flag 都跟着它走（据点本身住在局内 `S.keep`）。 */
+    keepLast: copyOf(data.keepLast),
     /* 首局引导的记录：**放进快照**是因为"哪些提示说过了"要能被界面与测试看见
        （`test/tutorial.mjs` 用它验"换档之后提示行为跟着哪份档走"）。
        快照是只读副本，改它不影响存档 —— 与其它字段同一个约定。 */
@@ -580,6 +617,22 @@ Profile.CODEX_MASTERED = CODEX_MASTERED;
  * （≈34 vs ≈34 孢子），两条轴各自有人赢。
  * 缺字段（旧档 / 别处造的 summary）按 0。
  */
+/* =========================================================
+   **养成代币的收入**（合并之后只剩一个公式，R43）
+   ---------------------------------------------------------
+   它以前是两条：`孢子`（打得深：波次 · 击杀 · 废料 · 材料）与
+   `合金`（合成 + 每次结算的基础产出）。合并之后**相加** —— 少算任何一条
+   都等于把玩家的一笔收入吞掉。
+
+   ⚠ **两条来源都产在战斗动作上**，而 v3 §5.2 的三条边里**没有"战斗 → 养成"**：
+   战斗只能喂经营（核心素材 A），经营再喂养成（核心素材 B）。
+   所以这两个产出点**都需要搬进养成模块内部** —— 那是 **M3** 的工作。
+   本轮只做"两笔钱合成一笔"，不动收入来源。
+   ========================================================= */
+/** 这一局进账多少养成代币（两条来源之和） */
+Profile.growthForRun = function (run) {
+  return Profile.sporesForRun(run) + Profile.alloyForRun(run);
+};
 Profile.sporesForRun = function (run) {
   if (!run) return 0;
   var wave = Math.max(0, num(run.wave));
@@ -588,7 +641,7 @@ Profile.sporesForRun = function (run) {
   var mats = Math.max(0, num(run.materials));
   return Math.floor(wave * 2 + kills / 25 + scrap / 40 + mats / 10 + (run.win ? 25 : 0));
 };
-Profile.spores = function () { return data.spores; };
+
 
 /* =========================================================
    合金与图纸工坊（局外第三条腿）
@@ -608,13 +661,29 @@ Profile.alloyForRun = function (run) {
   var mul = 1 + Math.max(0, num(Profile.forgeMods().alloyMul));
   return Math.round((base + fromCombine) * mul);
 };
-Profile.alloy = function () { return data.alloy; };
-Profile.addAlloy = function (n) {
-  var add = Math.max(0, Math.floor(num(n)));
-  if (!add) return data.alloy;
-  data.alloy += add;
+/* =========================================================
+   **养成代币（`growth`）：唯一的三个出口**
+   ---------------------------------------------------------
+   它以前是两笔钱（孢子 / 合金），各有一组三个出口。合并之后只剩这一组 ——
+   见 `blank()` 里那段说明（v3 §5.1 只允许 3 个模块代币）。
+   ========================================================= */
+/** 现在的养成代币余额 */
+Profile.growth = function () { return data.growth; };
+/** 进养成代币；不够就**不扣**并返回 false（与 `spendCore` 同一纪律） */
+Profile.spendGrowth = function (n) {
+  var cost = Math.max(0, Math.floor(num(n)));
+  if (cost <= 0) return true;
+  if (data.growth < cost) return false;
+  data.growth -= cost;
   Profile.save();
-  return data.alloy;
+  return true;
+};
+Profile.addGrowth = function (n) {
+  var add = Math.max(0, Math.floor(num(n)));
+  if (!add) return data.growth;
+  data.growth += add;
+  Profile.save();
+  return data.growth;
 };
 
 /* ---- 材料（`economy.ts` 的 bridge 那一档，**只供经营**）----
@@ -626,6 +695,18 @@ Profile.addAlloy = function (n) {
    两者的来源性质不同，混在一起以后就说不清"这个数是怎么来的"。
    也正因为它是带出来的，它**不属于任何一局**：`applyRun` 负责入账，
    `keepBuy` 负责出账。 */
+/* =========================================================
+   **材料（全局货币）已经搬进局内**（M1，2026-09）
+   ---------------------------------------------------------
+   下面这三个出口只剩**一件事要做：给老档当迁移来源**。
+   设计上下文 v3 §5.1 + §二：材料"三模块通用"且三个模块**全在局内**
+   ⇒ 它是局内货币（`S.material`），**不跨局**。
+
+   ⚠ 所以 `Profile.addMaterial` **没有任何生产调用点**了 —— 而门 `drift`
+   的判据 J（入账只许一个出口）仍然盯着它：调用点一旦长回来就报红。
+   判据 I（M1 迁移预算）则盯着"还有多少处直接读账号"。
+   ========================================================= */
+/** **只读**：账号里那一笔（老档的余额；新档永远是 0）。生产/消费都在局内。 */
 Profile.material = function () { return num(data.wallet && data.wallet.material); };
 Profile.addMaterial = function (n) {
   var add = Math.max(0, Math.floor(num(n)));
@@ -652,8 +733,21 @@ Profile.spendMaterial = function (n) {
    于是 `economy.ts` 里写的 `core → 经营 + 养成` 在玩家那一侧是**假的**
    （数字只涨不花）。现在两个花钱的点（`keepBuy` / `forgeNode`）各自
    在自己的账里扣 —— 它们本来就要一起 `Profile.save()`，
-   拆出一个"只扣钱不保存"的方法只会多一次落盘。 */
-Profile.core = function () { return data.core; };Profile.addCore = function (n) {
+   现在那个"唯一的调用点"**真的出现了**：`Game.keepBuy` 在局内扣材料、
+ 而核心材料还住在账号里（它是战斗 → 经营的核心素材，M4 才搬进局内），
+ 所以那一笔只能从这里扣。方法加回来 —— 这次它**有**调用点。
+ 之前那句"没有 spendCore"的结论只在当时成立，不是永久结论。 */
+Profile.core = function () { return data.core; };
+/** 花核心材料；不够就**不扣**并返回 false（与 `spendMaterial` 同一纪律） */
+Profile.spendCore = function (n) {
+  var cost = Math.max(0, Math.floor(num(n)));
+  if (cost <= 0) return true;
+  if (data.core < cost) return false;
+  data.core -= cost;
+  Profile.save();
+  return true;
+};
+Profile.addCore = function (n) {
   var add = Math.max(0, Math.floor(num(n)));
   if (!add) return data.core;
   data.core += add;
@@ -669,7 +763,7 @@ Profile.forgeOwned = function () {
 };
 Profile.isForged = function (id) { return data.forge[id] === true; };
 Profile.canForge = function (id) {
-  return Forge.canUnlock(data.forge, id, data.alloy, data.core);
+  return Forge.canUnlock(data.forge, id, data.growth, data.core);
 };
 /**
  * 解锁一张图纸（花合金；顶档那张还要**核心材料**）。规则全在 forge.ts，这里只落账。
@@ -681,7 +775,7 @@ Profile.canForge = function (id) {
 Profile.forgeNode = function (id) {
   var chk = Profile.canForge(id);
   if (!chk.ok) return { ok: false, reason: chk.reason, cost: chk.cost, core: chk.core || 0 };
-  data.alloy -= chk.cost;
+  data.growth -= chk.cost;
   if (chk.core > 0) data.core -= chk.core;
   data.forge[id] = true;
   Profile.save();
@@ -703,21 +797,7 @@ Profile.forgeMods = function () { return Forge.modsFor(data.forge); };
  * 它仍然是硬上限：天赋最多 +85%（商人 +25% + 商会 +60%），加据点的 +50% 后封在 1.2。
  */
 Profile.SPORE_MUL_CAP = 1.2;
-Profile.addSpores = function (n) {
-  var add = Math.max(0, Math.floor(num(n)));
-  if (!add) return data.spores;
-  data.spores += add;
-  Profile.save();
-  return data.spores;
-};
-/** 花孢子；不够就返回 false 且不改状态（调用方负责提示） */
-Profile.spendSpores = function (n) {
-  var cost = Math.max(0, Math.floor(num(n)));
-  if (cost > data.spores) return false;
-  data.spores -= cost;
-  Profile.save();
-  return true;
-};
+/* addSpores / spendSpores 已经收进 `addGrowth` / `spendGrowth`（R43）。 */
 
 /* =========================================================
    6. 一局结束：并入档案（累计、图鉴、挑战、解锁）
@@ -832,18 +912,52 @@ Profile.respecCostOf = function (charId) {
  * "推翻已建好的东西"，而经营正是负责"建"的那一半。这样孢子那笔钱
  * 只剩一个去处（点天赋），两个局外模块不再共用钱包。
  */
-Profile.respecTalents = function (charId) {
+Profile.respecTalents = function (charId, mat) {
   var pc = recordFor(charId);
   if (!pc.talents || !pc.talents.length) return { ok: false, reason: '还没点过天赋', cost: 0 };
   var cost = Profile.respecCostOf(charId);
-  if (cost > 0 && Profile.material() < cost) {
+  /* **材料是局内余额**（`S.material`）—— 本模块在 `game.ts` 之下，不能反向 import，
+     所以按本仓范式收参数；扣钱在调用方 `Game.respecTalents`。 */
+  if (cost > 0 && Math.max(0, Math.floor(Number(mat) || 0)) < cost) {
     return { ok: false, reason: '材料不够（需要 ' + cost + '）', cost: cost };
   }
-  if (cost > 0) Profile.spendMaterial(cost);
   pc.talents = [];
   pc.respecs = (pc.respecs || 0) + 1;
   Profile.save();
   return { ok: true, reason: '', cost: cost };
+};
+
+/* =========================================================
+   **据点快照**（`keepLast`）：账号记一份"据点盖到哪了"
+   ---------------------------------------------------------
+   为什么需要它：据点住在**局内**（`S.keep`），而有两处**局外**机制要读它：
+     · 离线产出（菌床等级）—— `settleOffline`
+     · 剧情 flag（`keepClocktower`）—— 施建接进了叙事
+   两者都**不允许**反向 import `game.ts`（本模块在它之下），所以由调用方喂进来。
+
+   ⚠ 为什么不只在结算时记：玩家盖完钟楼、**同一局**走到 NPC
+   面前就该看到反应 —— 等到结算才变会让"刚盖的东西没人提"。
+   所以 `Game.keepBuy` 每买一次就记一次（与 `story.said` 同类：
+   账号记录一个成就，不是写回局内状态）。结算时再记一次是保险。
+   ========================================================= */
+/** 记一份据点快照（只读它的那两处在上面）。空的也记："这一局没盖"也是一个事实。 */
+Profile.noteKeep = function (keep) {
+  if (!keep || typeof keep !== 'object') return;
+  /* **坏档防线**（它以前在 `Profile.keepOwned` 那一侧 —— 据点搬走之后挪到这里）：
+     越界等级夹回上限、未知设施丢掉、非正数丢掉。
+     为什么必须在这里：快照是**局外机制唯一读得到的据点**，
+     脏数据从这里进去，离线产出与天赋点就会跟着算错。 */
+  var clean: Record<string, number> = {};
+  for (var k in keep) {
+    if (!Object.prototype.hasOwnProperty.call(keep, k)) continue;
+    var max = Stronghold.maxLevel(k);
+    if (!(max > 0)) continue;                       // 未知设施：丢掉
+    var v = Math.floor(Number(keep[k]));
+    if (!isFinite(v) || v <= 0) continue;           // 负数 / 0 / NaN：丢掉
+    clean[k] = Math.min(max, v);                    // 越界：夹回上限
+  }
+  data.keepLast = clean;
+  Profile.save();
 };
 
 /** 这个角色现在有几次免费洗点（据点「档案馆」L2 会加） */
@@ -888,7 +1002,8 @@ Profile.unlockDanger = function (charId, level) {
  */
 Profile.applyRun = function (run, totals) {
   var report: ProfileRunReport = {
-    spores: 0, alloy: 0, core: 0, material: 0, completed: [], unlocked: [], codex: [], dangerUnlocked: 0, pointsGained: 0,
+    /** **养成代币**：角色成长 / NPC 羁绊 / 能力解锁共用这一笔（v3 §5.1） */
+    growth: 0, core: 0, material: 0, completed: [], unlocked: [], codex: [], dangerUnlocked: 0, pointsGained: 0,
     story: { fragments: [], endings: [], newBosses: [], secrets: 0, floor: 0 }
   };
   if (!run || !run.char) return report;
@@ -901,19 +1016,28 @@ Profile.applyRun = function (run, totals) {
   if (coreGain > 0) { data.core += coreGain; report.core = coreGain; }
 
   /* **材料入账**（`economy.ts` 的 bridge 那一档，只供经营）。
-     入账的是 `run.materials` —— 这一局**真正打到多少材料**
+     入账的是 `run.materials` = 这一局**真正打到多少材料**
      （`S.materialEarned`，由 `gainMaterial` 一笔笔记的），不是 `run.scrap`。
 
-     ⚠ 这里曾经读的是 `run.earned`，而当时的 `earned` 装的是**废料累计** ——
-     于是一局结束会往材料钱包里再发一遍废料数，而材料在局内
-     （`gainMaterial` → `Profile.addMaterial`）**已经当场入过账了**。
-     两笔叠起来的症状是"材料总是比打到的多"，而且它不报错、不进任何断言。
-     现在名字与货币一一对应：`run.scrap` = 废料，`run.materials` = 材料。
+     ⚠ **这里以前会再加一遍钱 —— 那是一个静默的双重入账，2026-09 修掉。**
+     材料在局内 `gainMaterial`（`game.ts` 那个**唯一出口**）里已经
+     `Profile.addMaterial(v)` 当场进钱包了，同时还累加 `S.materialEarned`。
+     而 `run.materials` **取的就是** `S.materialEarned`（`game.ts:3417`）——
+     于是这里再 `addMaterial(matGain)` 等于**每一笔材料都进两次钱包**。
+     它不报错、不进任何断言，症状只是"材料总是比打到的多"。
 
-     **它不吃孢子那套倍率**：孢子代表"打得深"，而材料是"打了多少" ——
-     两者混在一起会让经营也复利起来。 */
+     为什么一直没被发现：**同一个字段名 `materials` 有两套含义** ——
+     `challenges.ts` 里 `materials: '本局废料'`（读 `r.scrap`），
+     而这里读的是材料。两个含义共用一个名字，谁都没看出它对不上。
+
+     现在这一节**只报数、不入账**（`report.material` 给界面显示"这局带出多少"），
+     钱由 `gainMaterial` 一处管。 */
+  /* **据点快照**（离线产出读它，见 `blank()` 里 `keepLast` 的说明）。
+     截的是"这一局结束时据点盖到哪了"。 */
+  if (run.keep && typeof run.keep === 'object') data.keepLast = copyOf(run.keep);   // 同 noteKeep
+
   var matGain = Math.max(0, Math.floor(num(run.materials)));
-  if (matGain > 0) { Profile.addMaterial(matGain); report.material = matGain; }
+  if (matGain > 0) { report.material = matGain; }
 
   // 1) 每角色记录（挑战条件里有一类是"用某角色…"，它读的就是这里）
   var pc = recordFor(run.char);
@@ -933,8 +1057,12 @@ Profile.applyRun = function (run, totals) {
   //     据点「档案馆」L3 在这里接上：每局额外多给一点（**据点 → 天赋**那条边）。
   //     刻意不做成"直接发一大笔点"—— 通关仍然必须是主要来源，
   //     否则"打通才给点"的稀缺性就没了（DD 的 Guild 也是先降本、再抬上限，不送等级）。
-  var gained = Talent.pointsForRun(run) + (Profile.keepMods().bonusPoints || 0);
-  if (gained > 0) { pc.points += gained; report.pointsGained = gained; }
+  /* ⚠ **结算不再发天赋点**（M3，2026-09）：它与 `growth` 是**同一个违规** ——
+     天赋点的产出也挂在战斗动作上（按通关 / 波次给），而 v3 §5.2 没有
+     "战斗 → 养成"这条边。现在天赋**花成长点**（`Game.takeTalent` 走 `growth` 余额），
+     而成长点由训练产（`Game.train`）—— 与 v3 §8-3"把 talents 的成长接到 growth 上"一致。
+     `Talent.pointsForRun` 留着：它是"这一局打了多少"的度量，平衡工具还在读。 */
+  report.pointsGained = 0;
 
   // 1b) 通关 → 解锁下一级难度（StS 的规则：打赢第 N 级才解锁 N+1）
   if (run.win) {
@@ -962,19 +1090,33 @@ Profile.applyRun = function (run, totals) {
      那一条乘数正是"据点数值穿透"，删掉之后孢子只有一条曲线：打得深 / 点经济天赋。 */
   var talentMul = (run.omods && run.omods.sporeMul) || 0;
   var sporeMul = 1 + Math.min(Profile.SPORE_MUL_CAP, Math.max(0, talentMul));
-  report.spores = Math.round(Profile.sporesForRun(run) * sporeMul);
-  data.spores += report.spores;
+  /* =========================================================
+     **结算不再发养成代币**（M3，2026-09）
+     ---------------------------------------------------------
+     它以前在这里发两笔：`孢子`（打得深）与 `合金`（合成 + 基础产出）。
+     而那两条**都产在战斗动作上** —— v3 §5.2 的三条边是
+     **战斗→经营→养成→战斗**，**没有"战斗 → 养成"**。
+
+     现在产出点在 `Game.train`（`training.ts`）：
+     **花 `material`（全局货币 = 行动成本）换 `growth`**，在养成模块内部。
+
+     ⚠ 这就是 v3 要的**撞墙**：不训练 → 没有养成代币 → 图纸与天赋都动不了，
+       但游戏**没有不让玩家继续**（战斗照打、经营照盖）—— 只是那两条路推不动。
+
+     上面那两条公式（`sporesForRun` / `alloyForRun`）**留着**：它们是"这一局打了多少"的
+     度量，结算展示与平衡工具还在读。只是**不再直接发钱**。
+     ========================================================= */
+  report.growth = 0;
 
   /* 3b) 合金：来源只有"合成"这条链（局内合成 + 基础产出），倍率来自熔炉。
        它**不**吃孢子那套倍率 —— 两条货币各有各的曲线，能互换就只剩一条了。 */
-  report.alloy = Profile.alloyForRun(run);
-  data.alloy += report.alloy;
+  /* （合金那条收入已经在上面并进 `report.growth` 了） */
 
   /* 4) 剧情进度：**先并进档案，再评挑战**。
      顺序不是随意的：隐藏挑战（G5）读的是**跨局的探索计数**
      （发现过几间密室 / 集齐几片记录 / 打倒过几个器官），
      如果先评挑战再并剧情，"这一局刚好凑够 6 间密室"就要等下一局才发奖 —— 差一拍。
-     `report.story` 把这一局新拿到的东西交回接线层去弹提示（界面不认识 story 表）。 */
+     `report.story` 把这一局新拿到的东西交回接入层去弹提示（界面不认识 story 表）。 */
   report.story = foldRunIntoStory(run);
 
   // 5) 挑战：评估 → 发奖。评估是纯函数（challenges.ts），这里只负责落账
@@ -1046,7 +1188,7 @@ function foldRunIntoStory(run) {
     var fp = Profile.awardFragment('deeppit');
     if (fp) out.fragments.push(fp);
   }
-  // 结局：条件达成即收藏（每局重算一次；列表返回给接线层弹提示）
+  // 结局：条件达成即收藏（每局重算一次；列表返回给接入层弹提示）
   out.endings = Profile.endingsSeen();
   return out;
 }
@@ -1065,7 +1207,10 @@ function foldRunIntoStory(run) {
 /** 台词条件要的那份输入（数字 + flag） */
 Profile.storyCtx = function () {
   var flags: Record<string, boolean> = Object.create(null);
-  flags.keepClocktower = Profile.keepLevel('clocktower') > 0;
+  /* ⚠ 据点已经搬进局内（`S.keep`），而**叙事 flag 是局外记录**（它跨局）。
+     所以读的是"上一局结束时的据点快照" `keepLast` —— 与离线产出同一个来源。
+     语义仍然对：玩家"曾经把钟楼盖起来过"，故事就往下走。 */
+  flags.keepClocktower = !!(data.keepLast && data.keepLast['clocktower'] > 0);
   flags.sawSecret = data.story.secrets > 0;
   flags.firstWin = data.story.wins > 0;
   flags.deepPit = data.story.bestFloor > DungeonFloors;
@@ -1241,19 +1386,24 @@ Profile.lastSeen = function () { return data.lastSeen; };
 /**
  * 结算离线产出。
  * @param now 现在的时间戳（默认 Date.now()；测试要可控）
- * @returns { spores, minutes, capped, reason, sporebed }
+ * @returns { growth, minutes, capped, reason, sporebed }
  */
 Profile.settleOffline = function (now) {
   var t = isFinite(Number(now)) ? Number(now) : Date.now();
   /* 离线等级 = 据点「菌床」的折叠等级（`offlineLevel`）。
      读折叠值而不是设施等级：这样"离线产出"这条能力只有一个来源，
      设施表改了等级数也不会让这里悄悄失效（两边不同步的那种 bug 最难发现）。 */
+  /* ⚠ **离线产出按"上一局结束时的据点"算**（M1 第二块，2026-09 —— 见下）。
+     据点搬进局内（`S.keep`）之后，`data.keep` 不再被写了，
+     所以这里再读 `Profile.keepMods()` 会**永远是 0**（挂多久都不产出）。
+     离线产出是**局外**机制，它需要一个局外的来源 —— 那就是 `data.keepLast`：
+     每局结算时把这一局的据点快照记下来。 */
   var level = Profile.keepMods().offlineLevel || 0;
   var seen = data.lastSeen;
-  var out = { spores: 0, minutes: 0, minutesCounted: 0, capped: false, reason: '第一次见面', sporebed: level };
+  var out = { growth: 0, minutes: 0, minutesCounted: 0, capped: false, reason: '第一次见面', sporebed: level };
   if (seen > 0) {
     var r = Offline.settle(t - seen, level);
-    out.spores = r.spores;
+    out.growth = r.growth;
     out.minutes = r.minutes;
     out.minutesCounted = r.minutesCounted;
     out.capped = r.capped;
@@ -1261,8 +1411,8 @@ Profile.settleOffline = function (now) {
   }
   // 结算即前进：无论给没给，都把"上次见面"推到现在
   data.lastSeen = t;
-  if (out.spores > 0) {
-    data.spores += out.spores;
+  if (out.growth > 0) {
+    data.growth += out.growth;
     Profile.save();
   } else {
     Profile.save();
@@ -1278,20 +1428,32 @@ Profile.touchSeen = function (now) {
 };
 
 /* =========================================================
-   7c. 跨局据点（模拟经营第二级，花孢子）
+  /* =========================================================
+   7c. 据点：**账号侧只剩一个快照视图**（M1 第二块，2026-09）
    ---------------------------------------------------------
-   这里只做账：孢子扣减 + 等级落盘。
-   "哪些设施、多少钱、折出什么修正"全在 stronghold.ts（纯数据 + 纯函数）。
+   ⚠ 据点本身**已经搬进局内**（`S.keep`，见 `game.ts` 的 `refreshKeepFx`）：
+   等级、买入、折叠修正都在会话里，钱是 `S.material`。
+   本模块在 `game.ts` **之下**，读不到会话 —— 而下面这几个是**局外**机制：
+     · 离线产出（菌床等级 `offlineLevel`）
+     · 天赋点数（档案馆 `bonusPoints`）
+     · 免费洗点（档案馆 `freeRespecs`）
+     · 剧情 flag（钟楼）
+   它们真正想问的都是同一个问题：**"上一局把据点盖到哪了"**。
+   所以这里统一读 `data.keepLast`（快照），而不是 `data.keep`（那个字段
+   从据点搬走之后**再也不被写**，读它只会得到"永远全空"）。
    ========================================================= */
-Profile.keepLevel = function (id) { return Stronghold.levelOf(data.keep, id); };
+/** 上一局结束时的据点（**快照**；新档是空的） */
+Profile.keepLast = function () { return data.keepLast || {}; };
+Profile.keepLevel = function (id) { return Stronghold.levelOf(data.keepLast || {}, id); };
 Profile.keepOwned = function () {
   var out: Record<string, number> = {};
-  for (var k in data.keep) if (Object.prototype.hasOwnProperty.call(data.keep, k)) out[k] = data.keep[k];
+  var src = data.keepLast || {};
+  for (var k in src) if (Object.prototype.hasOwnProperty.call(src, k)) out[k] = src[k];
   return out;
 };
-/** 据点的折叠修正（开局交给 Game.newRun） */
-Profile.keepMods = function () { return Stronghold.modsFor(data.keep); };
-Profile.keepInvested = function () { return Stronghold.invested(data.keep); };
+/** 上一局据点的折叠修正（离线产出 / 天赋点 / 免费洗点 / 剧情 flag 读它） */
+Profile.keepMods = function () { return Stronghold.modsFor(data.keepLast || {}); };
+Profile.keepInvested = function () { return Stronghold.invested(data.keepLast || {}); };
 
 /* =========================================================
    6b. 工坊（经营场景的产线）—— **跨局**
@@ -1308,82 +1470,37 @@ Profile.keepInvested = function () { return Stronghold.invested(data.keep); };
        现在 = "**这一局能造几件**"。每波重置（`S.craftUsed` 是局内的）。
      · **摆法不再每局重来**：`campRow` 是长期决定，相邻组合跟着它走。
 
-   规则（售价 / 等级 / 组合 / 折叠 / 封顶）全在 `camp.ts`，这里只做三件事：
-   读状态、扣材料、写状态。
+   规则（售价 / 等级 / 组合 / 折叠 / 封顶）全在 `camp.ts`。
+   ⚠ **下面这些访问器已经删掉了**（M1 第三块，2026-09）—— 见紧随其后的说明。
    ========================================================= */
-Profile.campOwned = function () {
-  var out: Record<string, number> = {};
-  for (var k in data.camp) if (Object.prototype.hasOwnProperty.call(data.camp, k)) out[k] = data.camp[k];
-  return out;
-};
-Profile.campRow = function () { return data.campRow.slice(); };
-/** 工坊效果的折叠（相邻组合要顺序，所以两个一起给） */
-Profile.campFx = function () { return Camp.effects(data.camp, data.campRow); };
-/** 建造顺序里每一个都必须是**真的建了**的设施（坏档防线：顺序与状态不能脱节） */
-Profile.campRowClean = function () {
-  var out: string[] = [];
-  for (var i = 0; i < data.campRow.length; i++) {
-    var id = data.campRow[i];
-    if (data.camp[id] > 0 && out.indexOf(id) < 0) out.push(id);
-  }
-  return out;
-};
-/** 这一局有几条产线 = 已建设施数（每条产线一座；图纸另给名额，由 craft.ts 加） */
-Profile.campLines = function () { return Camp.usedSlots(data.camp); };
-Profile.campLevel = function (id) { return Camp.levelOf(data.camp, id); };
+/* =========================================================
+   ⚠ **工坊的访问器与买卖已经删掉了**（M1 第三块，2026-09）。
+   ---------------------------------------------------------
+   它们以前读 `data.camp` / `data.campRow`（账号档案）。
+   现在工坊整个搬进了局内（v3 §二："三个模块全在局内"）：
+     · 等级与建造顺序住在 `S.camp` / `S.campRow`（会话）
+     · 规则仍然是纯函数 `Camp.canBuy/refundOf/effects`（它们本来就收 state）
+     · 入口是 `Game.campBuy/campSell`，读出口是 `Game.campOwned/campRow/campFx`
 
-/**
- * 买 / 升级一个工坊设施（花**材料**）。
- * @param opts.slots      设施位上限（据点「地基」能抬高；缺省 = 基准）
- * @param opts.discount   价格折扣（天赋「商会」；缺省 = 不打折）
- * @param opts.fullRefund 拆除全额返还（据点「工匠」；缺省 = 退一半）
- * @returns { ok, reason, cost, toLevel }
- */
-Profile.campBuy = function (id, opts) {
-  var chk = Camp.canBuy(data.camp, id, Profile.material(), opts);
-  if (!chk.ok) return chk;
-  if (!Profile.spendMaterial(chk.cost)) {
-    return { ok: false, reason: '材料不够（需要 ' + chk.cost + '）', cost: chk.cost, toLevel: 0 };
-  }
-  var isNew = Camp.levelOf(data.camp, id) === 0;
-  data.camp[id] = chk.toLevel;
-  /* 新建设施排到行尾（升级**不挪**位置）——「谁挨着谁」由建造顺序决定，
-     这正是相邻组合那套玩法成立的前提。 */
-  if (isNew && data.campRow.indexOf(id) < 0) data.campRow.push(id);
-  Profile.save();
-  return { ok: true, reason: '', cost: chk.cost, toLevel: chk.toLevel };
-};
-
-/**
- * 拆掉一个工坊设施，退还一部分材料（`opts.fullRefund` 时全额）。
- * 拆掉会**同时拆掉它参与的组合** —— 那是"摆法"这套玩法的代价，不是 bug。
- */
-Profile.campSell = function (id, opts) {
-  var lvl = Camp.levelOf(data.camp, id);
-  if (!lvl) return { ok: false, reason: '没有这个设施', refund: 0 };
-  var back = Camp.refundOf(data.camp, id, opts);
-  delete data.camp[id];
-  var at = data.campRow.indexOf(id);
-  if (at >= 0) data.campRow.splice(at, 1);
-  if (back > 0) Profile.addMaterial(back);
-  Profile.save();
-  return { ok: true, reason: '', refund: back };
-};
+   `data.camp` / `data.campRow` 只保留给**旧档读取**（见 `Profile.load` 里的收口），
+   不再被写入。门 `drift` 的判据 I（M1 迁移预算）盯着它不许长回来。
+   ========================================================= */
 
 /**
  * 界面要铺的那一屏：每条配方的费用 / 能不能造 / 造不造得起。
  * **不写任何规则** —— 规则全在 `craft.ts`（费用与档位）与 `camp.ts`（省料与抬档）。
  * @param mods 图纸给的制造修正（`Forge.modsFor` 那一份）
  */
-Profile.craftOptions = function (mods) {
-  var fx = Profile.campFx();
+Profile.craftOptions = function (mods, mat, fx) {
+  /* ⚠ `fx`（工坊折叠效果）与 `mat`（局内材料余额）都是**收进来的**：
+     工坊已经搬进局内会话，而本模块在 `game.ts` 之下，读不到它。 */
+  fx = fx || Camp.effects({}, []);
   /* 显式标注：`var out = []` 会被推断成 `any[]`，于是这个函数的返回类型丢掉，
      调用方（`game.ts` 的 `craftOptions`）就会拿不到 `kind` 的字面量类型。 */
   var out: Array<{
     id: string; kind: 'weapon' | 'item'; refId: string; name: string; tier: number;
     cost: number; ok: boolean; reason: string; affordable: boolean;
   }> = [];
-  var mat = Profile.material();
   for (var i = 0; i < Craft.LIST.length; i++) {
     var r = Craft.LIST[i];
     var chk = Craft.canMake(r, mods);
@@ -1396,31 +1513,20 @@ Profile.craftOptions = function (mods) {
   return out;
 };
 
-/**
- * 买 / 升级一个据点设施（花孢子；高级等级还要**核心材料**）。
- *
- * 核心材料必须在这里真的扣 —— 它是全游戏最稀的一档
- * （一局最多 3 个，只有关底 Boss 掉）。这条线以前是断的：
- * `Profile.spendCore` 定义着但**没有任何调用点**，于是
- * "打 Boss 拿核心材料"在玩家那一侧是看得见摸不着的。
- * @returns { ok, reason, cost, core, toLevel }
- */
-Profile.keepBuy = function (id) {
-  /* ⚠ **改花材料**（用户拍板：经营与养成各花各的钱）。canBuy 的第一个资源参数
-     现在接的是钱包里的材料，而不是孢子 —— 孢子从此只供养成。 */
-  var chk = Stronghold.canBuy(data.keep, id, Profile.material(), data.core);
-  if (!chk.ok) return chk;
-  if (!Profile.spendMaterial(chk.cost)) {
-    return { ok: false, reason: '材料不够（需要 ' + chk.cost + '）', cost: chk.cost, core: chk.core || 0, toLevel: 0 };
-  }
-  /* 两笔资源一起扣：`canBuy` 已经两边都验过，所以这里不会扣出负数。
-     先扣材料再扣核心材料 —— 顺序无所谓，但**两笔必须都扣**。 */
-  if (chk.core > 0) data.core -= chk.core;
-  data.keep[id] = chk.toLevel;
-  Profile.save();
-  return { ok: true, reason: '', cost: chk.cost, core: chk.core || 0, toLevel: chk.toLevel };
-};
+/* =========================================================
+   ⚠ `Profile.keepBuy` **已经删掉了**（M1 第二块，2026-09）。
+   ---------------------------------------------------------
+   它以前是"买据点"的唯一入口，而它读的是**账号钱包**里的材料。
+   现在据点整个搬进了局内（v3 §二："三个模块全在局内"）：
+     · 等级住在 `S.keep`（会话），花的是 `S.material`（局内材料）
+     · 规则仍然是纯函数 `Stronghold.canBuy(owned, id, material, core)`
+     · 入口是 `Game.keepBuy`（它在 `game.ts`，本模块之上）
+     · 核心材料暂时仍从 `data.core` 扣（它还没搬进局内 —— M4 的事）
 
+   为什么**删掉**而不是留着：留一个"还能花账号钱包买据点"的口子，
+   就等于留了第二个真相 —— 而那正是这次迁移要拆的东西。
+   门 `drift` 的判据 I（M1 迁移预算）会盯着它不许长回来。
+   ========================================================= */
 /* =========================================================
    8. 清档（设置页的"清空存档"要连它一起清）
    ========================================================= */
@@ -1481,7 +1587,16 @@ Profile.audit = function () {
     if (real.indexOf(PROFILE_SECTIONS[i]) < 0) problems.push('profileSection 声明了 ' + PROFILE_SECTIONS[i] + '，但档案里没有这个字段（清单写错了）');
   }
   /* 顺序表与状态表不能脱节：`campRow` 里出现没建的设施 → 组合判定会读到幽灵 */
-  var ghost = Profile.campRowClean();
+  /* 这是**旧档字段**的自检（`data.camp` / `data.campRow` 现在只用于旧档读取）。
+     工坊本身已经搬进局内，它的坏档防线在 `game.ts` 的 `campRow()` 里。 */
+  var ghost = (function () {
+    var out: string[] = [];
+    for (var i = 0; i < data.campRow.length; i++) {
+      var id = data.campRow[i];
+      if (data.camp[id] > 0 && out.indexOf(id) < 0) out.push(id);
+    }
+    return out;
+  })();
   if (ghost.length !== data.campRow.length) {
     problems.push('campRow 里有 ' + (data.campRow.length - ghost.length) + ' 项不是"真的建了"的设施（相邻组合会按幽灵位置判定）');
   }

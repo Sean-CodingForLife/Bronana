@@ -64,7 +64,7 @@ var MOD_KEYS: Record<string, KeepModKeyDef> = {
      它落在**养成层内部**（据点与天赋都是局外养成），不穿透到战斗或制造。 */
   freeRespecs: kd('每个角色多几次免费洗点（profile.ts 的免费次数）',
     function (v) { return ['免费洗点 +' + v + ' 次']; }),
-  bonusPoints: kd('每局结算额外给的天赋点（profile.ts applyRun，按角色档）',
+  bonusPoints: kd('**训练**每次额外给的成长点（game.ts 的 Game.train —— 影响动作效率，不是替玩家付钱）',
     function (v) { return ['每局天赋点 +' + v]; }),
   /* ---- 下面三个是"**结构性解锁**"（不是加数值）----
      参照 Loop Hero 的营地：Gymnasium **解锁特性**、Crypt **解锁职业**、

@@ -145,13 +145,13 @@ ArtShaders.requireWiring = true;
 const sh = ArtShaders.audit();
 ArtShaders.requireWiring = false;
 line('\n[5] 2D 着色器：' + sh.counts.shaders + ' 条（贴图级 ' + sh.counts.sprite +
-  ' / 屏幕级 ' + sh.counts.screen + '）· 已接线 ' + sh.counts.used +
+  ' / 屏幕级 ' + sh.counts.screen + '）· 已接入 ' + sh.counts.used +
   ' · 备用 ' + sh.counts.reserved);
 for (const s of ArtShaders.LIST) {
   const users = ArtShaders.usersOf(s.id);
   const rsv = ArtShaders.RESERVED_BY_ID[s.id];
   const mark = users.length ? '\x1b[32m✔\x1b[0m' : (rsv ? '\x1b[33m—\x1b[0m' : '\x1b[31m✗\x1b[0m');
-  const who = users.length ? users.join(',') : (rsv ? '备用：' + rsv.why.slice(0, 40) + '…' : '没接线也没登记理由');
+  const who = users.length ? users.join(',') : (rsv ? '备用：' + rsv.why.slice(0, 40) + '…' : '没接入也没登记理由');
   line('  ' + mark + ' ' + pad(s.name + ' ' + s.id, 22) + pad(s.kind, 8) + who);
 }
 if (ArtShaders.missingWiring().length) {
@@ -172,7 +172,7 @@ for (const ts of ArtTiles.TILESETS) {
 line('\n=== 结果 ===');
 const bad = (!spec.ok ? 1 : 0) + (missing.length ? 1 : 0) + (!tv.ok ? 1 : 0) + (!sh.ok ? 1 : 0);
 if (bad === 0) {
-  line('\x1b[32m规范自洽 · 每一类资源有主 · 每条效果接了线或登记为备用 · 三条预算都在上限内\x1b[0m ✔');
+  line('\x1b[32m规范自洽 · 每一类资源有主 · 每条效果接上了或登记为备用 · 三条预算都在上限内\x1b[0m ✔');
   process.exit(0);
 } else {
   line('\x1b[31m' + bad + ' 项体检未通过 ✘\x1b[0m');

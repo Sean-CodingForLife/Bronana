@@ -103,94 +103,129 @@ var MODS: Record<string, { scope: 'stat' | 'weapon'; note: string; key?: StatKey
 /* =========================================================
    3. 词条表
    ---------------------------------------------------------
-   一行一条。读法是："这一条每高一档，多给 `per`；一档之内再在
-   `per` 到 `per*cap` 之间取一个值。"（`cap` 就是 Last Epoch 那个
-   "同一档里也分高低"的手感，不额外引入第二套档位表。）
+   一行一条。读法是："这一条有 `cap` 档；第 `t` 档给
+   `|per|*(t-1)+1 .. |per|*t` 之间的一个整数（符号由 `per` 定）。"
+   于是**低档的最高值 < 高档的最低值** —— 那条单调性是可验证的（测试里有一条）。
+
+   一件装备上的词条**能到第几档** = `min(装备品级, 该词条的 cap)`
+   （`Affixes.roll` 里的那行 `cap = tier`）：装备品级是唯一的强度阶梯（合成台阶），
+   词条搭在它上面，不再引入第二套"词条等级"。
+
+   ⚠ **2026-09 加深了这条链**：改造前 19 条里 18 条 `cap: 2`，于是
+   **物品 T2/T3/T4/T5 的词条档位全是 T2** —— "链"在第 2 件装备就到顶，
+   拿 T5 装备与 T2 装备的词条强度**完全一样**。
+   现在多数 `cap: 4`（三个大数值的平坦防御类 `cap: 3`：护甲 / 每秒回复 / 重型生命 ——
+   它们的 `per` 是整数，第 4 档会变成 +8 护甲 / +4 回复 / +16 生命，超出单件装备的预算）。
+   外部依据：Last Epoch 官方文档写"词缀有 **7 档**，且 **T6/T7 只能靠掉落**"
+   （<https://support.lastepoch.com/hc/en-us/articles/46361996533147-Affixes>）——
+   档位深度本身就是"长线追逐"，2 档给不了。
+   本作对到物品 T4（T5 装备与 T4 同档，因为物品品级只到 T5 而词条 cap 是 4）。
 
    前缀 = 进攻（打得更疼 / 更快 / 更远 / 更能暴）
    后缀 = 防护与效用（活得下去 / 拾得更多 / 偷得回来）
    权重 `w` 只影响"滚出来的是哪一条"，不影响强弱 —— 稀有词条不是更强，
    只是更少见（与 Diablo 的 tier 权重同一套手感）。
+
+   ⚠ 前后缀**不是两套独立槽位**（外部 PoE / Last Epoch / Diablo 都是"2 前缀 + 2 后缀"）：
+   本作的家族只是**语义分组 + 权重**，`roll` 从并集里按权重抽 `rollCount(tier)` 条，
+   所以一件装备可以滚出两条前缀、零条后缀。这是**有意的差别**（本作的"前缀/后缀"
+   读起来是"进攻向 / 防护向"，不是两个槽），不是漏配 —— 但它意味着
+   "这件装备缺一条后缀"这种事在本作里不成立，写文档时别照搬外部的说法。
    ========================================================= */
-function pct(per1000: number) { return function (v: number) { return '+' + Math.round(v / 10) + '%'; }; }
+/**
+ * 千分比整数 → 显示文本（`60` → `+6%`，`3` → `+0.3%`，`-40` → `-4%`）。
+ *
+ * 为什么必须留一位小数：每一档的区间是 `[|per|*(t-1)+1, |per|*t]`，
+ * 所以 **T1 的低滚可以只有 1~4 千分比**（0.1%~0.4%）。四舍五入到整百分比时
+ * 它显示成 **`+0%`** —— 一个**真的加了东西的词条**看起来像什么都没加，
+ * 而"这条到底有用没用"正是玩家要在卡片上判断的事。
+ * 这是 `+0%` 的**第二层**根因（第一层是 `text` 收到了除以 scale 的小数，见 `shownOf`）。
+ */
+function pctStr(v: number) {
+  var p = Number(v) / 10;
+  if (!isFinite(p)) p = 0;
+  var s = (Math.round(p * 10) / 10).toFixed(1).replace(/\.0$/, '');
+  return (p > 0 ? '+' : '') + s + '%';
+}
+function pct(per1000: number) { return function (v: number) { return pctStr(v); }; }
 function flat(v: number) { return '+' + v; }
 
 var LIST: AffixDef[] = [
   /* ---------------- 前缀（5）---------------- */
   {
     id: 'honed', name: '锋锐', en: 'Honed', family: 'prefix', slots: ['weapon'], mod: 'weaponDmgPct',
-    per: 60, cap: 2, scale: 1000, w: 14, text: pct(60)
+    per: 60, cap: 4, scale: 1000, w: 14, text: pct(60)
   },
   {
     id: 'sighted', name: '精密', en: 'Sighted', family: 'prefix', slots: ['weapon'], mod: 'weaponDmgPct',
-    per: 80, cap: 2, scale: 1000, w: 12, tags: ['ranged'], text: pct(80)
+    per: 80, cap: 4, scale: 1000, w: 12, tags: ['ranged'], text: pct(80)
   },
   {
     id: 'swift', name: '迅捷', en: 'Swift', family: 'prefix', slots: ['weapon'], mod: 'weaponCdPct',
-    per: -40, cap: 2, scale: 1000, w: 12, text: function (v) { return '攻击间隔 ' + Math.round(v / 10) + '%'; }
+    per: -40, cap: 4, scale: 1000, w: 12, text: function (v) { return '攻击间隔 ' + pctStr(v); }
   },
   {
     id: 'brutal', name: '残暴', en: 'Brutal', family: 'prefix', slots: ['weapon'], mod: 'damage',
-    per: 40, cap: 2, scale: 1000, w: 11, tags: ['melee'], text: pct(40)
+    per: 40, cap: 4, scale: 1000, w: 11, tags: ['melee'], text: pct(40)
   },
   {
     id: 'focused', name: '专注', en: 'Focused', family: 'prefix', slots: ['weapon', 'gear'], mod: 'critChance',
-    per: 30, cap: 2, scale: 1000, w: 10, text: pct(30)
+    per: 30, cap: 4, scale: 1000, w: 10, text: pct(30)
   },
   /* 后缀那一档的"进攻"：射程与推力是**机制**而不是伤害，所以放在这里 */
   {
     id: 'far', name: '远见', en: 'Farsight', family: 'prefix', slots: ['weapon', 'gear'], mod: 'range',
-    per: 60, cap: 2, scale: 1000, w: 9, text: pct(60)
+    per: 60, cap: 4, scale: 1000, w: 9, text: pct(60)
   },
   {
     id: 'savage', name: '沉猛', en: 'Savage', family: 'prefix', slots: ['weapon'], mod: 'knockbackBonus',
-    per: 120, cap: 2, scale: 1000, w: 8, text: pct(120)
+    per: 120, cap: 4, scale: 1000, w: 8, text: pct(120)
   },
   {
     id: 'clocked', name: '加速', en: 'Clocked', family: 'prefix', slots: ['weapon', 'gear'], mod: 'attackSpeed',
-    per: 60, cap: 2, scale: 1000, w: 12, text: pct(60)
+    per: 60, cap: 4, scale: 1000, w: 12, text: pct(60)
   },
   {
     id: 'calibrated', name: '校准', en: 'Calibrated', family: 'prefix', slots: ['weapon', 'gear'], mod: 'engineering',
-    per: 3, cap: 2, scale: 1, w: 8, tags: ['engineering'], text: flat
+    per: 3, cap: 4, scale: 1, w: 8, tags: ['engineering'], text: flat
   },
 
   /* ---------------- 后缀（9）---------------- */
   {
     id: 'vigor', name: '强健', en: 'Vigor', family: 'suffix', slots: ['armor', 'trinket'], mod: 'maxHp',
-    per: 3, cap: 2, scale: 1, w: 13, text: flat
+    per: 3, cap: 4, scale: 1, w: 13, text: flat
   },
   {
     id: 'guarded', name: '守御', en: 'Guarded', family: 'suffix', slots: ['armor'], mod: 'armor',
-    per: 2, cap: 2, scale: 1, w: 13, text: flat
+    per: 2, cap: 3, scale: 1, w: 13, text: flat
   },
   {
     id: 'nimble', name: '灵巧', en: 'Nimble', family: 'suffix', slots: ['armor', 'trinket'], mod: 'dodge',
-    per: 25, cap: 2, scale: 1000, w: 9, text: pct(25)
+    per: 25, cap: 4, scale: 1000, w: 9, text: pct(25)
   },
   {
     id: 'fleet', name: '疾行', en: 'Fleet', family: 'suffix', slots: ['trinket'], mod: 'speed',
-    per: 50, cap: 2, scale: 1000, w: 10, text: pct(50)
+    per: 50, cap: 4, scale: 1000, w: 10, text: pct(50)
   },
   {
     id: 'mending', name: '疗愈', en: 'Mending', family: 'suffix', slots: ['armor', 'consumable'], mod: 'hpRegen',
-    per: 1, cap: 2, scale: 1, w: 9, text: flat
+    per: 1, cap: 3, scale: 1, w: 9, text: flat
   },
   {
     id: 'leech', name: '汲取', en: 'Leeching', family: 'suffix', slots: ['weapon', 'armor'], mod: 'lifesteal',
-    per: 15, cap: 2, scale: 1000, w: 7, text: pct(15)
+    per: 15, cap: 4, scale: 1000, w: 7, text: pct(15)
   },
   {
     id: 'lucky', name: '幸运', en: 'Lucky', family: 'suffix', slots: ['trinket'], mod: 'luck',
-    per: 3, cap: 2, scale: 1, w: 10, text: flat
+    per: 3, cap: 4, scale: 1, w: 10, text: flat
   },
   {
     id: 'greedy', name: '拾荒', en: 'Scavenging', family: 'suffix', slots: ['trinket', 'gear'], mod: 'pickupRange',
-    per: 6, cap: 2, scale: 1, w: 8, text: flat
+    per: 6, cap: 4, scale: 1, w: 8, text: flat
   },
   {
     id: 'stark', name: '朴质', en: 'Stark', family: 'suffix', slots: ['armor', 'consumable', 'gear'], mod: 'armor',
-    per: 1, cap: 3, scale: 1, w: 7, text: flat
+    per: 1, cap: 4, scale: 1, w: 7, text: flat
   },
   /* 一条**只落在重型护具**上的后缀。
      为什么值得单独有一条：`armor:heavy` 这个细分规则如果一条词条都不用它，
@@ -198,7 +233,7 @@ var LIST: AffixDef[] = [
      一条：重型护甲本来就在减移速换护甲，"血更厚"是它唯一合理的延伸。 */
   {
     id: 'bulwark', name: '厚壁', en: 'Bulwark', family: 'suffix', slots: ['armor:heavy'], mod: 'maxHp',
-    per: 4, cap: 2, scale: 1, w: 9, text: flat
+    per: 4, cap: 3, scale: 1, w: 9, text: flat
   }
 ];
 
@@ -472,7 +507,7 @@ Affixes.normalize = function (set, kind) {
 /* =========================================================
    6. 折叠与文案（纯函数）
    --------------------------------------------------------- */
-/** 一条实例 → 真值（整数 ÷ scale） */
+/** 一条实例 → 真值（整数 ÷ scale）。**这是数值侧的单位** —— `fold` / `applyStats` 用它。 */
 function valueOf(inst) {
   var def = BY_ID[inst && inst.id];
   if (!def) return 0;
@@ -480,11 +515,31 @@ function valueOf(inst) {
 }
 Affixes.valueOf = valueOf;
 
+/**
+ * 一条实例 → **显示侧**的那个数（原始整数，不除 scale）。
+ *
+ * ⚠ 这两个单位**不能混**，而混过一次：`text` 函数是按原始整数设计的
+ * （`pct: v => '+' + Math.round(v / 10) + '%'`，`per: 60` 要得 `+6%`），
+ * 而 `line` / `html` / `lines` 以前传的是 `valueOf(inst)` —— 已经除以 scale 的小数。
+ * 于是 **19 条里 10 条**（所有 `scale:1000` 的百分比词条）在界面上显示成 **`+0%`**：
+ * `Math.round(0.06 / 10) = 0`。`scale:1` 的那 9 条恰好没暴露（除以 1 等于没除）。
+ * 数值侧一直是对的（`fold` 用 `valueOf`），所以"词条其实生效、只是显示成零"。
+ *
+ * 为什么测试没抓到：`test/affixes.mjs` 只断言了"名字在行首"与"家族类名在"，
+ * **没有一条断言那个数字**。现在补上了（`[6] 界面` 那一节）。
+ */
+function shownOf(inst) {
+  var n = Math.round(Number(inst && inst.v));
+  if (!isFinite(n)) return 0;
+  return n;
+}
+Affixes.shownOf = shownOf;
+
 /** 一条词条 → 一句人话（`withName` 时带上名字与档位） */
 Affixes.line = function (inst, opts) {
   var def = BY_ID[inst && inst.id];
   if (!def) return '（认不出的词条）';
-  var body = def.text(valueOf(inst));
+  var body = def.text(shownOf(inst));
   if (opts && opts.withName) {
     return def.name + ' T' + clampInt(inst.t, 1, def.cap) + '：' + body;
   }
@@ -493,15 +548,24 @@ Affixes.line = function (inst, opts) {
 
 /**
  * 一条词条 → 一行 HTML（界面用）。
- * 文案**全部来自表**（`text`）—— 界面只负责包一层颜色，
- * 于是"加一条词条"不需要动 ui.ts 一行。
+ * 文案**全部来自表**（`text`）—— 界面只负责包一层颜色，于是"加一条词条"不需要动 ui.ts 一行。
+ *
+ * `title` 里把**含义**也写上了（`MODS[mod].note` + 家族的 note）。
+ * 为什么必须写：`锋锐 +6%`（武器伤害）、`远见 +6%`（攻击范围）、`加速 +6%`（攻击速度）
+ * 在卡片上**长得一模一样**，玩家只能靠名字猜"这 6% 是什么的 6%"。
+ * 表里这两个 note 一直都写着（`MODS` 16/16、`FAMILIES` 2/2），只是从来没被渲染出来。
  */
 Affixes.html = function (inst) {
   var def = BY_ID[inst && inst.id];
   if (!def) return '';
   var fam = Affixes.FAMILIES[def.family] ? Affixes.FAMILIES[def.family].name : def.family;
-  return '<div class="affix ' + def.family + '" title="' + def.name + ' · ' + fam + ' T' +
-    clampInt(inst.t, 1, def.cap) + '">' + def.name + ' ' + def.text(valueOf(inst)) + '</div>';
+  var famNote = Affixes.FAMILIES[def.family] ? Affixes.FAMILIES[def.family].note : '';
+  var meta = MODS[def.mod] || { note: '' };
+  var tip = def.name + ' · ' + fam + ' T' + clampInt(inst.t, 1, def.cap) +
+    '\n效果：' + (meta.note || '（表里没写说明）') + ' ' + def.text(shownOf(inst)) +
+    '\n家族：' + fam + '——' + (famNote || '（表里没写说明）');
+  return '<div class="affix ' + def.family + '" title="' + tip + '">' + def.name + ' ' +
+    def.text(shownOf(inst)) + '</div>';
 };
 
 /** 一套词条 → 每一行（纯文本；调试与日志用） */
@@ -510,9 +574,21 @@ Affixes.lines = function (set) {
   var list = (set && set.list) ? set.list : [];
   for (var i = 0; i < list.length; i++) {
     var def = BY_ID[list[i].id];
-    if (def) out.push(def.name + ' ' + def.text(valueOf(list[i])));
+    if (def) out.push(def.name + ' ' + def.text(shownOf(list[i])));
   }
   return out;
+};
+
+/** 一条词条的**含义**（界面用：卡片 title / 图鉴那一页）。
+    `withValue` 时把当前这条实例的数值也带上。 */
+Affixes.meaningOf = function (id, inst) {
+  var def = BY_ID[id];
+  if (!def) return '';
+  var meta = MODS[def.mod] || { note: '' };
+  var fam = Affixes.FAMILIES[def.family] ? Affixes.FAMILIES[def.family].name : def.family;
+  var out = meta.note || '（表里没写说明）';
+  if (inst) out += ' ' + def.text(shownOf(inst));
+  return out + '（' + fam + ' · 最高 T' + def.cap + '）';
 };
 
 Affixes.fold = function (set) {

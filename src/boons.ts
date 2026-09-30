@@ -20,6 +20,7 @@ import { SelfCheck } from './selfcheck.ts';
 import { Registry } from './registry.ts';
 import { Stats } from './stats.ts';
 import { U } from './utils.ts';
+import { Fold } from './fold.ts';
 
 var Boons = {} as BoonsApi;
 
@@ -86,9 +87,9 @@ function apply(out: Record<string, number>, key: string, v: number) {
   if (!def) return;
   // 第一次碰到这个键时先摆上恒等值：`undefined + 0.1 = NaN` 是个真踩到的坑
   // （折出来的 eliteChance 是 NaN → 精英概率变成 NaN → 一只精英都不会出）
-  if (out[key] === undefined) out[key] = def.how === 'mul' ? 1 : 0;
-  if (def.how === 'mul') out[key] = out[key] * v;
-  else out[key] = out[key] + v;
+  // 恒等值取自折法表，不在这里写 1/0 —— 写死的话"换成取小"就会静默从 Infinity 起算。
+  if (out[key] === undefined) out[key] = Fold.numIdentity(def.how);
+  out[key] = Fold.num(def.how, out[key], v);
 }
 
 /**
@@ -134,6 +135,24 @@ function effectText(key, v) {
 }
 Boons.effectText = effectText;
 Boons.MOD_KEYS = MOD_KEYS;
+/**
+ * 键 → 折法的一份扁平表。
+ *
+ * 为什么需要它：`game.foldInto` 把契约的 enemy 那一组折进 `S.wmods` 时要知道折法。
+ * 改造前它读的是 `Danger.FOLD` —— 而那个键的折法其实是**这张表**声明的，
+ * 于是同一个键有两份声明，改一份不会同步：
+ * 实测把 `enemyHp` 在这里改成 `'add'`（`Danger.FOLD` 保持 `'mul'`），
+ * `boons.apply` 会做加法、`game.foldInto` 会做乘法，而 **17 道门全绿**。
+ * 折谁的就读谁的表，重叠键的一致性由 `test/fold.mjs` 的跨表对账守住。
+ */
+Boons.OPS = (function () {
+  var m: Record<string, FoldOp> = Object.create(null);
+  for (var k in MOD_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(MOD_KEYS, k)) continue;
+    m[k] = MOD_KEYS[k].how;
+  }
+  return m;
+})();
 Boons.BY_ID = BY_ID;
 Boons.LIST = LIST;
 

@@ -51,7 +51,7 @@ var SECTORS: Record<string, { name: string; note: string }> = {
   economy: { name: '经营', note: '折扣、收获、孢子 —— 换钱的效率（不是战力）' }
 };
 
-/** 角色 → 本命扇区。均衡豆豆刻意**没有**本命扇区（万物皆跨扇区，也万物皆不额外贵） */
+/** 角色 → 本命扇区。全能人刻意**没有**本命扇区（万物皆跨扇区，也万物皆不额外贵） */
 var AFFINITY: Record<string, string> = {
   ranger: '',
   brawler: 'melee',
@@ -258,7 +258,19 @@ Talent.visibleFor = function (charId) {
  * @param earned 累计获得的天赋点
  * @returns { ok, reason, cost }
  */
-Talent.canTake = function (charId, nodeId, taken, earned) {
+/* =========================================================
+   **语义变更：`earned`（累计预算）→ `balance`（可花余额）**（M3，2026-09）
+   ---------------------------------------------------------
+   它原来是"天赋点累计获得多少，已点的总价不许超过它"（`spentOn + cost ≤ earned`）。
+   而 v3 §8-3 要求"把 `talents` 的成长**接到 `growth` 上**" —— `growth` 是一笔
+   **可花的余额**（训练产它、图纸也花它）。两者不能混：
+
+     余额语义下，花掉之后余额会**减少**；如果还拿"累计已花"去比，就会**双重扣**。
+
+   所以判据改成 `balance ≥ cost`（与 `Forge.canUnlock` 同一个形状）。
+   `spentOn` 仍然有用 —— 它是**展示**（"这个角色在天赋上投了多少"），不再参与判定。
+   ========================================================= */
+Talent.canTake = function (charId, nodeId, taken, balance) {
   var node = BY_ID[nodeId];
   if (!node) return { ok: false, reason: '没有这个天赋', cost: 0 };
   var own = OWNER[nodeId];
@@ -266,8 +278,8 @@ Talent.canTake = function (charId, nodeId, taken, earned) {
   if (taken.indexOf(nodeId) >= 0) return { ok: false, reason: '已经点过了', cost: 0 };
 
   var cost = Talent.costFor(node, charId);
-  if (Talent.spentOn(taken, charId) + cost > earned) {
-    return { ok: false, reason: '天赋点不够', cost: cost };
+  if (Math.max(0, Number(balance) || 0) < cost) {
+    return { ok: false, reason: '成长点不够（需要 ' + cost + '）', cost: cost };
   }
   // 基石：同一时刻只能带一个（"改变运作方式"的东西叠起来就没有取舍了）
   if (node.type === 'keystone') {

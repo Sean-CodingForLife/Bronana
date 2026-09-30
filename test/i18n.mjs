@@ -126,8 +126,8 @@ console.log('\n[5] 覆盖率（诚实口径：没有该语言译文的条数）'
   ok(typeof before === 'number' && before > 20, '覆盖率报的总数是真数字', before);
 }
 
-/* ---------------- [6] 与设置表接线 ---------------- */
-console.log('\n[6] 与设置表接线');
+/* ---------------- [6] 与设置表接入 ---------------- */
+console.log('\n[6] 与设置表接入');
 {
   const def = Settings.def('locale');
   ok(!!def, '设置表里有 locale 这一项');

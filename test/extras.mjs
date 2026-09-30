@@ -51,23 +51,23 @@ console.log('[1] 离线产出：速率、门槛、封顶');
   ok(mono, '速率随等级单调不降（升级不会变差）');
 
   const short = Offline.settle(3 * MIN, 1);
-  ok(short.spores === 0 && /太短/.test(short.reason), '低于门槛不结算', short.reason);
+  ok(short.growth === 0 && /太短/.test(short.reason), '低于门槛不结算', short.reason);
   const just = Offline.settle(Offline.MIN_MINUTES * MIN, 1);
-  ok(just.spores >= 1, '刚好到门槛就有产出（' + just.spores + '）', just.spores);
+  ok(just.growth >= 1, '刚好到门槛就有产出（' + just.growth + '）', just.growth);
 
   const eight = Offline.settle(Offline.MAX_HOURS * HOUR, 2);
-  ok(eight.spores === Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(2)) && !eight.capped,
-    '满 8 小时正好拿满额（' + eight.spores + '）', eight.spores);
+  ok(eight.growth === Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(2)) && !eight.capped,
+    '满 8 小时正好拿满额（' + eight.growth + '）', eight.growth);
   const over = Offline.settle(48 * HOUR, 2);
-  ok(over.spores === eight.spores && over.capped === true, '超过 8 小时按 8 小时算（封顶）',
-    over.spores + ' / capped=' + over.capped);
-  ok(eight.spores < 100, '拉满 8 小时 = ' + eight.spores + ' 孢子，仍在一局通关（约 93）的一倍以内 —— 挂机是补充，不是替代');
+  ok(over.growth === eight.growth && over.capped === true, '超过 8 小时按 8 小时算（封顶）',
+    over.growth + ' / capped=' + over.capped);
+  ok(eight.growth < 100, '拉满 8 小时 = ' + eight.growth + ' 孢子，仍在一局通关（约 93）的一倍以内 —— 挂机是补充，不是替代');
 
-  ok(Offline.settle(-5000, 2).spores === 0 && Offline.settle(NaN, 2).spores === 0, '负数 / NaN 安全');
+  ok(Offline.settle(-5000, 2).growth === 0 && Offline.settle(NaN, 2).growth === 0, '负数 / NaN 安全');
 
   // 挂机收益不该超过"打一局"：这是设计红线
-  const perRun = Profile.sporesForRun({ wave: 20, kills: 200, scrap: 800, win: true });
-  ok(eight.spores <= perRun * 1.5, '满额离线 ≤ 一局通关的 1.5 倍（' + eight.spores + ' vs ' + perRun + '）');
+  const perRun = Profile.growthForRun({ wave: 20, kills: 200, scrap: 800, win: true });
+  ok(eight.growth <= perRun * 1.5, '满额离线 ≤ 一局通关的 1.5 倍（' + eight.growth + ' vs ' + perRun + '）');
 }
 
 /* ---------------- 2. 离线产出：状态与"结算即前进" ---------------- */
@@ -79,49 +79,52 @@ console.log('\n[2] 状态：结算即前进（反复刷新不能刷孢子）');
 
   const t0 = 1700000000000;
   let r = Profile.settleOffline(t0);
-  ok(r.spores === 0 && r.reason === '第一次见面', '第一次见面不给（没有间隔）', r.reason);
+  ok(r.growth === 0 && r.reason === '第一次见面', '第一次见面不给（没有间隔）', r.reason);
   ok(Profile.lastSeen() === t0, '"上次见面"被设成现在');
 
   // 没买菌床
   r = Profile.settleOffline(t0 + 5 * HOUR);
-  ok(r.spores === 0 && /菌床/.test(r.reason), '没买菌床 → 挂 5 小时也不给', r.reason);
+  ok(r.growth === 0 && /菌床/.test(r.reason), '没买菌床 → 挂 5 小时也不给', r.reason);
   ok(Profile.lastSeen() === t0 + 5 * HOUR, '但"上次见面"仍然前进（否则买了之后会一次性补发）');
 
   // 买菌床（**注意前置链**：菌床要求「仓库」Lv.1 —— 先有地方放，才谈得上产出）
-  Profile.addMaterial(1000);
-  const matsBefore = Profile.material();
-  ok(Profile.keepBuy('sporebed').ok === false, '前置没满足时买不了菌床（先要有仓库）');
-  ok(Profile.keepBuy('storehouse').ok === true, '先买仓库 Lv.1');
-  ok(Profile.keepBuy('sporebed').ok === true, '仓库到位 → 买下菌床 Lv.1');
-  ok(Profile.keepLevel('sporebed') === 1, '菌床 Lv.1 落到了档案里');
-  const spentOnKeep = matsBefore - Profile.material();
+// 据点买卖在局内（v3 §二）—— 钱是 `S.material`，先起一局
+Game.newRun('ranger', 777, 0, null, null);
+
+  Game.addMaterial(1000);
+  const matsBefore = Game.material();
+  ok(Game.keepBuy('sporebed').ok === false, '前置没满足时买不了菌床（先要有仓库）');
+  ok(Game.keepBuy('storehouse').ok === true, '先买仓库 Lv.1');
+  ok(Game.keepBuy('sporebed').ok === true, '仓库到位 → 买下菌床 Lv.1');
+  ok(Game.keepLevel('sporebed') === 1, '菌床 Lv.1 落到了档案里');
+  const spentOnKeep = matsBefore - Game.material();
   ok(spentOnKeep === Stronghold.BY_ID.storehouse.levels[0].cost + Stronghold.BY_ID.sporebed.levels[0].cost,
     '解锁离线产出一共花了 ' + spentOnKeep + ' 材料（仓库 ' + Stronghold.BY_ID.storehouse.levels[0].cost +
     ' + 菌床 ' + Stronghold.BY_ID.sporebed.levels[0].cost + '）', spentOnKeep);
 
   r = Profile.settleOffline(t0 + 5 * HOUR + 2 * HOUR);
   const want = Math.floor(2 * 60 * Offline.rateAt(1));
-  ok(r.spores === want, '挂 2 小时 = ' + want + ' 孢子', r.spores);
-  ok(Profile.spores() === want, '孢子加进了档案', Profile.spores());
-  ok(Profile.material() === matsBefore - spentOnKeep, '材料被据点花掉（孢子不再参与经营）', Profile.material());
+  ok(r.growth === want, '挂 2 小时 = ' + want + ' 孢子', r.growth);
+  ok(Profile.growth() === want, '孢子加进了档案', Profile.growth());
+  ok(Game.material() === matsBefore - spentOnKeep, '材料被据点花掉（孢子不再参与经营）', Game.material());
 
   // 关键：马上再结算一次，什么都没有
-  const after = Profile.spores();
+  const after = Profile.growth();
   r = Profile.settleOffline(t0 + 5 * HOUR + 2 * HOUR);
-  ok(r.spores === 0 && Profile.spores() === after, '同一时刻再结算 → 一点不给（结算即前进）', r.spores);
+  ok(r.growth === 0 && Profile.growth() === after, '同一时刻再结算 → 一点不给（结算即前进）', r.growth);
   r = Profile.settleOffline(t0 + 5 * HOUR + 2 * HOUR + 1 * MIN);
-  ok(r.spores === 0 && /太短/.test(r.reason), '隔 1 分钟再结算 → 也在门槛之下', r.reason);
+  ok(r.growth === 0 && /太短/.test(r.reason), '隔 1 分钟再结算 → 也在门槛之下', r.reason);
 
   // 封顶：挂 100 小时也只给 8 小时的量
   r = Profile.settleOffline(t0 + 5 * HOUR + 3 * HOUR + 100 * HOUR);
-  ok(r.capped === true && r.spores === Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(1)),
-    '挂 100 小时按封顶算（' + r.spores + '）', r.spores);
+  ok(r.capped === true && r.growth === Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(1)),
+    '挂 100 小时按封顶算（' + r.growth + '）', r.growth);
 
   // 升到 Lv.2 之后同样的间隔必须给更多 —— 证明"档案把菌床等级真的传下去了"
-  ok(Profile.keepBuy('sporebed').toLevel === 2, '再买一级升到 Lv.2');
+  ok(Game.keepBuy('sporebed').toLevel === 2, '再买一级升到 Lv.2');
   r = Profile.settleOffline(t0 + 5 * HOUR + 3 * HOUR + 100 * HOUR + 2 * HOUR);
-  ok(r.spores === Math.floor(2 * 60 * Offline.rateAt(2)) && r.spores > Math.floor(2 * 60 * Offline.rateAt(1)),
-    'Lv.2 同样的 2 小时拿得更多（' + r.spores + ' > ' + Math.floor(2 * 60 * Offline.rateAt(1)) + '）', r.spores);
+  ok(r.growth === Math.floor(2 * 60 * Offline.rateAt(2)) && r.growth > Math.floor(2 * 60 * Offline.rateAt(1)),
+    'Lv.2 同样的 2 小时拿得更多（' + r.growth + ' > ' + Math.floor(2 * 60 * Offline.rateAt(1)) + '）', r.growth);
 
   // 落盘往返
   const seen = Profile.lastSeen();
@@ -243,11 +246,31 @@ console.log('\n[5] 每日与每周都不接天赋 / 据点（全体同条件）'
   ok(/kind === 'weekly' \? Season\.of\(\) : Daily\.of\(\)/.test(mainSrc),
     '每日 / 每周共用一套流程，只差规则的推导');
 
-  // 反过来：普通模式**必须**接养成，否则天赋与据点就是白买的
+  // 反过来：普通模式**必须**接养成，否则天赋与据点就是白买的。
+  // ⚠ 锚点从"内联的 Game.newRun 调用"改成"唯一的开局入口 `UI.startRun`"：
+  //    改造前那份内联写法有**两处**（选人页 + 标题页回车），而且两处都漏东西；
+  //    收成一处之后，锚点必须是那个函数 —— 否则下次再拆又会"红在一处、绿在另一处"。
   const uiSrc0 = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
-  ok(/Game\.newRun\(UI\.selectedChar, undefined, UI\.selectedDanger,\s*\n?\s*Profile\.openingOf\(UI\.selectedChar\),\s*\n?\s*\{ owned: Profile\.keepOwned\(\), forge: Profile\.forgeOwned\(\) \}\)/
-    .test(uiSrc0),
-    '（对照）普通开局把天赋产物、据点等级与图纸一起传下去 —— 所以"挑战不传"是有意为之，不是漏了');
+  const startM = /UI\.startRun = function[\s\S]*?\n};/.exec(uiSrc0);
+  const startBody = startM ? startM[0] : '';
+  ok(startBody.length > 0, 'ui.ts 里有唯一的开局入口 `UI.startRun`');
+  ok(/Profile\.openingOf\(/.test(startBody), '开局入口传了开局道具（openingOf）');
+  ok(/owned: \{\}/.test(startBody) && /forge: Game\.forgeOwned\(\)/.test(startBody),
+    '（对照）普通开局把据点等级与图纸一起传下去 —— 所以"挑战不传"是有意为之，不是漏了');
+  /* 技能构筑这一条是后补的：它**漏了整整一轮**没被发现 ——
+     `Game.newRun` 的第 6 个参数是 skillBuild，不传就是空构筑 ⇒ 0 技能槽 ⇒
+     整个技能系统在正式游戏里从不发生，而 `test/skill.mjs` 全用六参数形式绕过了这根线。 */
+  ok(/Profile\.skillBuild\(/.test(startBody),
+    '开局入口把**技能构筑**也传下去了（漏了它整个技能系统不会发生）');
+  /* 反面对照：`main.ts` 的标题页回车以前自己写了一份 `Game.newRun(UI.selectedChar)`，
+     那一份 opening / smods / skillBuild **三样全漏**。现在它必须走同一个入口。
+     ⚠ 必须**去注释再查** —— 第一次写这条时被自己那句"不能自己 Game.newRun(...)"
+     的注释逗红了（今天这个坑踩到第二次：`tools/registry-drift.mjs` 里也一样）。
+     grep 源码文本的断言，第一步永远是去注释。 */
+  const mainSrcForStart = fs.readFileSync(path.join(ROOT, 'src', 'main.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  ok(mainSrcForStart.indexOf('Game.newRun(UI.selectedChar)') < 0,
+    'main.ts 不再自己拼开局（不许出现第二份 `Game.newRun(UI.selectedChar)`）');
 
   // 端到端：同一份开局参数必须逐帧一致；多带一份养成必须真的不一样
   const play = (opening, smods) => {

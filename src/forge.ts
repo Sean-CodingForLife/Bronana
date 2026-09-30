@@ -212,7 +212,7 @@ Forge.reqsMet = function (owned, d) {
  * @returns { ok, reason, cost, core, locked }
  *   locked = 前置没满足（与"合金不够"是两种不同的等待，界面必须分开说）
  */
-Forge.canUnlock = function (owned, id, alloy, core) {
+Forge.canUnlock = function (owned, id, growth, core) {
   var d = Forge.BY_ID[id];
   if (!d) return { ok: false, reason: '没有这张图纸', cost: 0, core: 0, locked: true };
   if (holds(owned, id)) return { ok: false, reason: '已经解锁', cost: d.cost, core: 0, locked: false };
@@ -220,7 +220,7 @@ Forge.canUnlock = function (owned, id, alloy, core) {
     var names = d.req.map(function (r) { return Forge.BY_ID[r] ? Forge.BY_ID[r].name : r; }).join('、');
     return { ok: false, reason: '前置图纸还没解锁：' + names, cost: d.cost, core: coreOf(d), locked: true };
   }
-  var have = Math.max(0, Number(alloy) || 0);
+  var have = Math.max(0, Number(growth) || 0);
   var needCore = coreOf(d);
   if (have < d.cost) return { ok: false, reason: '合金不够（需要 ' + d.cost + '）', cost: d.cost, core: needCore, locked: false };
   /* 核心材料单独报缺哪一样：两种资源都不够时说"资源不够"，

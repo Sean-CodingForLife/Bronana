@@ -25,13 +25,45 @@ const SYSTEMS = [
   {
     id: 'mech', name: '工具与机制', level: 0,
     note: '纯机制：不认识任何玩法概念，被所有人依赖。它们之间也是单向的（总账/自检登记处最底）',
-    modules: ['utils.ts', 'registry.ts', 'selfcheck.ts', 'containers.ts', 'envelope.ts',
+    modules: ['utils.ts', 'registry.ts', 'selfcheck.ts',
+      /* `fold.ts`（数值折叠：一张表四种折法）坐在 L0 的理由：它只 import
+         `registry.ts` / `selfcheck.ts`（都是 L0），不认识任何一个玩法概念 ——
+         而 data（1）/ dungeon（2）/ meta（3）/ sim（4）四层都要用它的折法。
+         ⚠ 与 `run_save.ts` 那次不同：那个第一版放 L0 会多出 `mech→data` 的向上边，
+         因为**它的依赖**在 L1。决定一个模块坐哪的不是它的性质，是它的依赖。 */
+      'fold.ts',
+      'containers.ts', 'envelope.ts',
       'comp.ts', 'collide.ts', 'rig.ts', 'draw2d.ts', 'depth.ts', 'ai.ts']
   },
   {
     id: 'data', name: '数据表', level: 1,
     note: '纯数据 + 总账登记 + 自检；被模拟 / 界面 / 元进度三处读，自己不认识玩法',
-    modules: ['data_tiers.ts', 'data_elems.ts', 'curves.ts', 'economy.ts', 'art_spec.ts', 'affixes.ts', 'data_weapons.ts', 'data_items.ts', 'data_chars.ts',
+    modules: ['data_tiers.ts', 'data_elems.ts', 'curves.ts',
+      /* =========================================================
+         **账本拆成四本**（设计上下文 v3 §5.4-错误1 点名禁止的正是
+         旧版"统一 `economy.ts` 定义五六种货币互相兑换"）。
+         这一组全在 L1（数据层）：它们是"声明表 + 几条纯规则"，
+         只 import `registry` / `selfcheck`（L0），不认识模拟内核也不认识界面。
+
+           `ledger.ts`      账本机制（**连一笔代币 id 都不含**）
+           `eco_combat.ts`  战斗账本（`scrap`）
+           `eco_manage.ts`  经营账本（`capacity`）—— 建造 + 经营两子模块共用
+           `eco_grow.ts`    养成账本（`growth`）—— 角色成长 + NPC羁绊 + 能力解锁共用
+           `eco_global.ts`  全局货币（`material`）—— 行动成本，单独一本
+           `link.ts`        核心素材（三个）—— **在账本之外**，它是钥匙不是钱
+
+         `economy.ts` **降级成只读聚合**：它靠副作用 import 把四本账接上电，
+         自己一笔代币都不定义（判据 H 守这条）。所以它排在这一组的最后。
+         ========================================================= */
+      'ledger.ts', 'eco_combat.ts', 'eco_manage.ts', 'eco_grow.ts', 'eco_global.ts',
+      'link.ts', 'economy.ts',
+      /* `station.ts`（大厅：三道通往模块的门 + 开门规则）与 `economy.ts` 同层：
+         它是"一张站点表 + 几条纯规则"，只 import `registry` / `selfcheck` / `economy`
+         （都是 L0/L1），不认识模拟内核，也不认识界面。
+         它跟 `scene.ts`（界面层的场景表）**不是一回事** —— 那是"屏幕怎么切"，
+         这是"这一局能去哪里"。 */
+      'station.ts',
+      'art_spec.ts', 'affixes.ts', 'data_weapons.ts', 'data_items.ts', 'data_chars.ts',
       'enemies.ts', 'stats.ts',
       /* 升级池：一张声明表（哪些属性在池里、谁是防御向）+ 两条随等级走的纯计算。
          它和 `data_weapons.ts` 是同一类东西 —— 数据，不是逻辑；掷骰子仍在 game.ts。 */
@@ -41,7 +73,7 @@ const SYSTEMS = [
          ⚠ 我第一版把它放到了 **L0**（想着"它不推进状态，所以最底"），
          而它 import 了 `affixes.ts` / `data_weapons.ts`（都是 L1）——
          于是架构门当场报出**两条新的向上边 `mech→data`**。
-         这条尺子在这件事上是对的：决定一个模块坐哪的**不是它的性质，是它的依赖**。
+         这条校验在这件事上是对的：决定一个模块坐哪的**不是它的性质，是它的依赖**。
          放 L1 之后 `game.ts`（L4）→ 它（L1）仍然是一条向下的边。 */
       'run_save.ts']
   },
@@ -55,7 +87,8 @@ const SYSTEMS = [
     note: '营地 / 据点 / 工坊 / 天赋 / 契约 / 图纸 / 难度 / 档案 / 每日。' +
       '它们的修正**在开局时折成普通对象**（campFx / fmods / dmods / kmods…），' +
       '模拟层跑起来之后不再回表 —— 这是"经营与战斗不互相穿透"的实现方式',
-    modules: ['camp.ts', 'stronghold.ts', 'forge.ts', 'craft.ts', 'talents.ts', 'boons.ts',
+    modules: ['camp.ts', 'stronghold.ts', 'forge.ts', 'craft.ts', 'talents.ts', 'training.ts',
+        'bonds.ts', 'boons.ts',
       'synergy.ts', 'challenges.ts', 'profile.ts', 'daily.ts', 'season.ts', 'danger.ts',
       'offline.ts', 'settings.ts', 'storage.ts',
       /* `slots.ts` 与 `storage.ts` 同层：它只认识"键名与一段文本"，
@@ -97,7 +130,11 @@ const SYSTEMS = [
   {
     id: 'boot', name: '入口', level: 8,
     note: 'web 入口 / 命令行入口 / 调试舞台。唯有它们可以"什么都知道"',
-    modules: ['main.ts', 'cli.ts', 'demo.ts']
+    modules: ['main.ts', 'cli.ts', 'demo.ts',
+      /* **文件存储后端**（Node 专用）。放 L8 而不是 `storage.ts` 那一层，
+         理由很硬：它 import `node:fs`，而 `storage.ts` 是**浏览器也 import** 的；
+         一旦进了那条链，`vite build` 就会失败。只有 `cli.ts` import 它。 */
+      'storage_fs.ts']
   }
 ];
 

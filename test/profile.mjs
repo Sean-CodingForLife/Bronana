@@ -73,13 +73,13 @@ console.log('\n[2] 档案加载 / 损坏修复 / 落盘');
 
   const r0 = Profile.init();
   ok(r0.loaded === false, '首次启动：没有档 → 用默认值', JSON.stringify(r0));
-  ok(Profile.spores() === 0 && Profile.doneIds().length === 0, '默认档案是干净的');
+  ok(Profile.growth() === 0 && Profile.doneIds().length === 0, '默认档案是干净的');
   ok(Storage.get(Slots.key(Storage.KEYS.profile)) !== null, '首次启动就把默认档案落了盘');
 
-  Profile.addSpores(30);
-  ok(Profile.spores() === 30, '孢子写入内存');
+  Profile.addGrowth(30);
+  ok(Profile.growth() === 30, '孢子写入内存');
   Profile.load();
-  ok(Profile.spores() === 30, '重新加载后仍在（真的落盘了）');
+  ok(Profile.growth() === 30, '重新加载后仍在（真的落盘了）');
 
   // 坏档：不是 JSON
   // ⚠ **连备份一起写坏**：`Slots.readJSON` 会在主键坏掉时**回退到备份**（那是崩溃安全
@@ -88,7 +88,7 @@ console.log('\n[2] 档案加载 / 损坏修复 / 落盘');
   Storage.set(Slots.key(Storage.KEYS.profile), '{ 这不是 json');
   Storage.set(Storage.backupKey(Slots.key(Storage.KEYS.profile)), 'oops');
   const r1 = Profile.load();
-  ok(r1.loaded === false && r1.discarded === true && Profile.spores() === 0,
+  ok(r1.loaded === false && r1.discarded === true && Profile.growth() === 0,
     '坏档 → 丢弃并回到默认值（不让游戏起不来）', JSON.stringify(r1));
 
   // 字段级修复：能修的修，坏值丢掉
@@ -103,7 +103,7 @@ console.log('\n[2] 档案加载 / 损坏修复 / 落盘');
   });
   const r2 = Profile.load();
   ok(r2.loaded === true, '结构合法的档被读进来');
-  ok(Profile.spores() === 0, '负数孢子被夹回 0', Profile.spores());
+  ok(Profile.growth() === 0, '负数孢子被夹回 0', Profile.growth());
   ok(Profile.isUnlocked('char', 'brawler') === true, '合法解锁被保留');
   ok(Profile.isUnlocked('char', 'mage') === false, '值不是 true 的解锁被丢弃');
   ok(Profile.codexLevel('weapon', 'axe') === 2, '合法图鉴等级被保留');
@@ -157,15 +157,18 @@ console.log('\n[4] 图鉴（见过 / 用过 / 满级过）');
 console.log('\n[5] 孢子（局外货币）');
 {
   Profile.reset();
-  const low = Profile.sporesForRun({ char: 'ranger', wave: 3, kills: 20, scrap: 40 });
-  const high = Profile.sporesForRun({ char: 'ranger', wave: 15, kills: 400, scrap: 900 });
+  const low = Profile.growthForRun({ char: 'ranger', wave: 3, kills: 20, scrap: 40 });
+  const high = Profile.growthForRun({ char: 'ranger', wave: 15, kills: 400, scrap: 900 });
   ok(high > low * 3, '波次是主项：打得越久拿得越多', low + ' → ' + high);
-  ok(Profile.sporesForRun(null) === 0 && Profile.sporesForRun({ char: 'x' }) === 0, '空输入返回 0');
+  /* ⚠ **合并之后的真实后果**（R43）：`null` 是 0；而"有效但什么都没做的一局"**不是** 0
+   —— `alloyForRun` 有"每次结算基础产出 3"的保底（本意是"工坊对新手不等于不存在"）。
+   那个保底产在**战斗动作**上，而 v3 §5.2 没有"战斗 → 养成"这条边 —— 搬它是 **M3** 的工作。 */
+ok(Profile.growthForRun(null) === 0, '空输入返回 0');
 
-  Profile.addSpores(50);
-  ok(Profile.spendSpores(20) === true && Profile.spores() === 30, '够 → 扣掉');
-  ok(Profile.spendSpores(1000) === false && Profile.spores() === 30, '不够 → 拒绝且不改状态', Profile.spores());
-  ok(Profile.spendSpores(-5) === true && Profile.spores() === 30, '负数消费被当作 0（不会反向加钱）', Profile.spores());
+  Profile.addGrowth(50);
+  ok(Profile.spendGrowth(20) === true && Profile.growth() === 30, '够 → 扣掉');
+  ok(Profile.spendGrowth(1000) === false && Profile.growth() === 30, '不够 → 拒绝且不改状态', Profile.growth());
+  ok(Profile.spendGrowth(-5) === true && Profile.growth() === 30, '负数消费被当作 0（不会反向加钱）', Profile.growth());
 }
 
 /* ---------------- 6. 挑战表自身的合法性 ---------------- */
@@ -249,7 +252,7 @@ console.log('\n[7] 求值（纯函数：不碰存档）');
   const p = Challenges.progress(byId.kill_300, ctx, id => done.has(id));
   ok(p.value === 400 && p.atLeast === 300 && p.done === true, '进度对象给界面用', JSON.stringify(p));
 
-  // 局外面板上，"单局达成"那类不画空进度条（局外读数永远是 0，画一条空的等于撒谎）
+  // 局外面板上，"单局达成"那类不画空进度条（局外读数永远是 0，画一条空的等于给出错误读数）
   ok(Challenges.progressKind(byId.kill_300) === 'account', '累计类 → account（可显示进度）',
     Challenges.progressKind(byId.kill_300));
   ok(Challenges.progressKind(byId.char_brawler) === 'char', '角色类 → char（读该角色记录）',
@@ -273,8 +276,13 @@ console.log('\n[8] applyRun：并入一局（挑战 → 解锁 → 孢子 → �
   const totals = { runs: 1, wins: 0, bestWave: 5, bestKills: 320, bestLevel: 7, totalKills: 320, totalMaterials: 400 };
   const rep = Profile.applyRun(run, totals);
 
-  ok(rep.spores > 0, '拿到了孢子', rep.spores);
-  ok(Profile.spores() === rep.spores, '孢子进了档案', Profile.spores());
+  /* ⚠ **语义反转**（M3，2026-09）：结算**不再发养成代币**。
+     它以前在这里发两笔（打得深 + 合成），而那两条都产在**战斗动作**上 ——
+     v3 §5.2 没有"战斗 → 养成"这条边。现在产出点在 `Game.train`（养成模块内部）。
+     ⚠ 这就是 v3 要的**撞墙**：不训练 → 没有养成代币 → 图纸与天赋都动不了，
+       但战斗与经营照常（游戏没有不让玩家继续）。 */
+  ok(rep.growth === 0 && Profile.growth() === 0, '结算**不发**养成代币（它在训练那边产）', rep.growth);
+  ok(Profile.growth() === rep.growth, '孢子进了档案', Profile.growth());
   ok(rep.completed.some(c => c.id === 'reach_w2'), '完成"打到第 2 波"');
   ok(rep.completed.some(c => c.id === 'kill_300'), '完成"累计击杀 300"');
   ok(rep.unlocked.some(u => u.family === 'char' && u.id === 'brawler'), '解锁了角色 brawler',
@@ -291,9 +299,9 @@ console.log('\n[8] applyRun：并入一局（挑战 → 解锁 → 孢子 → �
   ok(rep2.unlocked.length === 0, '也不会重复"解锁"');
   ok(Profile.perChar('ranger').runs === 2, '但每角色对局数确实 +1（这是两局）');
 
-  ok(Profile.applyRun(null, totals).spores === 0, '空输入不炸');
+  ok(Profile.applyRun(null, totals).growth === 0, '空输入不炸');
   const noChar = Profile.applyRun({ wave: 3 }, totals);
-  ok(noChar.spores === 0, '没有角色 id 的输入被忽略（宁可不结算也不要写坏档案）');
+  ok(noChar.growth === 0, '没有角色 id 的输入被忽略（宁可不结算也不要写坏档案）');
 
   ok(Profile.writeOk() === true, '写盘成功');
 }
@@ -312,7 +320,7 @@ console.log('\n[9] 与 save / records 的边界');
   ok(keys === 'profile,records,run,settings', '存储键共四把（新增 profile）', keys);
 
   Profile.clear();
-  ok(Storage.get(Slots.key(Storage.KEYS.profile)) === null && Profile.spores() === 0, 'clear 把档案从存储与内存一起清掉');
+  ok(Storage.get(Slots.key(Storage.KEYS.profile)) === null && Profile.growth() === 0, 'clear 把档案从存储与内存一起清掉');
 }
 
 console.log('\n=== 结果 ===');

@@ -74,7 +74,7 @@ console.log('[1] 美术规范：命名 / 尺寸 / 图集 / 混合 / 锚点 / 管
     '管线六道工序的顺序是固定的（画法→检查→烘焙→图集→摆放→合成）');
   ok(Art.PIPELINE.every(s => s.product && s.check), '每道工序都写了产物形式与检查方式（有检查才叫工序）');
 
-  /* ---- 那把尺子本身要能用 ---- */
+  /* ---- 那条校验本身要能用 ---- */
   ok(Art.lintAsset({ name: 'PROP_Bone', kind: 'prop', w: 32, h: 48, anchor: 'foot' }).ok,
     '合规的资源声明通过 lint');
   const bad = Art.lintAsset({ name: 'prop bone', kind: 'nope', w: 9999, h: 0, anchor: 'nope' });
@@ -107,7 +107,7 @@ console.log('[1] 美术规范：命名 / 尺寸 / 图集 / 混合 / 锚点 / 管
     '推迟清单要么空、要么每一条都有写清楚的理由（现在 ' + Art.DEFERRED.length + ' 条：' +
     Art.DEFERRED.map(d => d.kind).join(', ') + '）');
 
-  /* 反证：把一个生产模块撤掉，必须报出来（尺子不是装饰） */
+  /* 反证：把一个生产模块撤掉，必须报出来（校验不是装饰） */
   const saved = Art.OWNERS.icon;
   delete Art.OWNERS.icon;
   Art.requireOwners = true;
@@ -236,7 +236,7 @@ console.log('\n[3] 2D 着色器：合成操作 / 步骤 / 美术宪法');
 {
   const v = ArtShaders.audit();
   ok(v.ok, '着色器库自检通过（' + v.counts.shaders + ' 条 · 贴图级 ' + v.counts.sprite +
-    ' / 屏幕级 ' + v.counts.screen + ' · 已接线 ' + v.counts.used + '）', v.problems.join(' | '));
+    ' / 屏幕级 ' + v.counts.screen + ' · 已接入 ' + v.counts.used + '）', v.problems.join(' | '));
 
   ok(ArtShaders.OPS.length === 4, '合成操作正好 4 个（over / in / atop / add）——多一个就是浏览器差异的赌注');
   ok(ArtShaders.canvasOp('in') === 'source-in' && ArtShaders.canvasOp('add') === 'lighter' &&
@@ -273,25 +273,25 @@ console.log('\n[3] 2D 着色器：合成操作 / 步骤 / 美术宪法');
     '参数缺失时回退成白色而不是 undefined（失败要可见，不能是"上一次的颜色"）',
     c3.rects.map(r => r.style).join(','));
 
-  /* 使用方登记：接了线的与没接线的都说得清 */
+  /* 使用方登记：接上了的与没接入的都说得清 */
   ok(ArtShaders.usersOf('hitFlash').length >= 1, '白闪登记了使用方（' + ArtShaders.usersOf('hitFlash').join(',') + '）');
   ok(ArtShaders.usersOf('elite').length >= 1, '精英色登记了使用方（' + ArtShaders.usersOf('elite').join(',') + '）');
   ok(ArtShaders.usersOf('vignette').length >= 1, '暗角登记了使用方（屏幕级那一条）（' + ArtShaders.usersOf('vignette').join(',') + '）');
-  ok(ArtShaders.unused().indexOf('hitFlash') < 0, '已接线的 shader 不在"没人用"清单里');
+  ok(ArtShaders.unused().indexOf('hitFlash') < 0, '已接入的 shader 不在"没人用"清单里');
 
-  /* 接线状态：每条 shader 要么接了线，要么登记为**备用并写清条件** */
+  /* 接入状态：每条 shader 要么接上了，要么登记为**备用并写清条件** */
   ArtShaders.requireWiring = true;
   const wired = ArtShaders.audit();
   ArtShaders.requireWiring = false;
-  ok(wired.ok, '接线状态自检通过：' + wired.counts.used + ' 条已接线 · ' +
+  ok(wired.ok, '接入状态自检通过：' + wired.counts.used + ' 条已接入 · ' +
     wired.counts.reserved + ' 条登记为备用 · 漏接 ' + ArtShaders.missingWiring().length,
     wired.problems.join(' | '));
-  ok(ArtShaders.missingWiring().length === 0, '没有"既没接线、也没登记理由"的 shader',
+  ok(ArtShaders.missingWiring().length === 0, '没有"既没接入、也没登记理由"的 shader',
     ArtShaders.missingWiring().join(','));
   ok(ArtShaders.RESERVED.every(r => r.why && r.why.length > 20),
     '备用效果都写清了"等什么条件才用"（' + ArtShaders.RESERVED.map(r => r.id).join(', ') + '）');
 
-  /* 反证：撤掉一个使用方，接线自检必须红 */
+  /* 反证：撤掉一个使用方，接入自检必须红 */
   const savedUse = ArtShaders.USED_BY.hitFlash;
   delete ArtShaders.USED_BY.hitFlash;
   ArtShaders.requireWiring = true;
@@ -299,7 +299,7 @@ console.log('\n[3] 2D 着色器：合成操作 / 步骤 / 美术宪法');
   ArtShaders.requireWiring = false;
   ArtShaders.USED_BY.hitFlash = savedUse;
   ok(!broke.ok && broke.problems.some(p => /hitFlash/.test(p)),
-    '撤掉白闪的使用方 → 接线自检立刻红（不是空转）', broke.problems[0]);
+    '撤掉白闪的使用方 → 接入自检立刻红（不是空转）', broke.problems[0]);
   ArtShaders.requireWiring = true;
   ok(ArtShaders.audit().ok, '装回去之后重新通过');
   ArtShaders.requireWiring = false;
@@ -344,7 +344,7 @@ console.log('\n[4] 接进游戏：废墟铺装与白闪');
   ok(t.cells < 105 * 79 * 0.5, '铺装是稀疏的：候选格少于战场总格数的一半（' + t.cells + '/' + (105 * 79) + '）');
   ok(t.set === 'ruinFloor', '用的是 ruinFloor 那一套瓦片集', t.set);
 
-  /* 计算量守卫：铺装不能把静态层烘焙顶穿（`test/render-check.mjs` 的同一把尺子） */
+  /* 计算量守卫：铺装不能把静态层烘焙顶穿（`test/render-check.mjs` 的同一条校验） */
   ok(t.tiles * 8 < 60000, '铺装的绘制预算在静态层上限内（' + t.tiles + ' 块 × 约 8 笔 = ' +
     (t.tiles * 8) + ' < 60000）');
 
@@ -475,7 +475,7 @@ console.log('\n[6] 宣传美术（promo）：标题字与徽记是**画出来的
     '有两枚以上的宣传美术件，各自声明了逻辑尺寸与说明（' +
     S.EMBLEMS.map(e => e.id + ' ' + e.w + '×' + e.h).join(' · ') + '）');
   ok(S.EMBLEMS.every(e => Art.sizeOk(e.w, e.h)),
-    '宣传美术件的尺寸过得了美术规范那把尺子（< ' + Art.SIZES.assetMax + 'px）');
+    '宣传美术件的尺寸过得了美术规范那条校验（< ' + Art.SIZES.assetMax + 'px）');
   /* 标题字必须**逐字声明**（不是一句文案）：字距与投影靠它锁死 */
   const title = S.EMBLEM_BY_ID.title;
   ok(title && title.glyphs.length === 7 && title.glyphs.map(g => g.ch).join('') === 'Bronana',

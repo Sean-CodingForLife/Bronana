@@ -7,7 +7,7 @@
 
      **"这些声明，运行时到底有没有人真的在用它？"**
 
-   已有的尺子各管一段：
+   已有的校验各管一段：
      · `data-contract` 查"数据表里的字符串字段有没有家族守"（表 → 表）
      · `arch-audit [9]` 查"声明了却没人按名字引用"（文本近似）
      · 覆盖率查"哪些函数没跑过"（工具层）
@@ -96,10 +96,10 @@ wrap(Challenges, 'groups', 'challenge');
 /* 货币 / 循环：**这一张表没有运行时读点** —— `Eco.edge` / `byTier` /
    `flowsFrom` / `isSession` 全仓只有 `audit()` 与体检工具在调，
    运行时一次都不查（`profile.ts` 的 `applyRun` / `keepBuy` 直接写
-   `data.spores` / `data.core`）。把"没人调用辅助函数"报成"四种货币没人用"
-   是**尺子在冤枉代码**：货币当然在用，只是没人去查那张表。
+   `data.growth` / `data.core`）。把"没人调用辅助函数"报成"四种货币没人用"
+   是**校验在冤枉代码**：货币当然在用，只是没人去查那张表。
    所以口径换成"**这笔钱被真的读过 / 写过**"：
-     · 读：`Profile.spores()` / `alloy()` / `core()`（界面与消费点都走它）
+     · 读：`Profile.growth()` / `alloy()` / `core()`（界面与消费点都走它）
      · 写：`applyRun`（产出）/ `market.buy*`、`market.sellWeapon`（局内花与收）
            / `keepBuy`、`forgeNode`（局外花）
    下面第 2 节会把这条生命周期**真的走一遍**（打一局 → 结算 → 买据点 → 解图纸），
@@ -112,11 +112,11 @@ function wrapArg(obj, name, fn) {
 }
 /* 三个读点**显式写开**，不用循环 —— 循环里那个闭包吃过一次亏
    （`id` 捕获错，读数恒为 0，看着像"游戏没用过这几种钱"）。
-   写开之后加一个哨兵：当场调一次，命中数必须非 0，否则是尺子没接上。 */
+   写开之后加一个哨兵：当场调一次，命中数必须非 0，否则是校验没接上。 */
 wrapArg(g.Profile, 'spores', function () { hits['curRead:spore'] = (hits['curRead:spore'] || 0) + 1; });
 wrapArg(g.Profile, 'alloy', function () { hits['curRead:alloy'] = (hits['curRead:alloy'] || 0) + 1; });
-wrapArg(g.Profile, 'sporesForRun', function () { hits['curRead:spore'] = (hits['curRead:spore'] || 0) + 1; });
-wrapArg(g.Profile, 'alloyForRun', function () { hits['curRead:alloy'] = (hits['curRead:alloy'] || 0) + 1; });
+wrapArg(g.Profile, 'growthForRun', function () { hits['curRead:spore'] = (hits['curRead:spore'] || 0) + 1; });
+wrapArg(g.Profile, 'growthForRun', function () { hits['curRead:alloy'] = (hits['curRead:alloy'] || 0) + 1; });
 /* ⚠ 核心材料**没有** `Profile.core()` 之外的运行时读点，而 `Profile.core()` 只在
    据点/图纸那两个界面里被调（`ui.ts`）—— 无头环境走不到。它真正的运行时落点是
    "**扣掉它**"：`Profile.keepBuy` / `forgeNode` 在 `chk.core > 0` 时真的减一笔。
@@ -126,7 +126,7 @@ for (const name of ['applyRun']) {
 }
 wrapArg(g.Profile, 'keepBuy', function (id) {
   try {
-    const c = g.Stronghold.canBuy(g.Profile.keepOwned(), id, g.Profile.spores(), g.Profile.core());
+    const c = g.Stronghold.canBuy(g.Profile.keepOwned(), id, g.Profile.growth(), g.Profile.core());
     if (c && c.ok && c.core > 0) hits['curWrite:core'] = (hits['curWrite:core'] || 0) + 1;
   } catch (e) { }
 });
@@ -153,7 +153,7 @@ for (const [obj, name, label] of [
      · 画一帧（着色器 / 瓦片 / 视差都在这条路上）
      · 每帧调 `Music.update`（唯一的换曲入口）
      · 跑一次结算与挑战评估（档案层）
-   这也是**必须诚实说清的一点**：不补这一段，尺子会把"没被采样到"
+   这也是**必须诚实说清的一点**：不补这一段，校验会把"没被采样到"
    报成"没人用"—— 第一版就是这样，五张表被报成"出口全漏"。 */
 const st = playRun({ runIndex: 0, seedBase: 500000, maxWave: 40 });
 console.log('  ' + PAD('这一局', 10) + (st ? st.char + ' · 第 ' + st.waves + ' 波 · 层 ' + st.floor +
@@ -258,7 +258,7 @@ try {
     kills: st ? st.kills : 0, materials: st ? st.materials : 0,
     damage: 0, taken: 0, healed: 0, packs: 0, win: false, danger: 0,
     peaks: { maxHarvesting: 30, maxLuck: 12, maxTurrets: 2, maxWeapons: 3, minHpWaveEnd: 2 },
-    alloy: st ? st.alloy : 0, coreEarned: st ? st.coreEarned : 0,
+    alloy: st ? st.growth : 0, coreEarned: st ? st.coreEarned : 0,
     weaponIds: [], itemIds: [], seenItemIds: []
   }, { runs: 12, wins: 3, bestWave: 30, bestKills: 300, bestLevel: 40 });
 } catch (e) { runReport = null; }
@@ -307,7 +307,7 @@ console.log('');
 /* ---------------- 3. 逐表对账 ----------------
    `readOf` 里的 n>0 表示"运行时读到了"。对**审计专用的辅助函数**
    （只被 `audit()` 或工具调、运行时根本不走的）单独注明 ——
-   把它们算成"没人用"是尺子在冤枉代码。 */
+   把它们算成"没人用"是校验在冤枉代码。 */
 const results = [];
 function section(title, declared, readOf, note) {
   const got = [], zero = [];
@@ -415,7 +415,7 @@ section('[6] 瓦片集（2 套）—— `ArtTiles.autotile(set)` 被调用',
         char: st ? st.char : 'ranger', wave: st ? st.waves : 1, level: st ? st.level : 1,
         kills: st ? st.kills : 0, materials: st ? st.materials : 0, damage: 0, taken: 0,
         healed: 0, packs: 0, win: false, danger: 0, peaks: {},
-        alloy: st ? st.alloy : 0, coreEarned: st ? st.coreEarned : 0
+        alloy: st ? st.growth : 0, coreEarned: st ? st.coreEarned : 0
       }, {});
     }
   } catch (e) { /* 驱动不动就照实报 0 */ }

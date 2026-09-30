@@ -6,7 +6,7 @@
      [1] 表与自检：声明表自洽；**审计真的能抓错**（人为把它改坏）
      [2] 生成规则：条数随品级、档位不看品级、槽位对得上、同种子逐位可复现
      [3] 折叠：空 = 恒等；属性进全局属性表；武器本地只作用于那一把
-     [4] 接线：开局 / 货架 / 买 / 制造 / 宝箱 / 合成 —— 五个生成点都有词条
+     [4] 接入：开局 / 货架 / 买 / 制造 / 宝箱 / 合成 —— 五个生成点都有词条
      [5] 存档：往返一致；坏档丢掉而不是抛；货架的词条不重滚
      [6] 界面：文案来自表（界面不写第二份）、颜色按家族分
 
@@ -286,9 +286,9 @@ console.log('\n[3] 折叠：属性 / 武器本地');
 }
 
 /* =========================================================
-   [4] 接线：五个生成点
+   [4] 接入：五个生成点
    ========================================================= */
-console.log('\n[4] 接线：开局 / 货架 / 买 / 制造 / 宝箱 / 合成');
+console.log('\n[4] 接入：开局 / 货架 / 买 / 制造 / 宝箱 / 合成');
 {
   const weaponDamage = Game._internals.weaponDamage || g.weaponDamage;
 
@@ -515,6 +515,56 @@ console.log('\n[6] 界面');
   ok(/class="affix suffix"/.test(html2), '后缀渲染成冷色那一类', html2);
   ok(Affixes.html({ id: 'nope', t: 1, v: 0 }) === '', '认不出的词条渲染成空串（界面不炸）');
 
+  /* ------------------------------------------------------------------
+     ⚠ 下面这几条是**后补的**，而它们本该一开始就有：
+     上面那两条断言只验了"名字在行首"与"家族类名在" —— **没有一条验那个数字**。
+     于是 19 条里 **10 条**（所有 `scale:1000` 的百分比词条）在界面上显示成 **`+0%`**
+     而测试全绿。两层根因：
+       ① `text` 函数是按**原始整数**设计的（`per: 60` → `+6%`），
+          而 `line` / `html` / `lines` 传的是 `valueOf`（已除以 scale 的小数）→ `Math.round(0.006)=0`；
+       ② 就算单位对了，T1 的区间是 `[1, per]`，低滚（1~4 千分比）在"四舍五入到整百分比"
+          下**仍然**是 `+0%` —— 所以显示侧还要留一位小数。
+     数值侧一直是好的（`fold` 用 `valueOf`）—— 这是"词条其实生效、只是显示成零"。
+     ------------------------------------------------------------------ */
+  const visible = (html) => String(html).replace(/title="[^"]*"/, '').replace(/<[^>]*>/g, '');
+  let zeroShown = [], notMono = [];
+  for (const def of Affixes.LIST) {
+    let prev = -Infinity;
+    for (let t = 1; t <= def.cap; t++) {
+      const lo = Math.abs(def.per) * (t - 1) + 1;          // 这一档的**最低**滚
+      const inst = { id: def.id, t: t, v: def.per < 0 ? -lo : lo };
+      const txt = visible(Affixes.html(inst));
+      const num = Number((txt.match(/-?\d+(\.\d+)?/) || [])[0]);
+      if (!isFinite(num)) { zeroShown.push(def.id + ' T' + t + ' 解析不出数字：' + txt); continue; }
+      /* ① 显示出来的数不能是 0（真值最低是 0.1%） */
+      if (num === 0) zeroShown.push(def.id + ' T' + t + ' 显示成 0：' + txt);
+      /* ② 档位必须单调：这一档的最低 > 上一档的最高（这是"链"的可见形式） */
+      const mag = Math.abs(num) * (def.scale === 1000 ? 1 : 1);
+      if (t > 1 && !(mag > prev)) notMono.push(def.id + ' T' + t + ' 没高过 T' + (t - 1));
+      prev = mag;
+    }
+  }
+  ok(zeroShown.length === 0, '每条词条在每一档都显示出**非零**的数字（不是 +0%）', zeroShown.join(' | '));
+  ok(notMono.length === 0, '档位是单调的：这一档的最低 > 上一档的最高（"链"看得见）', notMono.join(' | '));
+
+  /* 含义：MODS[mod].note 与家族 note 必须**真的被渲染**（写在表里但没人读 = 白写） */
+  const tip = (Affixes.html(Affixes.make('honed', 1, () => 0.5)).match(/title="([^"]*)"/) || [])[1] || '';
+  ok(tip.indexOf(Affixes.MODS[Affixes.BY_ID['honed'].mod].note) >= 0,
+    '含义（MODS[mod].note）渲染进了 title —— 否则"锋锐 +6%"与"远见 +6%"在卡片上长得一样', tip);
+  ok(tip.indexOf(Affixes.FAMILIES.prefix.note) >= 0,
+    '家族说明（FAMILIES[...].note）也渲染进了 title', tip);
+  ok(Affixes.meaningOf('honed').indexOf('最高 T4') >= 0,
+    '`meaningOf` 带上最高档位（图鉴那一页要用）', Affixes.meaningOf('honed'));
+
+  /* 「链」的深度：至少要有词条的顶档**只能在物品 T4 才拿到** ——
+     否则高品级装备的词条强度与 T2 装备完全一样（改造前就是这样：18/19 条 cap=2，
+     于是物品 T2/T3/T4/T5 的词条档位全是 T2，"链"在第 2 件装备就到顶）。 */
+  const deepest = Math.max.apply(null, Affixes.LIST.map((d) => d.cap));
+  ok(deepest >= 4, '词条链至少 4 档（现在最深 ' + deepest + '）—— 物品 T2 就封顶等于没有链');
+  const onlyHigh = Affixes.LIST.filter((d) => d.cap >= 4).length;
+  ok(onlyHigh >= Affixes.LIST.length / 2,
+    '多数词条都有第 3/4 档（现在 ' + onlyHigh + '/' + Affixes.LIST.length + ' 条 cap>=4）');
+
   // 界面**不写第二份文案**：所有词条文字都出自表里的 text 函数
   const uiSrc = readSrc('ui.ts');
   const uiCode = stripComments(uiSrc);
@@ -557,16 +607,16 @@ function Sessions_forceCraft(sess, recipeId) {
   /* 产线来自**工坊设施**（跨局资产）；这里直接给一座「熔炉」并补一笔材料，
      绕开"先打材料再盖"那一段（那是工坊测试的事）。 */
   const P = g.Profile;
-  if (!P.campLevel('furnace')) {
-    const owned = P.campOwned();
-    for (const id of Object.keys(owned)) P.campSell(id);
-    P.addMaterial(500);
-    P.campBuy('furnace', g.Game.campOpts());
+  if (!g.Game.campLevel('furnace')) {
+    const owned = g.Game.campOwned();
+    for (const id of Object.keys(owned)) g.Game.campSell(id);
+    g.Game.addMaterial(500);
+    g.Game.campBuy('furnace');
   }
   S.craftUsed = [];
   g.Game.recalcStats();
   const lines = g.Game.craftFreeLines();
   const line = lines.length ? lines[0] : 0;
-  P.addMaterial(100000);        // 制造花的是**材料**（不再是局内废料）
+  g.Game.addMaterial(100000);        // 制造花的是**材料**（不再是局内废料）
   return g.Game.craft(line, recipeId);
 }

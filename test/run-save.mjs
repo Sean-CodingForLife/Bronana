@@ -1,5 +1,5 @@
 /* =========================================================
-   run-save.mjs — **一局存档的编解码** + 升级池的接线
+   run-save.mjs — **一局存档的编解码** + 升级池的接入
    ---------------------------------------------------------
    这一套的由来：`exportRun` / `inspectRun` / `sanitizeSaveNumbers` 住在
    `game.ts`（4100 行的模拟内核）里，**没有任何一套测试直接调过它们** ——
@@ -13,7 +13,7 @@
      [2] 编码：字段齐备 + **字段顺序稳定**（`JSON.stringify` 按插入顺序输出）
      [3] 校验：能修的修、不能修的拒（未知角色 / 非法波次拒；数值越界夹取）
      [4] 往返：真的存进槽位再读回来，逐字段一致（用真会话，不是造的对象）
-     [5] 接线形状：`game.ts` 必须**只**把编解码委托出去，不再自己写一份
+     [5] 接入形状：`game.ts` 必须**只**把编解码委托出去，不再自己写一份
 
    为什么 [1] 值得单独一组：`JSON.parse('1e999')` 是合法 JSON，解析出来是
    `Infinity`；`JSON.stringify(Infinity)` 是 `null`。于是"坏档"不是崩，
@@ -87,10 +87,10 @@ console.log('\n[2] 编码（serialize）');
      这里同步改），不要插在中间：插在中间等于给所有旧档换了个形状。 */
   const ORDER = [
     'char', 'seed', 'danger', 'opening', 'wave', 'speed', 'level', 'xp', 'hp', 'scrap',
-    'upgrades', 'weapons', 'items', 'totals', 'materialEarned', 'keep', 'skillBuild',
+    'upgrades', 'weapons', 'items', 'totals', 'materialEarned', 'material', 'keep', 'skillBuild',
     'forge', 'floor', 'room', 'roomsCleared', 'roomsSeen', 'walls', 'secretSeen',
     'bossesDown', 'coreEarned', 'boon', 'pendingBoons', 'packsOpened', 'packSpent',
-    'offers', 'combineCount', 'roomFx', 'craftCount', 'craftUsed', 'alloy', 'rerolls',
+    'offers', 'combineCount', 'roomFx', 'craftCount', 'craftUsed', 'camp', 'campRow', 'bonds', 'talks', 'growth', 'rerolls',
     'rerollCost', 'shopLocked', 'shopBonus', 'freeRerolls', 'rndState', 'pendingLevels',
     'runEvents'
   ];
@@ -165,9 +165,9 @@ console.log('\n[4] 往返（打一会 → 存 → 读）');
 }
 
 /* =========================================================
-   [5] 接线形状：game.ts 只委托，不再自己写一份
+   [5] 接入形状：game.ts 只委托，不再自己写一份
    ========================================================= */
-console.log('\n[5] 接线形状（源码）');
+console.log('\n[5] 接入形状（源码）');
 {
   const gsrc = readSrc('game.ts');
   ok(/Game\.exportRun = function \(\)[\s\S]{0,400}?RunSave\.serialize\(/.test(gsrc),
@@ -182,7 +182,7 @@ console.log('\n[5] 接线形状（源码）');
   ok(/Pool\.weighted\(lvl\)/.test(gsrc) && /Pool\.amountAt\(entry, lvl\)/.test(gsrc),
     '掷骰子读的是 Pool（幅度与权重都从数据层来）');
 
-  /* 升级池的两条曲线必须真的被读到 —— 否则那两条曲线会变成"空转开关" */
+  /* 升级池的两条曲线必须真的被读到 —— 否则那两条曲线会变成"无效开关" */
   const poolSrc = readSrc('levelup.ts');
   ok(/Curves\.at\('player\.cardAmt'/.test(poolSrc) && /Curves\.at\('player\.cardPool'/.test(poolSrc),
     'levelup.ts 真的读了 player.cardAmt 与 player.cardPool 两条曲线');
@@ -199,7 +199,7 @@ console.log('\n[6] 升级池（levelup.ts）');
   const v = Pool.audit();
   ok(v.ok, '自检通过', (v.problems || []).join('; '));
   ok(v.counts.guard * 5 >= Pool.LIST.length,
-    '防御向条目占比够（' + v.counts.guard + ' / ' + Pool.LIST.length + '）—— 否则 cardPool 曲线是空转开关');
+    '防御向条目占比够（' + v.counts.guard + ' / ' + Pool.LIST.length + '）—— 否则 cardPool 曲线是无效开关');
 
   /* 幅度与权重**真的随等级走**（这是"不是平表"那句话的判据） */
   const e = Pool.LIST[0];

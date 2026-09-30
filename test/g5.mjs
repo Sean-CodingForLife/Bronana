@@ -267,8 +267,8 @@ console.log('\n[4] 隐藏挑战与隐藏角色');
   Profile.reset();
 }
 
-/* ---------------- 5. 界面接线 ---------------- */
-console.log('\n[5] 界面接线');
+/* ---------------- 5. 界面接入 ---------------- */
+console.log('\n[5] 界面接入');
 {
   const ui = fs.readFileSync(path.join(ROOT, 'src', 'ui.ts'), 'utf8');
   ok(/renderBoonPick\(/.test(ui) && (await uiMissingActs(['boon-pick'])).length === 0,

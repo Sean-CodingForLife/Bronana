@@ -289,7 +289,7 @@ ArtShaders.noteUse = function (id, owner) {
   return true;
 };
 
-/** 用了某条 shader 的模块（空数组 = 这条 shader 还没接线） */
+/** 用了某条 shader 的模块（空数组 = 这条 shader 还没接入） */
 ArtShaders.usersOf = function (id) { return (ArtShaders.USED_BY[id] || []).slice(); };
 
 /** 声明了却没有使用方的 shader（= 写着好玩的效果） */
@@ -302,14 +302,14 @@ ArtShaders.unused = function () {
 };
 
 /* =========================================================
-   3b. **库里的备用效果**：没接线，但说清了"等什么条件才用"
+   3b. **库里的备用效果**：没接入，但说清了"等什么条件才用"
    ---------------------------------------------------------
    一条效果"暂时没人用"有两种完全不同的情况：
      · 写着好玩 —— 不知道该用在哪，也不打算用（该删）
      · **备用** —— 这是 2D 项目里必然存在的一类：溶解、遮罩揭示、全息
        都要等对应的玩法出现（可消失的敌人 / 地图揭示 / 装备预览）。
        效果本身是对的，只是**现在没有那个场合**。
-   把后者登记下来，`audit()` 才能把"没接线"从"漏了"里分出来 ——
+   把后者登记下来，`audit()` 才能把"没接入"从"漏了"里分出来 ——
    否则维护者只有一个选择：把没法用的效果删掉，等需要时再写一遍。
    ========================================================= */
 ArtShaders.RESERVED = [
@@ -347,7 +347,7 @@ ArtShaders.RESERVED_BY_ID = (function () {
   return m;
 })();
 
-/** 既没接线、也没登记为备用的 shader（= 真的漏了） */
+/** 既没接入、也没登记为备用的 shader（= 真的漏了） */
 ArtShaders.missingWiring = function () {
   var un = ArtShaders.unused(), out: string[] = [];
   for (var i = 0; i < un.length; i++) if (!ArtShaders.RESERVED_BY_ID[un[i]]) out.push(un[i]);
@@ -430,7 +430,7 @@ ArtShaders.audit = function () {
   if (!kinds.screen) problems.push('没有任何作用于屏幕的 shader（转场 / 暗角 / 揭示都在这一档）');
   if (ArtShaders.LIST.length < 6) problems.push('shader 少于 6 条：2D 项目最低要求是 白闪/描边/溶解/精英/暗角/遮罩');
 
-  /* 每个 paint 动作都必须被执行器认识 —— 否则那一步是**静默的空转** */
+  /* 每个 paint 动作都必须被执行器认识 —— 否则那一步是**静默地什么都不做** */
   var known: Record<string, boolean> = Object.create(null);
   known.fill = true; known.ring = true; known.border = true;
   known.mask = true; known.offset = true; known.alpha = true;
@@ -451,7 +451,7 @@ ArtShaders.audit = function () {
     }
   }
 
-  /* ---- 接线状态：每条 shader 必须"接了线"或"登记为备用" ----
+  /* ---- 接入状态：每条 shader 必须"接上了"或"登记为备用" ----
      这一条同样**不放在加载时**（使用方的登记在各个消费者加载时才发生），
      由 `pnpm run art` 与 `test/art.mjs` 在全部模块加载完之后调用。 */
   if (ArtShaders.requireWiring) {
@@ -480,7 +480,7 @@ ArtShaders.audit = function () {
   };
 };
 
-/** 是否把"接线状态"算进自检。加载时不算（消费者还没登记），
+/** 是否把"接入状态"算进自检。加载时不算（消费者还没登记），
  *  `test/art.mjs` 与 `pnpm run art` 会打开它再跑一次。 */
 ArtShaders.requireWiring = false;
 

@@ -183,7 +183,7 @@ function craftTurn(log) {
 /** 当前工坊策略下"下一座想盖的设施"（没有就返回 null）。
     ⚠ 口径变了：改造前工坊花的是**局内的"建材"**（每波 +2、与材料分开），
     所以那时候这里只问"想盖哪个、买不买得起"；现在花的是**材料**（带得出局的那一笔），
-    于是"盖工坊"与"造装备"开始**抢同一笔钱** —— 那正是用户要的那条取舍，也是这个尺子
+    于是"盖工坊"与"造装备"开始**抢同一笔钱** —— 那正是用户要的那条取舍，也是这个校验
     现在必须量到的东西。 */
 function campWish(s) {
   if (CAMP_POLICY === 'never') return null;
@@ -278,7 +278,7 @@ function runOnce(opts) {
   };
   row.kpm = row.kills / Math.max(1, f / 1000);          // 每千帧击杀（输出代理）
   row.mpm = row.materials / Math.max(1, f / 1000);      // 每千帧材料（经济代理）
-  row.spores = Math.round(Profile.sporesForRun({
+  row.growth = Math.round(Profile.growthForRun({
     wave: row.wave, kills: row.kills, materials: row.materials, win: row.win
   }) * (1 + Math.min(Profile.SPORE_MUL_CAP,
     ((s2.kmods && s2.kmods.sporeMul) || 0) + ((s2.omods && s2.omods.sporeMul) || 0))));
@@ -311,7 +311,7 @@ function table(title, results) {
       f1(r.wave).padStart(5) + f1(r.kpm).padStart(10) + f1(r.mpm).padStart(11) +
       f0(r.materials).padStart(8) + f1(r.buys).padStart(8) + f1(r.crafts).padStart(7) +
       f1(r.campCount).padStart(7) +
-      f0(r.spores).padStart(7) + ('   ' + r.wins + '/' + r.rows.length));
+      f0(r.growth).padStart(7) + ('   ' + r.wins + '/' + r.rows.length));
   }
 }
 
@@ -352,7 +352,7 @@ function expTalents() {
     const AXES = {
       '战斗轴（打得深）': { get: r => r.wave, eps: 0.15, unit: '波' },
       '经营轴（打得富）': { get: r => r.materials, eps: 15, unit: '材料' },
-      '局外轴（养成进度）': { get: r => r.spores, eps: 2, unit: '孢子' }
+      '局外轴（养成进度）': { get: r => r.growth, eps: 2, unit: '孢子' }
     };
     const names = Object.keys(AXES);
     console.log('\n  逐轴最强（**按轴比**，不跨轴 —— 跨轴支配是错的判据，见代码注释）');
@@ -407,7 +407,7 @@ function expCamp() {
       '   材料 ' + (r.materials - base.materials >= 0 ? '+' : '') + f0(r.materials - base.materials));
   }
   const best = res.slice(1).reduce((a, b) => (b.wave > a.wave ? b : a));
-  console.log('  最强摆法：' + best.label + '（' + f1(best.wave) + ' 波 / ' + f0(best.spores) + ' 孢子）');
+  console.log('  最强摆法：' + best.label + '（' + f1(best.wave) + ' 波 / ' + f0(best.growth) + ' 孢子）');
   const sameThree = res.filter(r => r.label.indexOf('三个') >= 0 || r.label.indexOf('/') >= 0);
   if (sameThree.length === 2) {
     console.log('  同样三个设施、只是顺序不同：' + sameThree.map(r => r.label + '=' + f1(r.wave) + '波').join(' vs ') +
@@ -469,7 +469,7 @@ function expCampCost() {
   for (const r of res.slice(1)) {
     console.log('    ' + r.label.padEnd(22) + '波次 ' + (r.wave - never.wave >= 0 ? '+' : '') + f1(r.wave - never.wave) +
       '   材料 ' + (r.materials - never.materials >= 0 ? '+' : '') + f0(r.materials - never.materials) +
-      '   孢子 ' + (r.spores - never.spores >= 0 ? '+' : '') + f0(r.spores - never.spores));
+      '   孢子 ' + (r.growth - never.growth >= 0 ? '+' : '') + f0(r.growth - never.growth));
   }
 }
 
@@ -484,7 +484,7 @@ function expKeep() {
     bench('仓库满级', { smods: owned({ storehouse: 2 }) }),
     bench('地基+工匠', { smods: owned({ foundation: 2, craftsmen: 2 }) }),
     bench('菌床满级', { smods: owned({ storehouse: 1, sporebed: 2 }) }),
-    bench('结构性三件套', { smods: owned({ shelves: 1, workshop: 1, range: 1, depot: 1, storehouse: 2, craftsmen: 2 }) }),
+    bench('结构性三项', { smods: owned({ shelves: 1, workshop: 1, range: 1, depot: 1, storehouse: 2, craftsmen: 2 }) }),
     bench('全部满级', {
       smods: owned({
         storehouse: 2, shelves: 1, clocktower: 2, foundation: 2, craftsmen: 2,
@@ -499,7 +499,7 @@ function expKeep() {
       '波次 ' + (r.wave - none.wave >= 0 ? '+' : '') + f1(r.wave - none.wave) +
       '   材料 ' + (r.materials - none.materials >= 0 ? '+' : '') + f0(r.materials - none.materials) +
       '   商店件 ' + (r.buys - none.buys >= 0 ? '+' : '') + f1(r.buys - none.buys) +
-      '   孢子 ' + (r.spores - none.spores >= 0 ? '+' : '') + f0(r.spores - none.spores));
+      '   孢子 ' + (r.growth - none.growth >= 0 ? '+' : '') + f0(r.growth - none.growth));
   }
   console.log('  读法：**商店件**这一列是结构性解锁（工坊/货栈/货架）的直接证据 ——');
   console.log('  它们不改数值，改的是"你买得到什么"。');
@@ -567,7 +567,7 @@ function expBoons() {
       '波次 ' + (r.wave - base.wave >= 0 ? '+' : '') + f1(r.wave - base.wave) +
       '   材料 ' + (r.materials - base.materials >= 0 ? '+' : '') + f0(r.materials - base.materials) +
       '   商店件 ' + (r.buys - base.buys >= 0 ? '+' : '') + f1(r.buys - base.buys) +
-      '   孢子 ' + (r.spores - base.spores >= 0 ? '+' : '') + f0(r.spores - base.spores));
+      '   孢子 ' + (r.growth - base.growth >= 0 ? '+' : '') + f0(r.growth - base.growth));
   }
   const METRICS = ['wave', 'materials', 'spores'];
   const EPS = { wave: 0.15, materials: 15, spores: 2 };
@@ -615,7 +615,7 @@ function expItemSets() {
     console.log('    ' + r.label.padEnd(16) +
       '波次 ' + (r.wave - ctrl.wave >= 0 ? '+' : '') + f1(r.wave - ctrl.wave) +
       '   材料 ' + (r.materials - ctrl.materials >= 0 ? '+' : '') + f0(r.materials - ctrl.materials) +
-      '   孢子 ' + (r.spores - ctrl.spores >= 0 ? '+' : '') + f0(r.spores - ctrl.spores));
+      '   孢子 ' + (r.growth - ctrl.growth >= 0 ? '+' : '') + f0(r.growth - ctrl.growth));
   }
   console.log('  读法：机器人是**随机喂装备**的，它不会为了凑套装去挑货 ——');
   console.log('  所以这里的差值只说明"套装一旦凑成值多少"，不说明"值不值得为它挑装备"。');

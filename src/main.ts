@@ -46,7 +46,7 @@ var autoPauseEnabled = true;
 var lastDaily = null;
 
 /* =========================================================
-   音效接线：模拟层**广播意图**（`Game.events` 的 `'sfx'`），这里把它翻成具体音效。
+   音效接入：模拟层**广播意图**（`Game.events` 的 `'sfx'`），这里把它翻成具体音效。
    ---------------------------------------------------------
    改造前是模拟层直接 `import { Sfx } from './audio.ts'` 并 `Sfx.kill()` 共 9 处 ——
    那是全项目唯一的"模拟 → 造型"依赖边，模拟内核因此认识了 AudioContext 那一层。
@@ -62,7 +62,7 @@ var SFX_BY_INTENT: Record<string, (arg?: string) => void> = {
   hurt: function () { Sfx.hurt(); },
   explode: function () { Sfx.explode(); },
   pickup: function () { Sfx.pickup(); },
-  /* ---- 这两条是**补接线**，不是新音效 ----
+  /* ---- 这两条是**补接入**，不是新音效 ----
      test/arch.mjs 的 [4] 节拿「模拟层广播的意图」与「入口接的线」对账，
      而它一直是红的（多出来的正是这两个）：模拟层早就在发 buy / deny，
      入口却没接 —— 表现是「买了东西与点不动都没有声音」，
@@ -73,7 +73,7 @@ var SFX_BY_INTENT: Record<string, (arg?: string) => void> = {
 };
 
 /* =========================================================
-   持久化接线（只在浏览器侧做，模拟层保持零 DOM）
+   持久化接入（只在浏览器侧做，模拟层保持零 DOM）
    ========================================================= */
 /** 把一项设置应用到具体模块 —— 这是"值 → 行为"的唯一去处 */
 function applySetting(key, value) {
@@ -124,7 +124,7 @@ function applySetting(key, value) {
  *
  * ⚠ 第一版改的是 `documentElement.style.fontSize` —— 那对本作**完全无效**：
  * 这份 CSS 里的尺寸全是 px（量过：font-size 68 处 px、0 处 rem），
- * 改根字号一个像素都不动。于是"字号"成了一个能存能读、界面不变的**空转开关**。
+ * 改根字号一个像素都不动。于是"字号"成了一个能存能读、界面不变的**无效开关**。
  * 现在写一个 CSS 变量 `--ui-zoom`，由 `.layer{zoom: var(--ui-zoom,1)}` 消费：
  *   · 缩放的是**界面层**，游戏画面（同层的 canvas）不受影响 —— 它的分辨率由 dpr 决定
  *   · `zoom` 会连布局一起重排，所以按钮不会被放大后的文字撑破
@@ -243,12 +243,12 @@ function initPersistence() {
   // 标题页的"继续上一局"按钮：启动时按存档有无决定显不显示
   if (UI.refreshContinueButton) UI.refreshContinueButton();
   console.log('[storage] ' + Storage.adapterName() + ' · 设置来源 ' + Settings.loadedFrom() +
-    ' · 账号档案 ' + Profile.loadedFrom() + '（孢子 ' + Profile.spores() + '）' +
+    ' · 账号档案 ' + Profile.loadedFrom() + '（孢子 ' + Profile.growth() + '）' +
     ' · ' + (Save.hasRun() ? '有可继续的存档' : '无存档'));
 }
 
 /* =========================================================
-   账号档案接线（局外成长）
+   账号档案接入（局外成长）
    ========================================================= */
 /**
  * 本局峰值。只在**换波**与**本局结束**各采一次，代价可以忽略；
@@ -325,10 +325,10 @@ function runInput(summary): ProfileRunInput {
     packs: summary.packs || 0, win: summary.win,
     danger: summary.danger || 0,
     kmods: sess ? sess.kmods : null,
-    // 天赋的经济修正走同一条路径（接线层从会话上取，档案层不认识"天赋"）
+    // 天赋的经济修正走同一条路径（接入层从会话上取，档案层不认识"天赋"）
     omods: sess ? sess.omods : null,
     // 合金：本局合成攒下来的那一份（结算时按 forge 表换成功坊货币）
-    alloy: sess ? (sess.alloy || 0) : 0,
+    alloy: sess ? (sess.growth || 0) : 0,
     weaponIds: summary.weaponIds || [], itemIds: summary.itemIds || [],
     masteredWeaponIds: summary.masteredWeaponIds || [], masteredItemIds: summary.masteredItemIds || [],
     // 剧情要的"这一局碰到了什么来源"（模拟层报事实，怎么解释它通向哪片记录不在这里）
@@ -348,7 +348,7 @@ function announceRun(report) {
      不点出来玩家不会把"局内合成"与"局外图纸"连起来（那样这条腿就白做了）。 */
   if (report.alloy > 0) {
     UI.toast('获得 ' + report.alloy + ' 合金' +
-      (Game.alloyEarned() > 0 ? '（本局合成贡献 ' + Game.alloyEarned() + '）' : '') +
+      (Game.growthEarned() > 0 ? '（本局合成贡献 ' + Game.growthEarned() + '）' : '') +
       ' —— 到据点解锁图纸', 'good');
   }
   for (var i = 0; i < report.completed.length; i++) {
@@ -398,7 +398,7 @@ function unlockLabel(t) {
    ---------------------------------------------------------
    两者只差"期"的算法与难度：每日固定第 0 级，每周轮换难度。
    规则的推导在 daily.ts / season.ts（纯函数），
-   **"这一局是不是挑战局"的标记放在这里** —— 它属于接线层，
+   **"这一局是不是挑战局"的标记放在这里** —— 它属于接入层，
    模拟层与规则模块都不需要知道"玩家正在打挑战"。
    ========================================================= */
 var challenge: { kind: string; rule: any; code: string; tape: any; claims: any; rec: any; improved: boolean } | null = null;
@@ -550,7 +550,7 @@ function boot() {
      就是不起作用）。现在唯一入口就是这里 + `Settings.onChange`。 */
   Settings.keys().forEach(function (k) { applySetting(k, Settings.get(k)); });
 
-  // 每日挑战：由界面触发、由这里实现（种子/角色/录制/成绩码都属于"接线"这一层）
+  // 每日挑战：由界面触发、由这里实现（种子/角色/录制/成绩码都属于"接入"这一层）
   UI.dailyStart = function () { return startChallenge('daily'); };
   UI.weeklyStart = function () { return startChallenge('weekly'); };
   UI.dailyResult = lastDailyResult;
@@ -558,8 +558,8 @@ function boot() {
 
   // 离线产出：开机结算一次。**结算即前进**，所以反复刷新不会多拿
   var off = Profile.settleOffline();
-  if (off.spores > 0) {
-    UI.toast('离线产出 +' + off.spores + ' 孢子（' + Math.floor(off.minutesCounted) + ' 分钟' +
+  if (off.growth > 0) {
+    UI.toast('离线产出 +' + off.growth + ' 孢子（' + Math.floor(off.minutesCounted) + ' 分钟' +
       (off.capped ? '，已按上限计' : '') + '）', 'good');
   }
   // 切后台 / 关页面时也记一次"见面"（离线产出按它与下次开机的间隔结算）
@@ -884,7 +884,10 @@ function hotkeys() {
     return;
   }
   if (group === 'start') {
-    if (Input.once('enter')) Game.newRun(UI.selectedChar);
+    /* ⚠ 必须走 `UI.startRun()`，不能自己 `Game.newRun(UI.selectedChar)` ——
+       那样会漏掉 `opening` / `smods` / `skillBuild` **三样**，其中 `skillBuild`
+       一漏整个技能系统就不会发生（见 `ui.ts` 里 `UI.startRun` 的注释）。 */
+    if (Input.once('enter')) UI.startRun();
   }
 }
 

@@ -425,7 +425,7 @@ ArtTiles.audit = function () {
     if (art.bevel === undefined) problems.push(ts.id + ' 没有声明 bevel（立体边）');
     if (art.seam === undefined) problems.push(ts.id + ' 没有声明 seam（接缝）');
 
-    /* 资源规范：瓦片集必须过 art_spec 的那把尺子 */
+    /* 资源规范：瓦片集必须过 art_spec 的那条校验 */
     var lint = Art.lintAsset({
       name: 'TILE_' + ts.id.charAt(0).toUpperCase() + ts.id.slice(1),
       kind: 'tileset', w: ts.tileSize, h: ts.tileSize, anchor: 'tile'

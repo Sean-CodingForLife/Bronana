@@ -1,7 +1,7 @@
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
 /* =========================================================
-data_chars.ts — 可选角色（豆豆职业）
+data_chars.ts — 可选角色（职业表）
 ========================================================= */
 /* 默认角色：没有任何 locked 标记 = 一开始就能用。
    其余角色由 challenges.ts 里"进程"那一组的挑战解锁（打到第 2/4/6/9/12/15/18 波）。
@@ -11,7 +11,7 @@ var C = {} as CharsApi;
 
 C.LIST = [
   {
-    id: 'ranger', name: '全能豆豆', en: 'Well-Rounded', tag: '均衡',
+    id: 'ranger', name: '全能人', en: 'Well-Rounded', tag: '均衡',
     desc: '没有任何短板的基准角色，六把武器随便配，最适合第一次上手。',
     stats: {}, startWeapons: ['pistol'],
     tint: ['#f2e3bd', '#d3bd8c'], face: 'stern'

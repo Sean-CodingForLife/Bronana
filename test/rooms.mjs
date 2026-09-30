@@ -200,7 +200,7 @@ console.log('\n[5] 暗门墙：看不见 · 进不去 · 打穿才开');
   // 打穿它
   const hp0 = wall.hp;
   const before = s.player.scrap;
-  const alloyBefore = s.alloy || 0;
+  const alloyBefore = s.growth || 0;
   const hit = Game._internals.hitWalls(wall.x - 5, wall.y, wall.x + 5, wall.y, 8, hp0);
   /* 墙键带**层号**（`层号|房A|房B`）。带层号的原因是读档只重建当前层的地图 ——
      不带的话别的层的破墙记录会被当成"坏档"丢掉（回归见 `test/states.mjs` [4c]）。 */
@@ -211,7 +211,7 @@ console.log('\n[5] 暗门墙：看不见 · 进不去 · 打穿才开');
   ok(Game.state === 'playing', '密室也是一间房（有自己的遭遇）');
   ok(s.secretsFound >= 1, '进过密室会被记下来（跨局发现要用）', s.secretsFound);
   ok(s.player.scrap > before, '密室给的东西很实在（+' + (s.player.scrap - before) + ' 材料）');
-  ok((s.alloy || 0) > alloyBefore, '密室给**合金**（+' + ((s.alloy || 0) - alloyBefore) +
+  ok((s.growth || 0) > alloyBefore, '密室给**养成代币**（+' + ((s.alloy || 0) - alloyBefore) +
     '）—— 图纸树唯一的局内来源，而密室是全游戏唯一"进门要付代价"的地方');
   ok(Game.ROOM_FX.secret.note.indexOf('打穿') >= 0, '密室的内容说明也写着"要打穿"');
 }
@@ -271,10 +271,10 @@ console.log('\n[5b] 迷雾：小地图只画见过的');
       toShop(s);                                   // 合法地清掉邻居（门才会开）
       if (prep) prep(s);
       const before = {
-        mats: s.player.scrap, mat: Profile.material(), rr: s.freeRerolls,
+        mats: s.player.scrap, mat: Game.material(), rr: s.freeRerolls,
         hp: s.player.hp, maxHp: s.stats.maxHp,
         weapons: s.player.weapons.length, items: s.player.items.length,
-        alloy: s.alloy || 0
+        growth: s.growth || 0
       };
       if (!Game.enterRoom(dirBetween(nb, room))) continue;
       if (s.roomId !== room.id) continue;
@@ -292,7 +292,7 @@ console.log('\n[5b] 迷雾：小地图只画见过的');
     const gotGear = s.player.weapons.length > b.weapons || s.player.items.length > b.items;
     ok(gotGear, '宝箱：多了一件装备（武器 ' + b.weapons + '→' + s.player.weapons.length +
       ' · 道具 ' + b.items + '→' + s.player.items.length + '）');
-    ok(Profile.material() > b.mat, '宝箱：材料也涨（+' + (Profile.material() - b.mat) + '）');
+    ok(Game.material() > b.mat, '宝箱：材料也涨（+' + (Game.material() - b.mat) + '）');
     ok(s.spawnQueue.length === 0, '宝箱房不刷怪（白给的房间）');
   }
 
@@ -320,8 +320,8 @@ console.log('\n[5b] 迷雾：小地图只画见过的');
   ok(!!t3, '营地房进得去');
   if (t3) {
     const s = t3.s, b = t3.before;
-    ok(s.player.hp > b.hp && Profile.material() > b.mat,
-      '补给房：回血 ' + (s.player.hp - b.hp) + ' · 材料 +' + (Profile.material() - b.mat));
+    ok(s.player.hp > b.hp && Game.material() > b.mat,
+      '补给房：回血 ' + (s.player.hp - b.hp) + ' · 材料 +' + (Game.material() - b.mat));
   }
 
   // 事件房：**经过的遭遇真的改了状态**（四种里随便中一个都算）
@@ -330,10 +330,10 @@ console.log('\n[5b] 迷雾：小地图只画见过的');
   if (t4) {
     const s = t4.s, b = t4.before;
     const changed = s.player.hp !== b.hp || s.player.scrap !== b.mats ||
-      Profile.material() !== b.mat || s.freeRerolls !== b.rr || s.stats.maxHp !== b.maxHp ||
+      Game.material() !== b.mat || s.freeRerolls !== b.rr || s.stats.maxHp !== b.maxHp ||
       s.bonusMul !== 1;
     ok(changed, '事件房的一次遭遇真的改了状态（代价与好处并存）',
-      JSON.stringify({ hp: [b.hp, s.player.hp], mats: [b.mats, s.player.scrap], mat: [b.mat, Profile.material()], rr: [b.rr, s.freeRerolls], bonus: s.bonusMul }));
+      JSON.stringify({ hp: [b.hp, s.player.hp], mats: [b.mats, s.player.scrap], mat: [b.mat, Game.material()], rr: [b.rr, s.freeRerolls], bonus: s.bonusMul }));
   }
   const ids = Game.ROOM_EVENTS.map(e => e.id);
   ok(new Set(ids).size === ids.length, '遭遇 id 不重复');
@@ -347,10 +347,10 @@ console.log('\n[5b] 迷雾：小地图只画见过的');
     const s = Game.getSession();
     s.player.hp = Math.max(2, Math.round(s.stats.maxHp * 0.6));
     s.player.scrap = 0;
-    const b = { hp: s.player.hp, mats: s.player.scrap, mat: Profile.material(), rr: s.freeRerolls, max: s.stats.maxHp, bonus: s.bonusMul };
+    const b = { hp: s.player.hp, mats: s.player.scrap, mat: Game.material(), rr: s.freeRerolls, max: s.stats.maxHp, bonus: s.bonusMul };
     const msg = ev.apply(s.player, Dungeon.roomById(s.map, s.map.start));
     const changed = s.player.hp !== b.hp || s.player.scrap !== b.mats ||
-      Profile.material() !== b.mat || s.freeRerolls !== b.rr || s.stats.maxHp !== b.max ||
+      Game.material() !== b.mat || s.freeRerolls !== b.rr || s.stats.maxHp !== b.max ||
       s.bonusMul !== b.bonus;
     if (!changed) evBad.push(ev.id + ' 什么也没改');
     if (!msg || msg.length < 4) evBad.push(ev.id + ' 没给出发生了什么');
@@ -621,7 +621,7 @@ console.log('\n[10] 存档：只存进度，地图由种子重建');
 }
 
 /* ---------------- 11. 记录：换房也要进带子 ---------------- */
-console.log('\n[11] 记录与界面接线');
+console.log('\n[11] 记录与界面接入');
 {
   const rec = fs.readFileSync(path.join(ROOT, 'src', 'record.ts'), 'utf8');
   ok(/'enterRoom'/.test(rec) && /'autoExplore'/.test(rec),

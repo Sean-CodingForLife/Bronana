@@ -118,11 +118,16 @@ const t0 = Date.now();
 try {
   Game.events.on('levelup', () => {
     stats.levelups++;
-    // 自动选卡
-    const sess = Game.getSession();
-    if (sess && sess.levelCards.length) {
-      Game.chooseLevelCard(Math.floor(Math.random() * sess.levelCards.length));
-    }
+    /* 自动选卡。**必须是确定性的** —— 这里以前是
+         Game.chooseLevelCard(Math.floor(Math.random() * sess.levelCards.length));
+       而下面 L153 的注释写着"测量要可复现，所以这里钉死种子"：
+       **种子钉了、随机数没钉**，于是这一段的击杀数在两次跑之间能从 334 掉到 11
+       （实测三次：13波/334杀 · 13波/345杀 · 2波/11杀），
+       `击杀数 > 20` 就成了一条会随机变红的断言 —— 而"钉死种子"那句话让它看起来已经修好了。
+       现在按**等级取模**选：既有变化（不是永远选第一张），又完全可复现。
+       与 `tools/fingerprint.mjs` 的 `chooseLevelCard(0)` 同一个道理。 */
+    const n = sess.levelCards.length;
+    Game.chooseLevelCard(n > 0 ? (sess.player.level % n) : 0);
   });
 
   Game.events.on('shopOpen', () => {
@@ -460,11 +465,34 @@ console.log('\n[指纹] 行为指纹（纯重构不得改变对局）');
      换句话说：这一条**不是**"重构漂移"，是"数值确实变了"。
      反过来的旁证也在：`keep.mjs` 的货栈对照（"没有货栈时不保证"）在词条接入的
      第一版里**假红过一次**，原因正是当时词条还在共用主随机流。改成派生流之后
-     那条对照逐位回到原样 —— 这就是"主序列没被动"的实证。 */
+     那条对照逐位回到原样 —— 这就是"主序列没被动"的实证。
+
+     **第五次：两段变、一段不变**（8b90ed4f / 08205e33 / f4f27172 →
+     622d6ebf / a9c2902b / f4f27172）。这又是一次**有意的数值变更**，两个来源：
+
+       · `enemy.dmg` 的系数 0.16 → 0.37（r39 ×4.34 → ×8.73）。起因是实测
+         `生命:伤害 = 6.2:1`，而七款同类游戏在 0.3:1 ~ 1.5:1 之间 ——
+         见 `docs/scaling-benchmarks.md`；
+       · 敌人护甲从"每击减固定值"改成**与玩家侧同一条百分比公式**
+         （`Stats.armorMul`；`brute` 2→5、`warden` 3→8、`digger` 2→5），
+         因为固定减伤把开局 `smg`（单击 3）削掉 67%，而 `quake`（单击 20）只削 15%。
+
+     ⚠ **engineer 那段没变（f4f27172 逐位保留）**，这值得记一笔：它是三段里
+     唯一"从第 13 波开跑、且是远程"的样本 —— 20 秒内玩家没吃到接触伤害，
+     而护甲改动落在 `brute` 与两个 Boss 身上，那一段的怪池恰好没碰上。
+     也就是说**这一段对"敌人伤害"这条轴不敏感**；要覆盖它得靠别的套件
+     （`test/danger.mjs` 与 `pnpm run fun` 的实机落点）。
+
+     **第六次：只有 engineer 变了**（622d6ebf / a9c2902b / f4f27172 →
+     622d6ebf / a9c2902b / **354cc83c**）。来源是**词条链加深**：
+     词条表的 `cap` 从"几乎全是 2"改成一条跟着物品品级长的阶梯
+     （多数 4 档、三个大数值平坦防御类 3 档）。cap 只影响**物品 T3 及以上**，
+     而这一段恰好是唯一捡到 T3+ 装备的样本 —— 另两段的装备都还在 T1/T2，
+     词条档位没变，所以逐位保留。**这正是"改动范围 = 指纹变化范围"的又一次旁证。 */
   const CASES = [
-    ['ranger', 20240922, 5, 1800, '8b90ed4f'],
-    ['gladiator', 777, 9, 1800, '08205e33'],
-    ['engineer', 4242, 13, 1200, 'f4f27172']
+    ['ranger', 20240922, 5, 1800, '622d6ebf'],
+    ['gladiator', 777, 9, 1800, 'a9c2902b'],
+    ['engineer', 4242, 13, 1200, '354cc83c']
   ];
   const drift = [];
   for (const [c, seed, wave, frames, want] of CASES) {

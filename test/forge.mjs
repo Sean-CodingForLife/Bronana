@@ -121,40 +121,45 @@ console.log('\n[4] 合金的来源：回收旧装备 + 结算基础产出（**�
 {
   // (a) 合成不产合金了
   const s = runWith([], ['knife', 'knife']);
-  ok(Game.alloyEarned() === 0, '开局没有合金', Game.alloyEarned());
+  ok(Game.growthEarned() === 0, '开局没有合金', Game.growthEarned());
   Game.combine(0, 1);
-  ok(Game.alloyEarned() === 0, '合一次**不再产合金**（这条改动是刻意的：合成只是加工，不产新东西）',
-    Game.alloyEarned());
+  ok(Game.growthEarned() === 0, '合一次**不再产合金**（这条改动是刻意的：合成只是加工，不产新东西）',
+    Game.growthEarned());
 
   // (b) 回收产合金（数量随装备价值与图纸加成）
   Game.setState('shop');
   const t = runWith(['extract'], ['knife', 'knife'], 61);
-  const before = t.alloy || 0;
+  const before = t.growth || 0;
   Game.setState('shop');
   Game.sellWeapon(0);
-  ok((t.alloy || 0) > before, '回收一件 → 产合金（' + before + ' → ' + t.alloy + '）');
+  ok((t.growth || 0) > before, '回收一件 → 产合金（' + before + ' → ' + t.growth + '）');
   const plain = runWith([], ['knife', 'knife'], 61);
   Game.setState('shop');
-  const a1 = plain.alloy || 0;
+  const a1 = plain.growth || 0;
   Game.sellWeapon(0);
-  const gainPlain = (plain.alloy || 0) - a1;
+  const gainPlain = (plain.growth || 0) - a1;
   const t2 = runWith(['extract'], ['knife', 'knife'], 61);
   Game.setState('shop');
-  const a2 = t2.alloy || 0;
+  const a2 = t2.growth || 0;
   Game.sellWeapon(0);
-  const gainExtract = (t2.alloy || 0) - a2;
+  const gainExtract = (t2.growth || 0) - a2;
   ok(gainExtract === gainPlain + 1, '「合金萃取」每次回收多给 1（' + gainPlain + ' → ' + gainExtract + '）');
 
   // (c) 结算：基础产出 + 局内回收来的那一份，再乘熔炉
   const run = { char: 'ranger', wave: 12, level: 5, kills: 0, scrap: 0, damage: 0, taken: 0, healed: 0, packs: 0, alloy: 7 };
-  const base = Profile.alloyForRun(run);
-  ok(base === 3 + Math.floor(12 / 3) + 7, '结算 = 基础产出(3+波次/3) + 局内回收攒下的那一份', base);
+  const base = Profile.growthForRun(run);
+  /* ⚠ **合并之后是两条来源之和**（R43）："打得深"那条 + "合成与基础产出"那条。 */
+  const fromDepth = Profile.sporesForRun(run);
+  const fromCombine = 3 + Math.floor(12 / 3) + 7;
+  ok(base === fromDepth + fromCombine,
+    '结算 = 打得深(' + fromDepth + ') + 合成与基础产出(' + fromCombine + ')', base);
   Profile.clear();
-  Profile.addAlloy(0);
+  Profile.addGrowth(0);
   const rep = Profile.applyRun(run, {});
-  ok(rep.alloy === base && Profile.alloy() === base, 'applyRun 把合金落进档案', rep.alloy + '/' + Profile.alloy());
+  /* ⚠ **语义反转**（M3）：结算不再发养成代币 —— 产出点在 `Game.train`。 */
+  ok(rep.growth === 0 && Profile.growth() === 0, '结算**不发**养成代币（产出点已搬进训练）', rep.growth + '/' + Profile.growth());
 
-  Profile.addAlloy(999);
+  Profile.addGrowth(999);
   const order = ['basic', 'recycle', 'extract', 'craft', 'fuse', 'quench', 'master', 'mass', 'furnace', 'myth'];
   /* 「神话图纸」是**唯一**要核心材料的那一张（养成那一侧的关键产出）。
      这条断头路是本轮补上的：核心材料能从关底 Boss 赚到、能进档案，
@@ -178,8 +183,12 @@ console.log('\n[4] 合金的来源：回收旧装备 + 结算基础产出（**�
     '点「神话图纸」真的扣了 2 个核心材料（' + coreNow + ' → ' + Profile.core() + '）');
   const allForged = order.filter(id => !Profile.isForged(id));
   ok(allForged.length === 0, '全套 ' + order.length + ' 张图纸都在档案里', allForged.join(','));
-  ok(Profile.alloyForRun(run) === Math.round(base * 1.25),
-    '「熔炉」把结算总额 +25%（' + base + ' → ' + Profile.alloyForRun(run) + '）', Profile.alloyForRun(run));
+  /* ⚠ **合并之后（R43）「熔炉」的 +25% 只作用于"合成与基础产出"那一段** ——
+     "打得深"那一段不吃它（它只吃天赋的 `sporeMul`）。所以期望是
+     `打得深 + round(合成 × 1.25)`，不是 `总数 × 1.25`。 */
+  const combineBase = 3 + Math.floor(12 / 3) + 7;
+  ok(Profile.growthForRun(run) === fromDepth + Math.round(combineBase * 1.25),
+    '「熔炉」把**合成那条** +25%（' + base + ' → ' + Profile.growthForRun(run) + '）', Profile.growthForRun(run));
 
   const perRun = 3 + 4 + 7;                       // 12 波 + 回收攒 7，不含熔炉
   const runs = Math.ceil(Forge.totalCost() / perRun);
@@ -217,9 +226,9 @@ console.log('\n[5] 在局里：档位 / 质量 / 产线 / 回收 / 异档熔接'
   /* ⚠ 工坊现在是**跨局资产**：它不会随 `runWith` 开新局而清零，
      所以每次量"图纸给的名额"之前都要先清空、再补材料、再建一座。 */
   const clearCampF = () => {
-    const owned = Profile.campOwned();
-    for (const id of Object.keys(owned)) Profile.campSell(id, Game.campOpts());
-    Profile.addMaterial(50);
+    const owned = Game.campOwned();
+    for (const id of Object.keys(owned)) Game.campSell(id);
+    Game.addMaterial(50);
   };
   const s0 = runWith(['basic'], []);
   Game.openCamp();
@@ -239,7 +248,7 @@ console.log('\n[5] 在局里：档位 / 质量 / 产线 / 回收 / 异档熔接'
   Game.openCamp();
   clearCampF();
   Game.campBuy('salvage');
-  const both = Weapons.salvageRate + Forge.modsFor(['recycle']).salvageBonus + Profile.campFx().salvageBonus;
+  const both = Weapons.salvageRate + Forge.modsFor(['recycle']).salvageBonus + Game.campFx().salvageBonus;
   ok(Math.abs((Weapons.salvageRate + 0.2 + 0.25) - both) < 1e-9,
     '图纸与工坊的回收加成**相加**（0.5 + 0.2 + 0.25）', both);
 
@@ -272,16 +281,16 @@ console.log('\n[5] 在局里：档位 / 质量 / 产线 / 回收 / 异档熔接'
 console.log('\n[6] 存档：合金与图纸跟着档案走，一局的存档带的是开局那一份');
 {
   Profile.clear();
-  Profile.addAlloy(40);
+  Profile.addGrowth(40);
   const r = Profile.forgeNode('basic');
-  ok(r.ok === true && r.cost === 3 && Profile.alloy() === 37, '解锁一张图纸扣合金（40 → 37）', Profile.alloy());
+  ok(r.ok === true && r.cost === 3 && Profile.growth() === 37, '解锁一张图纸扣合金（40 → 37）', Profile.growth());
   ok(Profile.isForged('basic') && Profile.forgeOwned().indexOf('basic') >= 0, '图纸记在档案里');
   ok(Profile.forgeMods().craftTier === 2, '折叠结果跟着变（能造到 T2）', Profile.forgeMods().craftTier);
 
   const locked = Profile.canForge('master');
   ok(locked.ok === false && locked.locked === true && /前置/.test(locked.reason),
     '前置没解锁时是"锁着"，理由说清缺哪张', locked.reason);
-  Profile.addAlloy(100);
+  Profile.addGrowth(100);
   ok(Profile.canForge('master').ok === false && Profile.canForge('master').locked === true,
     '合金再多也点不了前置没解锁的图纸（顺序是决策）');
   Profile.forgeNode('craft');
@@ -290,7 +299,7 @@ console.log('\n[6] 存档：合金与图纸跟着档案走，一局的存档带�
 
   const snap = Profile.snapshot();
   ok(Array.isArray(snap.forge) && snap.forge.indexOf('master') >= 0, '快照里带着图纸列表', JSON.stringify(snap.forge));
-  ok(snap.alloy === Profile.alloy(), '快照里带着合金', snap.alloy);
+  ok(snap.growth === Profile.growth(), '快照里带着合金', snap.growth);
 
   // 一局的存档：带的是**开局时**的图纸那一份
   const s = runWith(Profile.forgeOwned(), ['knife', 'knife'], 515);
@@ -301,11 +310,11 @@ console.log('\n[6] 存档：合金与图纸跟着档案走，一局的存档带�
   Game.setState('shop');
   Game.sellWeapon(0);
   const dump2 = Game.exportRun();
-  ok(dump2.alloy > 0, '回收之后一局的合金 > 0（' + dump2.alloy + '）', dump2.alloy);
+  ok(dump2.growth > 0, '回收之后一局的合金 > 0（' + dump2.growth + '）', dump2.growth);
 
   Game.setState('title', true);
   const back = Game.importRun(dump2);
-  ok(back && back.alloy === dump2.alloy, '读档后合金还在', back && back.alloy);
+  ok(back && back.growth === dump2.growth, '读档后合金还在', back && back.growth);
   ok(back && back.fmods.craftTier === 4 && back.salvageRate === Weapons.salvageRate,
     '读档后图纸修正在（能造到 T4；没点回收那张，所以回收比例还是底价）', JSON.stringify(back && back.fmods));
 
@@ -321,7 +330,7 @@ console.log('\n[6] 存档：合金与图纸跟着档案走，一局的存档带�
 
   Save.flush && Save.flush();
   Profile.clear();
-  ok(Profile.alloy() === 0 && Profile.forgeOwned().length === 0, 'clear() 之后合金与图纸都清空');
+  ok(Profile.growth() === 0 && Profile.forgeOwned().length === 0, 'clear() 之后合金与图纸都清空');
   Game.setState('title', true);
 }
 

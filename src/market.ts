@@ -21,7 +21,7 @@
 /* ⚠ 这里**不该**再 import `Camp`（原先是 `import { Camp } from './camp.ts'`）：
    营地的买卖搬去 `Profile.campBuy/campSell` 之后，本文件已经没有一处**代码**
    用到它 —— 只剩注释里提到那个名字。
-   它是个**真死 import**，代价不只是"一行没用"：`arch-audit` 的依赖图会把它
+   它是个**无引用的 import**，代价不只是"一行没用"：`arch-audit` 的依赖图会把它
    算成一条真实的边（分层方向、扇入扇出都会被它影响），于是架构结论带着一条
    不存在的依赖。抓到它的是 `arch-audit` 的"未使用的具名 import"那一节。 */
 import { Affixes } from './affixes.ts';
@@ -79,10 +79,6 @@ export interface MarketApi {
   toggleLock(): boolean;
   packPrice(kind: string): number;
   buyPack(kind: string): boolean;
-  /** 材料包：花废料买**材料**（商店的"原料"那一栏）——
-      它是唯一一条"废料 → 材料"的兑换，用来把局内花不掉的钱转成经营的本钱 */
-  buildPrice(): number;
-  buyBuild(): boolean;
   /** 「议价」那类经济修正的读取语义（add 键，没有就是 0） */
   omod(key: string): number;
   econAdd(key: string): number;
@@ -298,37 +294,27 @@ export function makeMarket(C: MarketCtx): MarketApi {
     return true;
   }
 
-  /**
-   * **材料包**：花废料买**材料**（商店那一栏"原料"）。
-   *
-   * ⚠ 改造前它买的是"建材"（局内那笔专印的钱，随营地一起被删掉了）。
-   * 现在是**唯一一条"废料 → 材料"的兑换**，而它必须存在，理由变了：
-   * 废料是**局内**的钱、结算清零，材料是**带出去**的钱 ——
-   * 没有这一条，一个"这局打得很顺、废料多得花不完"的玩家就只能看着它蒸发。
-   * 于是它是"把这一局的顺风，换成下一局的起点"的那个动作。
-   *
-   * 定价刻意**不划算**（越到后面越贵）：它买的是时间，不是资源 ——
-   * 想靠它刷材料会被这条曲线挡住（汇率随波次恶化）。
-   */
-  var BuildPack = { amount: 4, base: 8, perWave: 2 };
-  function buildPrice() {
-    var S = C.S();
-    return Math.max(1, Math.round((BuildPack.base + C.wave() * BuildPack.perWave) * S.dmods.shopPrice));
-  }
-  function buyBuild() {
-    if (!C.requireState('shop', 'buyBuild')) return false;
-    var S = C.S();
-    var p = S.player;
-    var price = buildPrice();
-    if ((p.scrap || 0) < price) { C.events().emit('deny', '废料不足'); return false; }
-    p.scrap -= price;
-    /* 材料当场进钱包（与房间奖励走同一条出口的语义），并且记一笔"本局打到多少" ——
-       它是**买来的**不是打来的，但对玩家来说都是"这一局多带出去的材料"。 */
-    Profile.addMaterial(BuildPack.amount);
-    S.materialEarned = (S.materialEarned || 0) + BuildPack.amount;
-    C.events().emit('buyBuild', { price: price, amount: BuildPack.amount });
-    return true;
-  }
+  /* =========================================================
+     ⚠ **这里曾经有一栏"原料 / 建材包"（`buyBuild`），2026-09 删掉了。**
+
+     它做的是：花 `scrap`（战斗的**局内**钱，结算清零）→ `Profile.addMaterial`
+     （**全局**货币，带得出去）。当时的理由是"没有这一条，一个这局打得很顺、
+     废料多得花不完的玩家就只能看着它蒸发"。
+
+     那条理由被用户的设计**推翻**了。原话：
+
+       "每个模块都有各自的货币系统和兑换机制，每个模块的货币都必须
+        只能是在自己的模块内使用，**绝对不能出现什么，用商店买建材这种事**，太蠢了。"
+
+     按新模型（见 `economy.ts` 的 `own`）这笔交易违反了两条：
+       · `scrap` 的归属是 `combat`（模块自环）—— 它**一步都不该出战斗**
+       · 它跨了**生命周期**（`session` → `bridge`）= "这一局打得好 → 永久变强"，
+         而那正是"局外那条线退化成多打几把"的入口
+
+     而它以前**从来没被任何守卫拦过**，因为货币表上两边都合法
+     （战斗产 material ✓、scrap 在战斗花 ✓）—— 表自洽 ≠ 调用点听话。
+     现在由门 `drift` 的判据 F（调用点 ↔ `Economy.EXCHANGE` 对账）看着这一层。
+     ========================================================= */
 
   function buyOffer(index: number) {
     if (!C.requireState('shop', 'buyOffer')) return false;
@@ -342,7 +328,7 @@ export function makeMarket(C: MarketCtx): MarketApi {
     if (o.type === 'weapon') {
       /* 落位规则交给模拟层（addWeaponOrCombine）——这里**不**再自己判断"槽满没满"，
          因为那个判断现在是"满了能不能合成"这一整条规则的一部分（brotato 的原作细节）。
-         先扣钱再落位是安全的：落位失败时它会明确说为什么，而钱还没动。
+         先扣钱再落位是安全的：放入失败时它会明确说为什么，而钱还没动。
          `o.affixes` = 货架上那一件的词条：**买到手就是它**（不是重滚一套）——
          否则"看着它买"与"到手的那把"是两件东西。 */
       var res = C.addWeaponOrCombine(o.def.id, o.tier || o.def.tier, o.price, o.affixes || null);
@@ -399,7 +385,7 @@ export function makeMarket(C: MarketCtx): MarketApi {
     var alloy = C.salvageAlloy(w);
     p.weapons.splice(index, 1);
     p.scrap = (p.scrap || 0) + refund;
-    S.alloy = (S.alloy || 0) + alloy;
+    S.growth = (S.growth || 0) + alloy;
     for (var i = 0; i < p.weapons.length; i++) p.weapons[i].index = i;
     C.events().emit('sell', { name: w.def.name, refund: refund, alloy: alloy, tier: Weapons.tierOf(w) });
     return true;
@@ -453,7 +439,6 @@ export function makeMarket(C: MarketCtx): MarketApi {
     buyOffer: buyOffer, sellWeapon: sellWeapon, combine: combine,
     reroll: reroll, toggleLock: toggleLock,
     packPrice: packPrice, buyPack: buyPack,
-    buildPrice: buildPrice, buyBuild: buyBuild,
     omod: omod, econAdd: econAdd,
     itemCostMul: C.itemCostMul, itemCostFlag: C.itemCostFlag
   };

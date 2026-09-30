@@ -8,9 +8,9 @@
      2. 跨系统的依赖**只能从高层指向低层**；向上的边必须逐条登记理由
      3. 世界状态的**写入者**是有名单的（模拟层的状态不许被界面/渲染偷偷改）
 
-   外加一条最要紧的：**尺子自己的精度**。
-   tools/arch-audit.cjs 的 [7] 节曾经 6 条"真死，可删"里 6 条是活的
-   （精度 0%），而它的结论是"可删" —— 一把会叫人删活代码的尺子比没有尺子更糟。
+   外加一条最要紧的：**校验自己的精度**。
+   tools/arch-audit.cjs 的 [7] 节曾经 6 条"无引用，可删"里 6 条是活的
+   （精度 0%），而它的结论是"可删" —— 一条会叫人删活代码的校验比没有校验更糟。
    这里把那段历史钉成回归清单。
 
    用法： node test/arch.mjs
@@ -183,7 +183,7 @@ console.log('\n[3] 世界状态（会话 S）的写入者');
     (writers['game.ts'] ? writers['game.ts'].length : 0) + ' 个字段）');
 }
 
-/* ---------------- 4. 音效意图：模拟广播 ⇄ 入口接线 ---------------- */
+/* ---------------- 4. 音效意图：模拟广播 ⇄ 入口接入 ---------------- */
 console.log('\n[4] 跨系统的"契约"：模拟广播的音效意图');
 {
   const gameSrc = fs.readFileSync(path.join(SRC, 'game.ts'), 'utf8');
@@ -195,9 +195,9 @@ console.log('\n[4] 跨系统的"契约"：模拟广播的音效意图');
   const deadKey = [...wired].filter(k => !emitted.has(k));
   ok(emitted.size > 0, '模拟层确实在广播音效（' + [...emitted].join('/') + '）');
   ok(missing.length === 0,
-    '模拟广播的每一种音效意图，入口都接了线（写错一个名字的表现是"那个音不响"，无声无息）',
+    '模拟广播的每一种音效意图，入口都接上了（写错一个名字的表现是"那个音不响"，无声无息）',
     missing.join(','));
-  ok(deadKey.length === 0, '接线表里没有模拟永远不会发的死键', deadKey.join(','));
+  ok(deadKey.length === 0, '接入表里没有模拟永远不会发的死键', deadKey.join(','));
 }
 
 /* ---------------- 4b. 入口的按键分发：调试热键不许吃掉玩家的绑定键 ---------------- */
@@ -225,17 +225,17 @@ console.log('\n[4b] 热键：绑定键优先（`Input.once` 读一次就清边�
     '调试热键走 `debugKey`（先判"这是不是玩家的绑定键"，再读边沿）');
 }
 
-/* ---------------- 5. 尺子自己的精度（回归清单） ---------------- */
-console.log('\n[5] 架构尺子的精度（它曾经 6 条全错，且结论是"可删"）');
+/* ---------------- 5. 校验自己的精度（回归清单） ---------------- */
+console.log('\n[5] 架构校验的精度（它曾经 6 条全错，且结论是"可删"）');
 {
-  /* 这 6 条曾经被 [7] 节报成「真死，可删」。三个原因：
+  /* 这 6 条曾经被 [7] 节报成「无引用，可删」。三个原因：
        · `globalThis.UI.actNames()` —— 成员正则的左边界 `(?<![\w$.])` 把 `.` 挡掉了
        · `const UIx = globalThis.UI` —— 别名从没被登记
        · `record.ts` 的 `'autoExplore'` 字符串 → `Game[name]` 动态派发
-     现在它们必须出现在"活"或"静态判不了"里，不许再出现在"真死"里。
+     现在它们必须出现在"活"或"静态判不了"里，不许再出现在"无引用"里。
 
      **名字要拼出来写**：语料是**全仓库**的，如果这个文件里直接写一个
-     `Game.autoExplore` 字面量，尺子就会把它当成一处真实引用 —— 于是这条断言
+     `Game.autoExplore` 字面量，校验就会把它当成一处真实引用 —— 于是这条断言
      永远通过，而它守的东西可能早就坏了（第一版就是这样自我实现的）。
      下面 `LIVE_GOLDEN` 用数组拼装，就是为了不在语料里留下这些名字。 */
   const LIVE_GOLDEN = [
@@ -253,20 +253,20 @@ console.log('\n[5] 架构尺子的精度（它曾经 6 条全错，且结论是"
   const polluting = LIVE_GOLDEN.filter(([a, b]) =>
     selfSrc.indexOf(a.indexOf('.ts') > 0 ? a + ' → ' + b : a + '.' + b) >= 0);
   ok(polluting.length === 0,
-    '这条守卫没有在语料里留下它要守的名字（否则它会自我实现：尺子把守卫的字面量当成引用）',
+    '这条守卫没有在语料里留下它要守的名字（否则它会自我实现：校验把守卫的字面量当成引用）',
     polluting.map(x => x.join('.')).join(','));
 
   const deadText = A.unused.dead.concat(A.members.dead).join(' | ');
   const wrongly = LIVE_GOLDEN.filter(([, b]) => deadText.indexOf(b) >= 0);
   ok(wrongly.length === 0,
-    '历史误报的 6 条已知活代码，一条都没有再被判成"真死"', wrongly.map(x => x.join('.')).join(','));
+    '历史误报的 6 条已知活代码，一条都没有再被判成"无引用"', wrongly.map(x => x.join('.')).join(','));
   const internals = A.unused.internal.concat(A.members.internal);
   ok(A.members.dead.length === 0 && A.unused.dead.length === 0,
-    '本次扫描：**"真死，可删"为空**（' + internals.length + ' 条只在本文件内用 · ' +
+    '本次扫描：**"无引用，可删"为空**（' + internals.length + ' 条只在本文件内用 · ' +
     A.members.dynamic.length + ' 条静态判不了）',
     A.unused.dead.concat(A.members.dead).join(', '));
 
-  /* 尺子必须能看见那三种测试写法 —— 拿两条**只被测试/字符串引用**的活成员反证。
+  /* 校验必须能看见那三种测试写法 —— 拿两条**只被测试/字符串引用**的活成员反证。
      注意：**标签文字里也不能出现这些名字**（有一个"污染"断言专门守这件事）。 */
   const actNames = LIVE_GOLDEN[2][0] + '.' + LIVE_GOLDEN[2][1];
   ok(!A.members.dead.some(x => x.indexOf(LIVE_GOLDEN[2][1]) >= 0),

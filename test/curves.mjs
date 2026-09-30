@@ -9,7 +9,7 @@
          —— 这一条是"只是把常数搬进表"这句承诺的证明
      [3] 形状：七种形状各自的语义与边界（含封顶、台阶、分段线性）
      [4] 两边的对照：`checkpoint()` 在同一个房间刻度上摊开双方
-     [5] 接线：`enemies.ts` / `stats.ts` / `game.ts` 真的在读表（没有第二份常数）
+     [5] 接入：`enemies.ts` / `stats.ts` / `game.ts` 真的在读表（没有第二份常数）
 
    为什么 [2] 是最要紧的一条：曲线是"表驱动"很容易变成**换了个写法的漂移** ——
    值悄悄不一样了，而看起来一切正常。逐点比对是唯一能挡住它的东西。
@@ -76,16 +76,14 @@ console.log('[1] 曲线表与自检');
    ========================================================= */
 console.log('\n[2] 逐点等价：表算出来的值 == 改造前那几行公式');
 {
-  /* 参考式**逐字**抄自改造前的源码（含那条夹取），见 curves.ts 的 LEGACY 注释 */
-  const pace = t => 1 + (Math.max(1, t) - 1) * 0.55;
-  const REF = {
-    'meter.pace': t => pace(t),
-    'enemy.hp': t => { const w = pace(t) - 1; return 1 + 0.30 * w + 0.045 * w * w; },
-    'enemy.dmg': t => 1 + 0.16 * (pace(t) - 1),
-    'enemy.speed': t => Math.min(1.35, 1 + 0.012 * (pace(t) - 1)),
-    'enemy.eliteChance': t => Math.min(0.24, Math.max(0, (t - 4) * 0.028)),
-    'player.xp': t => 6 + Math.pow(Math.max(0, t), 1.34) * 2.6
-  };
+  /* ⚠ 参考式**不再抄第二份** —— 这里以前把 `curves.ts` 的 `LEGACY` 逐字抄了一遍
+     （注释还写着"逐字抄自改造前的源码"），于是同一句话在仓库里有两份：
+     改曲线时要同时改 `LEGACY` 与这里的 `REF`，漏一处就**红在一处、绿在另一处**。
+     实测踩到过：R37 那轮把 `enemy.dmg` 的系数从 0.16 抬到 0.37，
+     `LEGACY` 改了、`REF` 忘了 —— 于是 `paths` 报红而 `LEGACY` 说没问题。
+     现在只读 `LEGACY`：它是**唯一**的参考式，测试只负责"表 == LEGACY"。 */
+  const REF = Curves.LEGACY;
+  if (!REF) throw new Error('curves.ts 没有暴露 LEGACY —— 逐点等价那一条会变成空转');
   let bad = 0, first = null;
   for (const id of Object.keys(REF)) {
     for (let t = 1; t <= 144; t++) {
@@ -93,14 +91,16 @@ console.log('\n[2] 逐点等价：表算出来的值 == 改造前那几行公式
       if (got !== want) { bad++; if (!first) first = id + '@' + t + ' ' + got + ' != ' + want; }
     }
   }
-  ok(bad === 0, '六条曲线在 1..144 间上**逐位**等于改造前的公式（' + (Object.keys(REF).length * 144) + ' 个点）', first);
+  ok(bad === 0, '六条曲线在 1..144 间上**逐位**等于 `curves.ts` 的 LEGACY 参考式（' + (Object.keys(REF).length * 144) + ' 个点）', first);
 
-  /* 敌人侧的三条由 enemies.ts 读出去，读出来也要逐位相同 */
+  /* 敌人侧的三条由 enemies.ts 读出去，读出来也要逐位相同。
+     参考式同样取自 `LEGACY`，不在这里重写常数。 */
+  const pace = REF['meter.pace'];
   let bad2 = 0, first2 = null;
   for (let w = 1; w <= 144; w++) {
     const ew = pace(w);
     if (Enemies.hpScale(w) !== 1 + 0.30 * (ew - 1) + 0.045 * (ew - 1) * (ew - 1)) { bad2++; first2 = first2 || ('hp@' + w); }
-    if (Enemies.dmgScale(w) !== 1 + 0.16 * (ew - 1)) { bad2++; first2 = first2 || ('dmg@' + w); }
+    if (Enemies.dmgScale(w) !== REF['enemy.dmg'](w)) { bad2++; first2 = first2 || ('dmg@' + w); }
     if (Enemies.speedScale(w) !== Math.min(1.35, 1 + 0.012 * (ew - 1))) { bad2++; first2 = first2 || ('spd@' + w); }
   }
   ok(bad2 === 0, 'enemies.ts 的三个读点也逐位相同', first2);
@@ -182,9 +182,9 @@ console.log('\n[4] 两边的对照：同一个房间刻度上摊开双方');
 }
 
 /* =========================================================
-   [5] 接线：没有第二份常数
+   [5] 接入：没有第二份常数
    ========================================================= */
-console.log('\n[5] 接线：读点都在表里');
+console.log('\n[5] 接入：读点都在表里');
 {
   const fs = await import('node:fs');
   const src = (f) => fs.readFileSync(new URL('../src/' + f, import.meta.url), 'utf8');
@@ -252,7 +252,7 @@ console.log('\n[6] 角色侧：升级卡的幅度与池权重都是等级的曲�
     '防御向的权重随等级抬（×' + Curves.at('player.cardPool', 1).toFixed(2) + ' → ×' +
     Curves.at('player.cardPool', 40).toFixed(2) + '）');
 
-  /* ---- 接线：真的长在卡上，而不是躺在表里 ---- */
+  /* ---- 接入：真的长在卡上，而不是躺在表里 ---- */
   Game.newRun('ranger', 20260101, 0);
   const s = Game.getSession();
   Game._internals.rollLevelCards();

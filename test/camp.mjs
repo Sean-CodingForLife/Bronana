@@ -29,16 +29,16 @@ console.error = function () { };
  *  改造前工坊花的是局内的"建材"（每波 +2、结算清零），那笔钱随营地搬出局外一起没了；
  *  现在盖设施花的是**材料**（战斗打出来、带得出局的那一笔）。 */
 function giveMaterial(n) {
-  Profile.addMaterial(n);
-  return Profile.material();
+  Game.addMaterial(n);
+  return Game.material();
 }
 
 /** 清空工坊（跨局状态，测试之间必须隔离）。
  *  不能靠"新开一局" —— 工坊现在**不会**随新局清零（那正是这次改造的要点）。 */
 function clearCamp() {
-  const owned = Profile.campOwned();
-  for (const id of Object.keys(owned)) Profile.campSell(id);
-  return Profile.campOwned();
+  const owned = Game.campOwned();
+  for (const id of Object.keys(owned)) Game.campSell(id);
+  return Game.campOwned();
 }
 
 console.log('\n=== Bronana · 工坊（制造）===\n');
@@ -172,13 +172,13 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
 
   // 材料不够时拒绝，且一点都不扣
   clearCamp();
-  Profile.spendMaterial(Profile.material());          // 清空钱包
+  Game.spendMaterial(Game.material());          // 清空钱包
   const scrapBeforeBuy = s.player.scrap;
-  ok(Game.campBuy('furnace') === false && Profile.material() === 0,
-    '材料不足 → 拒绝且不扣材料', '材料 ' + Profile.material());
+  ok(Game.campBuy('furnace') === false && Game.material() === 0,
+    '材料不足 → 拒绝且不扣材料', '材料 ' + Game.material());
   giveMaterial(20);
   ok(Game.campBuy('furnace') === true, '盖熔炉（第一条产线）');
-  ok(Profile.material() === 18, '扣了 2 材料', Profile.material());
+  ok(Game.material() === 18, '扣了 2 材料', Game.material());
   ok(s.player.scrap === scrapBeforeBuy,
     '**局内废料一分没动** —— 盖设施花的是带出去的材料，商店那笔钱不掺和', s.player.scrap);
   ok(Game.craftLines() === 1, '一条产线', Game.craftLines());
@@ -188,27 +188,25 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
      ⚠ 改造前它是"废料 → 建材"（给局内的工坊备料）。建材没了之后它换了职能，
      而且是**唯一一条"局内钱换跨局钱"的兑换** —— 于是"这局打得很顺、废料花不完"
      有了一个出口。定价刻意不划算（越往后越贵）：它买的是时间，不是资源。 */
-  const scrap0 = s.player.scrap;
-  const mat0 = Profile.material();
-  const bPrice = Game.buildPrice();
-  ok(bPrice > 0, '材料包有价（第 ' + Game.wave + ' 波：' + bPrice + ' 废料 → 4 材料）', bPrice);
-  Game.setState('shop');
-  ok(Game.buyBuild() === true, '买一包材料');
-  ok(Profile.material() === mat0 + 4 && s.player.scrap === scrap0 - bPrice,
-    '废料 -' + bPrice + '、材料 +4（局内那笔换成了带得出去的那笔）', Profile.material());
-  const laterPrice = (function () { const w = Game.wave; Game.wave = w + 6; const p = Game.buildPrice(); Game.wave = w; return p; })();
-  ok(laterPrice > bPrice, '越到后面越贵（' + bPrice + ' → ' + laterPrice + '）—— 它买的是时间，不是资源');
+  /* ⚠ **这一段以前测的是"商店里花废料买材料"（`buyBuild`），2026-09 删掉了。**
+     用户的设计："每个模块的货币都必须只能是在自己的模块内使用，绝对不能出现
+     用商店买建材这种事。" 那一笔花的是 `scrap`（战斗的局内钱、结算清零）、
+     到手的是 `material`（全局钱、带得出去）—— 既跨了模块边界，也跨了生命周期。
+     现在由门 `drift` 的判据 F（调用点 ↔ `Economy.EXCHANGE` 对账）看着这一层，
+     所以这里改成守"通道真的没了"。 */
+  ok(typeof Game.buyBuild !== 'function' && typeof Game.buildPrice !== 'function',
+    '商店里没有"拿废料买材料"这条跨模块通道了（`buyBuild` / `buildPrice` 都不存在）');
   Game.setState('camp');
 
   // 制造一件武器（**花材料**，不再是废料）
   const knife = Craft.BY_ID['weapon:knife'];
-  const campFx = Profile.campFx();
+  const campFx = Game.campFx();
   const cost = Craft.costOf(knife, s.fmods, campFx);
   ok(cost === Math.round(knife.base * Craft.MARKUP * (1 - campFx.weaponCost)),
     'T1 匕首的费用 = 原价 × ' + Craft.MARKUP + ' × 熔炉省料（' + cost + '）', cost);
-  const wBefore = s.player.weapons.length, scrapKeep = s.player.scrap, matBefore = Profile.material();
+  const wBefore = s.player.weapons.length, scrapKeep = s.player.scrap, matBefore = Game.material();
   ok(Game.craft(0, 'weapon:knife') === true, '造了一把匕首', s.player.weapons.map(w => w.id).join(','));
-  ok(Profile.material() === matBefore - cost, '扣的是**材料**（' + cost + '）', Profile.material());
+  ok(Game.material() === matBefore - cost, '扣的是**材料**（' + cost + '）', Game.material());
   ok(s.player.scrap === scrapKeep, '废料没动 —— 商店那笔钱与制造那笔钱是两回事', s.player.scrap);
   ok(s.player.weapons.length === wBefore + 1, '装备进了武器栏');
   ok(Game.craftFreeLines().length === 0, '这一波的产线用掉了');
@@ -227,22 +225,24 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
   /* 图纸真的打开档位：把 `basic`（T2）解锁后，T2 的枪就能造了 */
   const s2 = freshRun(500);
   Game.openCamp();
-  giveMaterial(20);
+  /* ⚠ 材料给够：长剑 T2 造价 25，而工坊搬进局内之后**不再有跨用例的折扣串味**
+     （以前 `Profile.campFx()` 读账号里的工坊，上一个用例留下的设施会带来折扣）。 */
+  giveMaterial(60);
   Game.campBuy('furnace');
   const t2Before = Game.craftOptions().filter(o => o.id === 'weapon:sword')[0];
   ok(t2Before && t2Before.ok === false, '没「基础图纸」时 T2 长剑造不了');
   Game.getSession().fmods.craftTier = 2;            // 直接改这一局的折好结果（等价于解锁了图纸）
   const t2After = Game.craftOptions().filter(o => o.id === 'weapon:sword')[0];
   ok(t2After && t2After.ok === true, '图纸到 T2 → 长剑能造', JSON.stringify(t2After));
-  const m2 = Profile.material();
-  ok(Game.craft(0, 'weapon:sword') === true && Profile.material() < m2, '真的造出来了');
+  const m2 = Game.material();
+  ok(Game.craft(0, 'weapon:sword') === true && Game.material() < m2, '真的造出来了');
 
   // 省料：熔炉升级 + 与配药台相邻的组合
   const s3 = freshRun(500);
   Game.openCamp();
   giveMaterial(60);
   Game.campBuy('furnace'); Game.campBuy('furnace');       // Lv.2：武器省料 25%
-  const cost2 = Craft.costOf(Craft.BY_ID['weapon:knife'], s3.fmods, Profile.campFx());
+  const cost2 = Craft.costOf(Craft.BY_ID['weapon:knife'], s3.fmods, Game.campFx());
   ok(cost2 < cost, '熔炉 Lv.2 → 造武器更便宜（' + cost + ' → ' + cost2 + '）');
 
   // 回收加成 + 合金：回收炉建了就涨，而且产合金
@@ -253,8 +253,8 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
   Game.campBuy('salvage');
   const rate = s4.salvageRate;
   ok(rate > 0.5, '回收炉 → 回收比例从 0.5 抬到 ' + rate, rate);
-  ok(Profile.campFx().salvageBonus > 0, '折叠效果里有回收加成', Profile.campFx().salvageBonus);
-  const alloyBefore = s4.alloy || 0;
+  ok(Game.campFx().salvageBonus > 0, '折叠效果里有回收加成', Game.campFx().salvageBonus);
+  const alloyBefore = s4.growth || 0;
   Game.setState('shop');
   /* 先补一把：**最后一把武器不许回收**（回收了就没有东西能打，这一间再也清不掉 ——
      market.sellWeapon 里那条规则）。这里要量的是"回收返多少 / 产多少合金"，
@@ -264,7 +264,7 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
   const refund = Game.salvageOf(w0);
   ok(Game.sellWeapon(0) === true, '回收一件');
   ok(s4.player.scrap >= 500 - 0 + refund - 1, '回收返还材料（+' + refund + '）');
-  ok((s4.alloy || 0) > alloyBefore, '**回收产合金**（图纸树唯一的稳定来源）：' + alloyBefore + ' → ' + s4.alloy);
+  ok((s4.growth || 0) > alloyBefore, '**回收产合金**（图纸树唯一的稳定来源）：' + alloyBefore + ' → ' + s4.growth);
 
   /* 质量：锻台让造出来的武器有机会直接高一档。
      两段验证 —— ① 机制本身（把随机源换成一个固定值，结果是确定的）
@@ -294,8 +294,8 @@ console.log('\n[5] 在局里真的生效：产线 → 制造 → 装备');
   /* ⚠ 相邻组合现在**真的生效**了（以前这里靠手写 `campRow` 摆，现在是建造顺序）：
      anvil 与 furnace 挨着 → 「淬火」（造武器质量 +15%）。
      于是"三十六次里有多少次高一档"的期望值比只有锻台时更高 —— 下面那条区间要放宽。 */
-  ok(Profile.campRow().join(',') === 'anvil,furnace,still',
-    '建造顺序 = 按键顺序（谁挨着谁由它决定）', Profile.campRow().join(','));
+  ok(Game.campRow().join(',') === 'anvil,furnace,still',
+    '建造顺序 = 按键顺序（谁挨着谁由它决定）', Game.campRow().join(','));
   let made = 0, lucky = 0;
   for (let w = 0; w < 12; w++) {
     /* **每波补一次材料**：制造现在真的从钱包扣（改造前它扣的是会话里那笔虚构的钱），
@@ -323,14 +323,17 @@ console.log('\n[6] 工坊是可选的，而且建设与制造录得进带子');
   clearCamp();                        // 上一节建的工坊会留在档案里，这里要一个空工坊
   Game.nextWave();
   ok(Game.state === 'playing', '波次开始后直接进战斗（不会被工坊拦住）', Game.state);
-  ok(Object.keys(Profile.campOwned()).length === 0, '没进工坊就什么都没建',
-    JSON.stringify(Profile.campOwned()));
+  ok(Object.keys(Game.campOwned()).length === 0, '没进工坊就什么都没建',
+    JSON.stringify(Game.campOwned()));
 
   const recSrc = fs.readFileSync(path.join(ROOT, 'src', 'record.ts'), 'utf8');
   ok(/'campBuy'/.test(recSrc) && /'campSell'/.test(recSrc) && /'craft'/.test(recSrc),
     '建设 / 拆除 / 制造都在录制命令清单里');
 
-  const opening = { stats: {}, weapons: [], items: [], scrap: 400 };
+  /* **开局材料走 `opening`**（不是直调 `addMaterial`）：录制回放只录离散命令，
+   而 `Game.addMaterial` 不在命令表里 —— 直调的钱回放时重建不出来。
+   这一笔 50 与下面 `giveMaterial(50)` 是同一笔，见那段注释。 */
+const opening = { stats: {}, weapons: [], items: [], scrap: 400, material: 50 };
   const FIX2 = Game.cfg.fixedDt;
   let fr = 0;
   const guardPlayer = () => { const ss = Game.getSession(); if (ss) ss.player.invuln = 999; };
@@ -349,15 +352,17 @@ console.log('\n[6] 工坊是可选的，而且建设与制造录得进带子');
   ok(Game.state === 'shop', '清完入口间 → 进商店', Game.state);
   Game.openCamp();
   clearCamp();
-  giveMaterial(50);
+  /* 材料**不在这里直调** —— 它已经进了 `opening.material`（见上）。
+     录制与回放必须从**同一笔开局资金**出发，否则这一套要守的"回放保真"
+     就有一半是假的：录的时候有 100、回放的时候只有 50。 */
   Game.campBuy('furnace');
   Game.craft(0, 'weapon:knife');
   /* ⚠ 工坊现在**不在这一局的存档里**（它在档案里、跨局）。于是"回放保真"要量的
      不再是"这一局把工坊带回来了"，而是：**回放造出来的东西与工坊当时的等级一致**。
      工坊本身由 `Profile` 负责（下面⑦量它），这里量的是"这一局里发生的动作"。 */
-  const campAtBuild = Profile.campLevel('furnace');
+  const campAtBuild = Game.campLevel('furnace');
   const crafted = Game.getSession().player.weapons.map(w => w.id + ':T' + w.tier).join(',');
-  const builtAlloy = Game.getSession().alloy || 0;
+  const builtAlloy = Game.getSession().growth || 0;
   Game.setState('shop');
   Game.nextWave();
   const tape = Rec.stop();
@@ -367,10 +372,11 @@ console.log('\n[6] 工坊是可选的，而且建设与制造录得进带子');
 
   Game.setState('title', true);
   Game.newRun('ranger', 999, 0, null);
-  /* 回放前把工坊**清空并补材料**：带子里那条 `campBuy` 会真的再买一次，
-     而工坊是账号资产 —— 不清的话它会叠在"回放前那一座"上面，等级就变 2 了。 */
+  /* 回放前把工坊**清空**：带子里那条 `campBuy` 会真的再买一次，
+     而工坊是账号资产 —— 不清的话它会叠在"回放前那一座"上面，等级就变 2 了。
+     ⚠ **材料不在这里给**：它是局内余额（M1），而回放会重建会话 ——
+     那笔开局资金已经进了 `opening.material`，由 `newRun` 的实参带回来。 */
   clearCamp();
-  giveMaterial(50);
   Rec.play(tape, (x, y) => {
     guardPlayer();
     if (Scene.simulates(Game.state)) Game.step(Game.cfg.fixedDt, { x: x, y: y });
@@ -379,10 +385,10 @@ console.log('\n[6] 工坊是可选的，而且建设与制造录得进带子');
   const replayed = Game.getSession();
   ok(replayed.player.weapons.map(w => w.id + ':T' + w.tier).join(',') === crafted,
     '回放之后**造出来的武器也在**（' + crafted + '）', replayed.player.weapons.map(w => w.id).join(','));
-  ok((replayed.alloy || 0) === builtAlloy, '合金对得上', replayed.alloy);
-  ok(Profile.campLevel('furnace') === campAtBuild,
+  ok((replayed.growth || 0) === builtAlloy, '合金对得上', replayed.growth);
+  ok(Game.campLevel('furnace') === campAtBuild,
     '工坊等级还是回放那一刻的样子（那是**回放本身**买的那一座，不是叠出来的）',
-    Profile.campLevel('furnace'));
+    Game.campLevel('furnace'));
 }
 
 /* ---------------- 7. 存档往返 ---------------- */
@@ -394,23 +400,25 @@ console.log('\n[7] 存档：工坊与"这一波用掉的产线"都必须跟着�
   giveMaterial(20);
   Game.campBuy('furnace');
   Game.craft(0, 'weapon:knife');
-  const matAfter = Profile.material();
+  const matAfter = Game.material();
   const used = (s.craftUsed || []).slice();
   const payload = Game.exportRun();
-  /* ⚠ **语义变化**：工坊（设施 / 顺序 / 那笔钱）不再是一局存档的一部分 ——
-     它是账号资产，本来就跨局活着。一局存档里存的只有"这一波用掉了哪几条产线"。
-     所以"读档把工坊弄丢"这个 bug 从此**结构上不可能发生**；
-     而"读档白刷一件"仍然可能（产线回合是局内的），下面继续量它。 */
-  ok(payload.camp === undefined && payload.campPoints === undefined,
-    '一局存档里**不再**带工坊（它是账号资产，存一份只会制造两个真相）',
-    JSON.stringify({ camp: payload.camp, campPoints: payload.campPoints }));
+  /* ⚠ **语义又变回来了**（M1 第三块，2026-09）：工坊现在是**局内**状态
+     （v3 §二：三个模块全在局内），所以一局存档**必须**带它 ——
+     不带的话读档会把这一局盖的工坊静默丢掉。
+     ⚠ **建造顺序也要带**：相邻组合靠它判定，只存等级会让组合凭空消失。
+     `campPoints` 是更早的账号字段，它**不该**再出现。 */
+  ok(payload.camp && typeof payload.camp === 'object' &&
+     Array.isArray(payload.campRow) && payload.campPoints === undefined,
+    '一局存档**带上了**工坊（等级 + 建造顺序），而旧的账号字段不再出现',
+    JSON.stringify({ camp: payload.camp, campRow: payload.campRow, campPoints: payload.campPoints }));
   ok(Array.isArray(payload.craftUsed) && payload.craftUsed.join(',') === used.join(','),
     '导出带着这一波用掉的产线（否则读档可以把产线刷回来）', JSON.stringify(payload.craftUsed));
 
   const back = Game.importRun(payload);
-  ok(back && Profile.campLevel('furnace') === 1, '读档之后工坊还在（它在档案里，读档动不了它）',
-    String(Profile.campLevel('furnace')));
-  ok(Profile.material() === matAfter, '材料余额不受读档影响（它不是一局的数）', Profile.material());
+  ok(back && Game.campLevel('furnace') === 1, '读档之后工坊还在（它在档案里，读档动不了它）',
+    String(Game.campLevel('furnace')));
+  ok(Game.material() === matAfter, '材料余额不受读档影响（它不是一局的数）', Game.material());
   ok(back && (back.craftUsed || []).join(',') === used.join(','), '用掉的产线也恢复',
     back && JSON.stringify(back.craftUsed));
   ok(back && Game.craftFreeLines().length === 0, '于是读档不能白刷一件');
@@ -427,11 +435,13 @@ console.log('\n[7] 存档：工坊与"这一波用掉的产线"都必须跟着�
   legacy.camp = { furnace: 3, anvil: 2 };
   legacy.campRow = ['furnace', 'anvil'];
   legacy.campPoints = 99;
-  const before = Profile.campLevel('furnace');
   const b3 = Game.importRun(legacy);
-  ok(b3 && Profile.campLevel('furnace') === before,
-    '旧存档里的局内工坊**不会被搬进档案**（否则读一次旧档就白得一座工坊）',
-    Profile.campLevel('furnace'));
+  /* ⚠ **反过来**（M1 第三块）：工坊的等级与顺序现在住在**会话**里，
+     而一局存档会带它们 —— 所以读一份"带工坊的存档"**就是应该**恢复出来。
+     更早的账号字段（`campPoints`）仍然被忽略。 */
+  ok(b3 && Game.campLevel('furnace') === Camp.maxLevel('furnace') && Game.campRow().join(',') === 'furnace,anvil',
+    '带工坊的存档读回来：等级与**建造顺序**都恢复了',
+    Game.campLevel('furnace') + ' / ' + Game.campRow().join(','));
   Game.setState('title', true);
 }
 
@@ -491,7 +501,7 @@ console.log('\n[9] 相邻组合：挨着才生效，"怎么摆"是决策');
     '带上顺序后组合的效果真的折进 campFx（质量 25% → 40%）', withRow.weaponQuality);
 
   /* ---- 在局里：同一批设施，**换顺序就换效果** ----
-     ⚠ 顺序现在住在**档案**里（`Profile.campRow()`），而且一局里改它 = 真的改建工坊。
+     ⚠ 顺序现在住在**档案**里（`Game.campRow()`），而且一局里改它 = 真的改建工坊。
      以前这里每段都靠 `s.campPoints = 20` 白给钱，现在要发**材料**；
      顺序也不再"自动靠拢" —— 拆掉中间那个，剩下的顺序就是剩下的（那本来就是同一个语义）。 */
   Game.newRun('ranger', 99, 0, { stats: {}, weapons: [], items: [], scrap: 3000 });
@@ -500,38 +510,38 @@ console.log('\n[9] 相邻组合：挨着才生效，"怎么摆"是决策');
   clearCamp();
   giveMaterial(50);
   ok(Game.campBuy('furnace') === true && Game.campBuy('anvil') === true, '先建 熔炉 → 锻台（挨着）');
-  ok(Profile.campRow().join(',') === 'furnace,anvil', '建造顺序记在档案里', Profile.campRow().join(','));
-  ok(Math.abs(Profile.campFx().weaponQuality - 0.40) < 1e-9, '相邻 → 「淬火」生效（25% + 15%）',
-    Profile.campFx().weaponQuality);
+  ok(Game.campRow().join(',') === 'furnace,anvil', '建造顺序记在档案里', Game.campRow().join(','));
+  ok(Math.abs(Game.campFx().weaponQuality - 0.40) < 1e-9, '相邻 → 「淬火」生效（25% + 15%）',
+    Game.campFx().weaponQuality);
 
   ok(Game.campBuy('salvage') === true, '再建回收炉（排到行尾）');
-  ok(Profile.campRow().join(',') === 'furnace,anvil,salvage', '顺序 = 建造顺序', Profile.campRow().join(','));
-  ok(Math.abs(Profile.campFx().weaponQuality - 0.40) < 1e-9, '熔炉与锻台仍然挨着 → 淬火还在',
-    Profile.campFx().weaponQuality);
+  ok(Game.campRow().join(',') === 'furnace,anvil,salvage', '顺序 = 建造顺序', Game.campRow().join(','));
+  ok(Math.abs(Game.campFx().weaponQuality - 0.40) < 1e-9, '熔炉与锻台仍然挨着 → 淬火还在',
+    Game.campFx().weaponQuality);
 
   Game.campSell('anvil');                       // 抽掉中间那个 → 淬火断
-  ok(Profile.campRow().join(',') === 'furnace,salvage', '拆掉落单后顺序收缩', Profile.campRow().join(','));
-  ok(Math.abs(Profile.campFx().weaponQuality - 0) < 1e-9, '抽掉中间那个 → 「淬火」断了 —— 拆除也是摆法决策',
-    Profile.campFx().weaponQuality);
+  ok(Game.campRow().join(',') === 'furnace,salvage', '拆掉落单后顺序收缩', Game.campRow().join(','));
+  ok(Math.abs(Game.campFx().weaponQuality - 0) < 1e-9, '抽掉中间那个 → 「淬火」断了 —— 拆除也是摆法决策',
+    Game.campFx().weaponQuality);
 
-  /* 顺序的"往返"：它现在是**账号状态**，所以量的是"买与拆之后档案里是什么"，
-     不再是"一局存档把它带回来了"（一局存档里已经没有它了）。 */
+  /* 顺序的"往返"：它现在是**局内状态**（M1 第三块），所以量两件事 ——
+     ① 买与拆之后会话里的顺序；② **一局存档把它带上了**（不带就会静默丢组合）。 */
   giveMaterial(20);
   Game.campBuy('anvil');
   const dump = Game.exportRun();
-  ok(dump.campRow === undefined,
-    '一局存档里没有 campRow（它是账号状态，不是这一局的）', JSON.stringify(dump.campRow));
-  const rowNow = Profile.campRow().join(',');
+  ok(Array.isArray(dump.campRow) && dump.campRow.join(',') === 'furnace,salvage,anvil',
+    '一局存档**带上了**建造顺序（相邻组合靠它判定）', JSON.stringify(dump.campRow));
+  const rowNow = Game.campRow().join(',');
   ok(rowNow === 'furnace,salvage,anvil', '档案里的顺序 = 买与拆的结果', rowNow);
-  const qNow = Profile.campFx().weaponQuality;
+  const qNow = Game.campFx().weaponQuality;
   const back = Game.importRun(dump);
-  ok(Profile.campRow().join(',') === rowNow, '读档不改顺序（它不在那一局里）', Profile.campRow().join(','));
-  ok(Math.abs(Profile.campFx().weaponQuality - qNow) < 1e-9,
-    '读档后组合效果一致（不会静默少一份）', Profile.campFx().weaponQuality + ' vs ' + qNow);
+  ok(Game.campRow().join(',') === rowNow, '读档把顺序原样带回来（组合不会静默少一份）', Game.campRow().join(','));
+  ok(Math.abs(Game.campFx().weaponQuality - qNow) < 1e-9,
+    '读档后组合效果一致（不会静默少一份）', Game.campFx().weaponQuality + ' vs ' + qNow);
   ok(back && Game.craftLines() === 3, '读档后产线数照旧（设施在档案里）', Game.craftLines());
 
   // 老存档（带 camp/campRow 的那种）不会污染档案 —— 已在第 7 节量过，这里只补一条坏的 campRow
-  const bad = Profile.campOwned();
+  const bad = Game.campOwned();
   ok(Object.keys(bad).length === 3, '档案里就是三座设施', JSON.stringify(bad));
 
   // 坏组合会被自检抓出来（一条抓不到错的审计等于装饰）
@@ -551,7 +561,7 @@ console.log('\n[9] 相邻组合：挨着才生效，"怎么摆"是决策');
 }
 
 /* =========================================================
-   极端省料 + 拉满回收：**造了立刻拆不能变成印钞机**
+   极端省料 + 拉满回收：**造了立刻拆不能变成无限产出**
    ---------------------------------------------------------
    两条各自封顶的修正会撞车：省料最多 0.40（熔炉 L2 .25 + 釜底 .10 + 流水线 .05），
    于是造价 `1.4 × 0.6 = 0.84` 已经低于回收的 `0.9` —— 实测 T4 雷霆战锤 造价 48 / 回收 51，
@@ -567,14 +577,14 @@ console.log('\n[7b] 造 → 拆：省料拉满、回收拉满也不能赚钱');
   giveMaterial(100000);
   /* 三个位子都盖上（产线 = 位子），再把折叠效果推到"三条省料都到位"的档。
      ⚠ 改造前这里直接写 `s.campFx.weaponCost = 0.4`（伪造一份折叠结果）。
-     现在折叠效果是**从档案现算的**（`Profile.campFx()` 每次重算），伪造不了 ——
+     现在折叠效果是**从档案现算的**（`Game.campFx()` 每次重算），伪造不了 ——
      只能真的把设施建到那个档位。这反而是更硬的测法：它量的是"真能叠出来的极限"。
      熔炉 L2（0.25）+ 锻台 L1（质量）+ 检验台 L1 → 三条产线，质量靠锻台。 */
   ['furnace', 'furnace', 'anvil'].forEach((id, i) => {
     const r = Game.campBuy(id);
     ok(r === true || i > 0, '建 ' + id + (r ? ' ok' : ' 被拒（位子/材料）'));
   });
-  const fx7 = Profile.campFx();
+  const fx7 = Game.campFx();
   ok(fx7.weaponCost > 0, '折叠出来的省料是真的（' + fx7.weaponCost + '）', fx7.weaponCost);
   s.salvageRate = 0.9;                 // 回收比例拉满（这一份是会话里冻的派生值）
   s.fmods.craftTier = Weapons.TIER_MAX;  // 图纸门槛放开，让高价值装备也进测量

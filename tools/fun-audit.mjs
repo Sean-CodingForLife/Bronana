@@ -141,10 +141,10 @@ console.log('');
 const mk = (r) => ({
   char: r.char, wave: r.waves, level: r.level, kills: r.kills, materials: r.materials,
   damage: 0, taken: 0, healed: r.healed, packs: 0, win: r.won, danger: r.danger,
-  alloy: r.alloy, coreEarned: r.coreEarned
+  alloy: r.growth, coreEarned: r.coreEarned
 });
-const sporeGain = runs.map(r => { try { return Profile.sporesForRun(mk(r)) || 0; } catch (e) { return 0; } });
-const alloyGain = runs.map(r => { try { return Profile.alloyForRun(mk(r)) || 0; } catch (e) { return 0; } });
+const sporeGain = runs.map(r => { try { return Profile.growthForRun(mk(r)) || 0; } catch (e) { return 0; } });
+const alloyGain = runs.map(r => { try { return Profile.growthForRun(mk(r)) || 0; } catch (e) { return 0; } });
 console.log('[7] 失败价值（输了也带出多少）');
 console.log('  ' + PAD('孢子/局', 12) + '中位 ' + PAD(med(sporeGain), 5) + '均值 ' + mean(sporeGain).toFixed(1) +
   '  合计 ' + sporeGain.reduce((a, b) => a + b, 0));

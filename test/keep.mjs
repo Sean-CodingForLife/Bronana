@@ -122,35 +122,38 @@ console.log('\n[4] 用材料买（永久，不退还）');
   Storage.wipe();
   Profile.reset();
 
-  ok(Profile.keepInvested() === 0 && Profile.keepLevel('shelves') === 0, '新档据点全空');
-  let r = Profile.keepBuy('shelves');
+  /* ⚠ **据点只能在局内买**（v3 §二：三个模块全在局内）—— 钱是 `S.material`，
+     所以这个代码块必须先起一局。以前据点买的是账号钱包，不需要会话。 */
+  Game.newRun('ranger', 4242, 0, null, null);
+  ok(Game.keepInvested() === 0 && Game.keepLevel('shelves') === 0, '新档据点全空');
+  let r = Game.keepBuy('shelves');
   ok(!r.ok && /材料不够/.test(r.reason), '材料不够被拒', r.reason);
-  ok(Profile.material() === 0, '被拒时不扣材料');
+  ok(Game.material() === 0, '被拒时不扣材料');
 
-  Profile.addMaterial(1000);
-  r = Profile.keepBuy('shelves');
-  ok(r.ok && r.cost === 50 && Profile.material() === 950, '买下货架（50 材料）', Profile.material());
-  ok(Profile.keepLevel('shelves') === 1, '等级落到了档案里');
-  ok(Profile.keepBuy('shelves').ok === false, '单级设施买第二次被拒（满级）');
-  ok(Profile.material() === 950, '被拒时不扣材料');
+  Game.addMaterial(1000);
+  r = Game.keepBuy('shelves');
+  ok(r.ok && r.cost === 50 && Game.material() === 950, '买下货架（50 材料）', Game.material());
+  ok(Game.keepLevel('shelves') === 1, '等级落到了档案里');
+  ok(Game.keepBuy('shelves').ok === false, '单级设施买第二次被拒（满级）');
+  ok(Game.material() === 950, '被拒时不扣材料');
 
-  Profile.keepBuy('storehouse');
-  const before = Profile.material();
-  Profile.keepBuy('storehouse');
-  ok(Profile.material() === before - 80, '升级扣的是第二级的价（80）', Profile.material());
-  ok(Profile.keepLevel('storehouse') === 2, '等级到 2');
+  Game.keepBuy('storehouse');
+  const before = Game.material();
+  Game.keepBuy('storehouse');
+  ok(Game.material() === before - 80, '升级扣的是第二级的价（80）', Game.material());
+  ok(Game.keepLevel('storehouse') === 2, '等级到 2');
 
-  ok(Profile.keepBuy('不存在').ok === false, '没有这个设施 → 拒绝');
-  ok(Profile.keepMods().startMaterials === 140, '折叠修正跟着等级走', Profile.keepMods().startMaterials);
+  ok(Game.keepBuy('不存在').ok === false, '没有这个设施 → 拒绝');
+  ok(Game.keepMods().startMaterials === 140, '折叠修正跟着等级走', Game.keepMods().startMaterials);
 
   // 落盘往返
   Profile.load();
-  ok(Profile.keepLevel('storehouse') === 2 && Profile.keepLevel('shelves') === 1, '据点会落盘');
+  ok(Game.keepLevel('storehouse') === 2 && Game.keepLevel('shelves') === 1, '据点会落盘');
 
   // 坏档：未知设施与越界等级被丢掉
   Storage.setJSON(Storage.KEYS.profile, {
     v: 1, at: Date.now(), kind: 'profile',
-    data: { keep: { storehouse: 99, 不存在的: 3, shelves: -1 } }
+    data: { keepLast: { storehouse: 99, 不存在的: 3, shelves: -1 } }
   });
   Profile.load();
   ok(Profile.keepLevel('storehouse') === Keep.maxLevel('storehouse'), '越界等级被夹回上限',
@@ -170,7 +173,9 @@ console.log('\n[5] 在局里真的生效');
     /* 开局材料要在**清房间之前**读：房间制下"清完一间"会结算波次奖励
        （8 + 波次×3，再乘速清系数），那是玩法给的钱，不是据点给的。
        混在一起量，就成了"仓库给了 153"这种假数字。 */
-    s.keepStartMats = s.player.scrap;
+    /* 这里以前读的是 `s.player.scrap` —— 测试**在迁就实现里的那个 bug**
+   （`startMaterials` 被加到了废料上）。现在读材料，与界面告诉玩家的一致。 */
+  s.keepStartMats = Game.material();
     if (mats !== undefined) s.player.scrap = mats;
     toShop();
     return s;
@@ -196,18 +201,18 @@ console.log('\n[5] 在局里真的生效');
      ⚠ 工坊现在在**档案**里（跨局），钱是**材料**；所以这里要先把钱包铺满，
      而且"据点给的位子"要通过 `Game.campOpts()` 传给 `Profile.campBuy`。 */
   toShop();
-  for (const id of Object.keys(Profile.campOwned())) Profile.campSell(id);
-  Profile.addMaterial(9999);
+  for (const id of Object.keys(Game.campOwned())) Game.campSell(id);
+  Game.addMaterial(9999);
   const slots = Camp.SLOTS + s.kmods.campSlots;
   Game.openCamp();
   const opts = Game.campOpts();
   ok(opts.slots === slots, '据点把工坊位子抬到 ' + slots + ' 个（Game.campOpts 真的读据点）', opts.slots);
-  const canAfford = Camp.canBuy(Profile.campOwned(), 'furnace', 999, { slots: slots, discount: 0 });
+  const canAfford = Camp.canBuy(Game.campOwned(), 'furnace', 999, { slots: slots, discount: 0 });
   ok(canAfford.ok && canAfford.cost === 2, '工坊材料价**没有**据点折扣（2 就是 2）', canAfford.cost);
   /* 拆解全额返还：买一级 2 点，拆回来也是 2 点（不是 1 点）—— 摆法可以试错 */
   ok(Game.campBuy('furnace') === true, '先盖一座，才能量拆除返还');
-  const refundFull = Camp.refundOf(Profile.campOwned(), 'furnace', { fullRefund: true });
-  const refundHalf = Camp.refundOf(Profile.campOwned(), 'furnace');
+  const refundFull = Camp.refundOf(Game.campOwned(), 'furnace', { fullRefund: true });
+  const refundHalf = Camp.refundOf(Game.campOwned(), 'furnace');
   ok(refundFull === 2 && refundHalf === 1, '工匠 → 拆了全额返还（' + refundFull + ' vs 半额 ' + refundHalf + '）');
   const scrapKeep = s.player.scrap;      // 建工坊前后都读这一个数：量的就是"建工坊动不动废料"
   let built = 0;
@@ -215,9 +220,9 @@ console.log('\n[5] 在局里真的生效');
     if (Game.campBuy(d.id)) built++;
   });
   ok(built === Camp.LIST.length, '据点把工坊扩到 6 个位子 → 5 种设施全都能建（基准只有 3）', built + ' 个');
-  ok(Camp.usedSlots(Profile.campOwned()) === Camp.LIST.length, '位子确实用满了 5 个',
-    Camp.usedSlots(Profile.campOwned()));
-  ok(Game.campBuy('furnace') === false || Profile.campLevel('furnace') === 2, '已建满的设施只能升级');
+  ok(Camp.usedSlots(Game.campOwned()) === Camp.LIST.length, '位子确实用满了 5 个',
+    Camp.usedSlots(Game.campOwned()));
+  ok(Game.campBuy('furnace') === false || Game.campLevel('furnace') === 2, '已建满的设施只能升级');
   ok(s.player.scrap === scrapKeep, '建工坊一分**废料**都没花（那笔钱与材料是两回事）', s.player.scrap);
 
   /* 刷新价：**据点不再打折**（那是跨柱子的数值穿透），底价一点不少 */
@@ -311,20 +316,20 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
 
   /* L1：**多一次免费洗点**（不再是"打折"—— 折扣是跨柱子的数值，已经删掉）。
      注意前置链：档案馆要求「钟楼」Lv.1，所以先得买钟楼 */
-  Profile.addMaterial(3000);
+  Game.addMaterial(3000);
   const buy = (id) => {
-    const r = Profile.keepBuy(id);
+    const r = Game.keepBuy(id);
     ok(r.ok === true, '买下 ' + Stronghold.BY_ID[id].name + ' Lv.' + r.toLevel, r.reason);
     return r;
   };
-  const locked = Stronghold.canBuy(Profile.keepOwned(), 'archive', 99999);
+  const locked = Stronghold.canBuy(Game.keepOwned(), 'archive', 99999);
   ok(locked.ok === false && locked.locked === true && /钟楼/.test(locked.reason),
     '前置链挡住：没钟楼时档案馆是"锁着"的，而不是"孢子不够"', locked.reason);
   const freeBefore = Profile.freeRespecsOf(cid);
   buy('clocktower');
-  ok(Stronghold.canBuy(Profile.keepOwned(), 'archive', 99999).ok === true, '钟楼 Lv.1 → 档案馆解锁');
+  ok(Stronghold.canBuy(Game.keepOwned(), 'archive', 99999).ok === true, '钟楼 Lv.1 → 档案馆解锁');
   buy('archive');
-  ok(Stronghold.modsFor(Profile.keepOwned()).freeRespecs === 1, '档案馆 Lv.1 → 免费洗点 +1');
+  ok(Stronghold.modsFor(Game.keepOwned()).freeRespecs === 1, '档案馆 Lv.1 → 免费洗点 +1');
   ok(Profile.freeRespecsOf(cid) === freeBefore + 1, '档案层算得对（' + freeBefore + ' → ' +
     Profile.freeRespecsOf(cid) + '）', Profile.freeRespecsOf(cid));
 
@@ -332,15 +337,23 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
   buy('archive');
   ok(Profile.freeRespecsOf(cid) === freeBefore + 3, '档案馆 Lv.2 → 免费洗点再 +2（共 +3）',
     Profile.freeRespecsOf(cid));
-  Profile.perChar(cid).respecs = 0;      // 上面为了测"免费用完之后"的价，把已用次数推到过 3；这里归零
-  Profile.takeTalent(cid, 'm1');
-  let r1 = Profile.respecTalents(cid);
+  /* ⚠ **洗点现在算在局内**（M3）：次数是这一局的，天赋也点在会话上。
+     所以这里要先起一局、给够材料，再点、再洗。 */
+  if (!Game.getSession()) { Game.newRun(cid, 777, 0, null, null); }
+  Game.addMaterial(500);
+  /* ⚠ **点天赋要花成长点**（M3），而成长点只能由**训练**产出（v3 §5.2 没有"战斗 → 养成"）。
+     光给材料是不够的 —— 这一条把新的产出路径也顺带测了。 */
+  Game.train('breakthrough');
+  Game.getSession().respecs = 0;      // 上面为了测"免费用完之后"的价，把已用次数推到过 3；这里归零
+  const giveTalent = () => { Game.takeTalent('m1'); };
+  Game.takeTalent('m1') /* 先点一个，才有得洗 */;
+  let r1 = Game.respecTalents(cid);
   ok(r1.ok && r1.cost === 0, '第 1 次洗点免费', r1.cost);
-  for (let i = 1; i < Profile.freeRespecsOf(cid); i++) { Profile.takeTalent(cid, 'm1'); Profile.respecTalents(cid); }
-  ok(Profile.perChar(cid).respecs === Profile.freeRespecsOf(cid), '免费次数用满（' +
-    Profile.perChar(cid).respecs + ' 次）', Profile.perChar(cid).respecs);
-  Profile.takeTalent(cid, 'm1');
-  const r6 = Profile.respecTalents(cid);
+  for (let i = 1; i < Profile.freeRespecsOf(cid); i++) { giveTalent(); Game.respecTalents(cid); }
+  ok(Game.respecsUsed() === Profile.freeRespecsOf(cid), '免费次数用满（' +
+    Game.respecsUsed() + ' 次）', Game.respecsUsed());
+  giveTalent();
+  const r6 = Game.respecTalents(cid);
   ok(r6.ok && r6.cost === 20, '用完免费次数之后按原价 20 收费（没有折扣，只有次数）', r6.cost);
 
   // L3：每局额外天赋点 —— **而且要核心材料**
@@ -349,25 +362,44 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
      也就是"打 Boss 拿核心材料"在玩家那一侧是**看得见摸不着**的。
      现在它是档案馆 Lv.3 的第二价。 */
   const coreBefore = Profile.core();
-  ok(Keep.coreFor(Profile.keepOwned(), 'archive') === 2,
+  ok(Keep.coreFor(Game.keepOwned(), 'archive') === 2,
     '档案馆下一级要 2 个核心材料（界面靠这个数标出"这一级要打过 Boss"）',
-    Keep.coreFor(Profile.keepOwned(), 'archive'));
-  const sporeBeforeDenied = Profile.spores();
-  const poor = Stronghold.canBuy(Profile.keepOwned(), 'archive', 99999, 0);
+    Keep.coreFor(Game.keepOwned(), 'archive'));
+  const sporeBeforeDenied = Profile.growth();
+  const poor = Stronghold.canBuy(Game.keepOwned(), 'archive', 99999, 0);
   ok(poor.ok === false && /核心材料不够/.test(poor.reason) && /Boss/.test(poor.reason),
     '孢子管够但核心材料为 0 → 明确说"核心材料不够"，并指出只有关底 Boss 掉', poor.reason);
-  ok(Profile.spores() === sporeBeforeDenied, '被拒时孢子一点没扣',
-    sporeBeforeDenied + ' → ' + Profile.spores());
+  ok(Profile.growth() === sporeBeforeDenied, '被拒时孢子一点没扣',
+    sporeBeforeDenied + ' → ' + Profile.growth());
   Profile.addCore(2);
   const coreNow = Profile.core();
   buy('archive');
   ok(Profile.core() === coreNow - 2 && Profile.core() === coreBefore,
     '买下 Lv.3 真的扣了 2 个核心材料（' + coreNow + ' → ' + Profile.core() + '）');
-  ok(Stronghold.modsFor(Profile.keepOwned()).bonusPoints === 1, '档案馆买满 → 每局额外 +1 天赋点');
-  const before = Profile.talentPoints(cid);
+  ok(Stronghold.modsFor(Game.keepOwned()).bonusPoints === 1, '档案馆买满 → 训练每次额外 +1 成长点');
+  /* ⚠ **重指向**（M3）：它原来是"每局结算额外给的天赋点" —— 那是**经营直接发养成的钱**，
+     而 v3 §5.4-错误4 禁止"直接花另一个模块的资源去买本模块的能力"。
+     现在它加成在**训练的产出**上：据点变强 → 训练更有效（影响动作效率，不是替玩家付钱）。 */
+  /* ⚠ 据点修正是**开局条件**：要它生效就必须把它作为 `opening.kmods` 传进 `newRun`
+     （真实路径是 `main.ts` 从 `Profile.keepMods()` 折好再传）。只 `newRun(..., null)`
+     的话会话里的 `kmods` 是空的 —— 测出来的就是"据点没作用"。 */
+  /* ⚠ 据点是**局内**的（M1）：这里要用 `Game.keepOwned()` 折。
+     `Profile.keepMods()` 读的是 `keepLast`（**上一局的快照**），在只"买、没打完一局"的
+     测试里它是空的 —— 用它测出来的结论是反的。 */
+  const keepMods = Stronghold.modsFor(Game.keepOwned());
+  const drillGain = () => {
+    Game.newRun(cid, 999, 0, { stats: {}, weapons: [], items: [], scrap: 0 }, Game.keepOwned(), null);
+    Game.addMaterial(500);
+    const b = Game.growth();
+    Game.train('drill');
+    return Game.growth() - b;
+  };
+  const baseDrill = Train.BY_ID['drill'].gain;
+  ok(drillGain() === baseDrill + 1,
+    '据点喂到训练上：一次操练从 ' + baseDrill + ' 变成 ' + drillGain() + '', drillGain());
+  /* 反过来：**结算不再发天赋点**（M3 与 `growth` 同一个违规：战斗 → 养成） */
   const rep = runOnce();
-  ok(rep.pointsGained === 5 + 1, '一局通关从 5 点变成 6 点（据点喂到了天赋）', rep.pointsGained);
-  ok(Profile.talentPoints(cid) === before + 6, '点数真的进了档案', Profile.talentPoints(cid) - before);
+  ok(rep.pointsGained === 0, '结算不再发天赋点（产出点在训练那边）', rep.pointsGained);
 
   // 反过来：不买档案馆的人一点都吃不到（这条边是**可选**的）
   Profile.reset();
@@ -377,11 +409,14 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
     char: cid, wave: 20, level: 20, kills: 100, scrap: 200, damage: 1, taken: 1,
     healed: 1, packs: 0, win: true, danger: 0, peaks: {}
   }, {});
-  ok(rep2.pointsGained === 5 && Profile.freeRespecsOf(cid) === 3,
-    '空据点：点数还是 5、免费还是 3 次（没有白拿）',
+  ok(rep2.pointsGained === 0 && Profile.freeRespecsOf(cid) === 3,
+    '空据点：结算照样不发点、免费还是 3 次（没有白拿）',
     [rep2.pointsGained, Profile.freeRespecsOf(cid)].join('/'));
-  Profile.perChar(cid).respecs = 3;
-  ok(Profile.respecCostOf(cid) === 20, '空据点：免费用完之后还是原价 20', Profile.respecCostOf(cid));
+  if (!Game.getSession()) { Game.newRun(cid, 555, 0, null, null); }
+  Game.getSession().respecs = 3;
+  /* ⚠ 洗点是**局内**的（M3）：价钱要从会话上的次数算，`Profile.respecCostOf` 读的是账号记录。 */
+  const c2 = Talent.respecCost(Game.respecsUsed(), { free: Profile.freeRespecsOf(cid), discount: 0 });
+  ok(c2 === 20, '空据点：免费用完之后还是原价 20', c2);
 
   // 这条边**必须存在**：拔掉档案馆，自检要当场报错
   const saved = Stronghold.LIST.slice();
@@ -448,11 +483,11 @@ console.log('\n[10] 结构性解锁：给的不是数值，是"新的可能"');
   Storage.use(Storage.memory(Object.create(null)));
   Storage.wipe();
   Profile.reset();
-  Profile.addMaterial(3000);
-  Profile.keepBuy('shelves');           // 靶场的前置
+  Game.addMaterial(3000);
+  Game.keepBuy('shelves');           // 靶场的前置
   const beforeItems = Profile.openingOf('ranger').items.length;
-  Profile.keepBuy('range');             // 靶场
-  ok(Stronghold.modsFor(Profile.keepOwned()).rangeItem === 1, '靶场 → rangeItem = 1');
+  Game.keepBuy('range');             // 靶场
+  ok(Stronghold.modsFor(Game.keepOwned()).rangeItem === 1, '靶场 → rangeItem = 1');
   const withRange = Profile.openingOf('ranger').items.slice();
   ok(withRange.length === beforeItems + 1, '开局多带一件道具（' + beforeItems + ' → ' + withRange.length + '）',
     withRange.join(','));

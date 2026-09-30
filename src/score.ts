@@ -137,7 +137,7 @@ Score.describe = function (claims) {
    重放会**真的**跑一遍模拟（它就是这样工作的），所以调用方必须保证：
      · 传入的 step 与 main.ts 里那次一致（同一个场景闸门 + Input.endFrame）
      · 别在玩家打着一局的时候调用
-   `Rec.replaying()` 为真期间，接线层不写存档 —— 见 main.ts。
+   `Rec.replaying()` 为真期间，接入层不写存档 —— 见 main.ts。
    ========================================================= */
 /**
  * @param play (x, y, frame) => void  推进一逻辑帧（通常就是 main.ts 里那个 lambda）

@@ -261,8 +261,8 @@ console.log('\n[6] 回放期间不能往存档/档案里写假数据');
   Profile.init();
   Save.addRun(null);
 
-  // 模拟接线层的判断：main.ts 在 gameOver 时会先问 Rec.replaying()
-  // 这里直接验证"回放期间 Rec.replaying() 为真"这个契约（接线层就是靠它）
+  // 模拟接入层的判断：main.ts 在 gameOver 时会先问 Rec.replaying()
+  // 这里直接验证"回放期间 Rec.replaying() 为真"这个契约（接入层就是靠它）
   let sawReplayingDuringPlay = null;
   const tape = { v: 1, frames: 2, seed: 5, events: [{ frame: 0, cmd: 'newRun', args: ['ranger', 5, 0], seed: 5 }], inputs: [[0, 0], [0, 0]] };
   Rec.play(tape, (x, y) => {
@@ -270,9 +270,9 @@ console.log('\n[6] 回放期间不能往存档/档案里写假数据');
     if (Scene.simulates(Game.state)) Game.step(Game.cfg.fixedDt, { x: x, y: y });
     Input.endFrame();
   });
-  ok(sawReplayingDuringPlay === true, '回放进行中 Rec.replaying() 为真（接线层据此不落账）',
+  ok(sawReplayingDuringPlay === true, '回放进行中 Rec.replaying() 为真（接入层据此不落账）',
     String(sawReplayingDuringPlay));
-  // 代码里的接线必须真的用了它
+  // 代码里的接入必须真的用了它
   const mainSrc = fs.readFileSync(path.join(ROOT, 'src', 'main.ts'), 'utf8');
   const guarded = (mainSrc.match(/Rec\.replaying\(\)/g) || []).length;
   ok(guarded >= 4, 'main.ts 的四个落账点（换波/商店/开局/结算）都问了 Rec.replaying()', guarded + ' 处');
@@ -363,8 +363,8 @@ console.log('\n[7] 每日记录：只保留当天更好的那一局');
   Profile.reset();
 }
 
-/* ---------------- 8. 总账与接线 ---------------- */
-console.log('\n[8] 总账与接线');
+/* ---------------- 8. 总账与接入 ---------------- */
+console.log('\n[8] 总账与接入');
 {
   const a = Registry.audit();
   const probs = a.problems.filter(p => p.family === 'dailyField' || p.family === 'scoreField');

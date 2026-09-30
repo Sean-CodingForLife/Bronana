@@ -139,7 +139,6 @@ export function playRun(opts) {
     }
     acts.push({ kind: 'pack', build: true, fn: () => Game.buyPack('basic') });
     acts.push({ kind: 'pack', build: true, fn: () => Game.buyPack('deluxe') });
-    acts.push({ kind: 'build', build: false, fn: () => Game.buyBuild() });
     for (const id of (Camp.LIST ? Camp.LIST.map(c => c.id) : [])) {
       acts.push({ kind: 'campBuy', build: true, fn: () => Game.campBuy(id) });
       acts.push({ kind: 'campSell', build: false, fn: () => Game.campSell(id) });
@@ -163,7 +162,7 @@ export function playRun(opts) {
          槽位没满时买武器、开包、营地买设施都不改变数量。 */
       const matsBefore = sess.player.scrap || 0;
       const bagBefore = sess.player.weapons.length + sess.player.items.length;
-      const mixedBefore = (sess.alloy || 0) + (sess.campPoints || 0);
+      const mixedBefore = (sess.growth || 0) + (sess.campPoints || 0);
       if (a.kind === 'buy') st.buysTried++;
       let ret = false;
       if (a.kind === 'buy') {
@@ -181,7 +180,7 @@ export function playRun(opts) {
       if (a.kind === 'buy' && ret === true) st.buysOk++;
       const spent = (sess.player.scrap || 0) < matsBefore;
       const bagGrew = (sess.player.weapons.length + sess.player.items.length) !== bagBefore;
-      const mixed = ((sess.alloy || 0) + (sess.campPoints || 0)) !== mixedBefore;
+      const mixed = ((sess.growth || 0) + (sess.campPoints || 0)) !== mixedBefore;
       if (a.build && (ret === true || spent || bagGrew || mixed)) emit(a.kind, true);
 
       /* 走门走了就离开商店了 */
@@ -295,7 +294,7 @@ export function playRun(opts) {
   st.items = sess.player.items.map(i => i.def.id);
   st.coreEarned = sess.coreEarned || 0;
   st.materials = Math.round(sess.player.scrap || 0);
-  st.alloy = Math.round(sess.alloy || 0);
+  st.growth = Math.round(sess.growth || 0);
   st.healed = Math.round(sess.stats_total.healed || 0);
   return st;
 }

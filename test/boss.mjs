@@ -181,8 +181,8 @@ console.log('\n[4] 打倒之后记下是哪一只（剧情碎片的输入）');
     '读档只收真有的 Boss（坏档防线）', JSON.stringify(back.bossesDown));
 }
 
-/* ---------------- 5. 关底血条与界面接线 ---------------- */
-console.log('\n[5] 关底血条与界面接线');
+/* ---------------- 5. 关底血条与界面接入 ---------------- */
+console.log('\n[5] 关底血条与界面接入');
 {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   ok(html.indexOf('id="boss-bar"') >= 0 && html.indexOf('id="boss-fill"') >= 0,

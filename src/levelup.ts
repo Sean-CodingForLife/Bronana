@@ -106,16 +106,16 @@ Pool.audit = function () {
     if (e.guard) guards++;
   }
   /* "防御向至少占五分之一"：这条不是平衡判据，是**这张表还在做它该做的事**的判据。
-     全被改成非防御向时，`cardPool` 那条曲线会变成一把永远不动的尺子 ——
-     它还在表里、还被读，但不再影响任何结果（本项目把这种叫"空转开关"）。 */
+     全被改成非防御向时，`cardPool` 那条曲线会变成一条永远不动的校验 ——
+     它还在表里、还被读，但不再影响任何结果（本项目把这种叫"无效开关"）。 */
   if (guards * 5 < POOL.length) {
     problems.push('防御向条目只有 ' + guards + ' / ' + POOL.length +
-      '：`player.cardPool` 曲线会变成空转开关（它抬的就是这些条目的权重）');
+      '：`player.cardPool` 曲线会变成无效开关（它抬的就是这些条目的权重）');
   }
   return { ok: problems.length === 0, problems: problems, counts: { entries: POOL.length, guard: guards } };
 };
 
-/* ---- 四件套的后两件：进必经之路 + 进总账 ----
+/* ---- 后两步（自检 · 注册）：进必经之路 + 进总账 ----
    与 `data_items.ts` / `data_tiers.ts` / `skills.ts` 同一套写法。
    `Pool.audit` 无参、返回 `{ok, problems}`、且不读任何会话 ——
    所以它能进**启动期**（`SelfCheck.scan()` 在 boot 时跑一遍，不过就抛）。 */

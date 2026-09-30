@@ -24,6 +24,7 @@
 import { SelfCheck } from './selfcheck.ts';
 import { Registry } from './registry.ts';
 import { U } from './utils.ts';
+import { Fold } from './fold.ts';
 
 var Dungeon = {} as DungeonApi;
 
@@ -273,10 +274,13 @@ var MOD_BASE: Record<string, number> = {
 function applyMod(out: Record<string, number>, key: string, v: number) {
   var def = MOD_KEYS[key];
   if (!def) return;                       // 未声明的键：忽略（audit 会报出来）
-  if (def.how === 'mul') out[key] = out[key] * v;
-  else if (def.how === 'add') out[key] = out[key] + v;
-  else if (def.how === 'min') out[key] = Math.min(out[key], v);
-  else out[key] = v;
+  /* 初值按折法的恒等元取，不在这里写死。
+     改造前是一条 `else out[key] = v`：它同时兜住了两件不同的事 ——
+     "这个键还没进来过"和"认不出的折法" —— 而后者把它当成了**覆盖**。
+     `MOD_BASE` 与 `MOD_KEYS` 键集一致（8 = 8），所以那两件其实都不可达；
+     拆开写是为了让"不可达"这件事看得出来，而不是靠 override 恰好没被触发。 */
+  if (out[key] === undefined) out[key] = Fold.numIdentity(def.how);
+  out[key] = Fold.num(def.how, out[key], v);
 }
 
 /* =========================================================

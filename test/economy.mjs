@@ -1,28 +1,23 @@
 /* =========================================================
-   economy.mjs — 货币与三模块循环（战斗 / 经营 / 养成）
+   economy.mjs — 账本 / 核心素材 / 循环
+   ---------------------------------------------------------
+   这一套守的是**设计上下文 v3** 里那几条最容易被做错的约束：
 
-   这一套守的是**循环的形状**，不是某笔钱的数值：
+     §5.4-错误1  "把三个模块的货币压成一套。禁止统一 `economy.ts`
+                 定义五六种货币互相兑换。"
+     §5.4-错误2  "把核心素材当货币处理…一旦可兑换或流通，循环就散了。"
+     §5.1/§5.2   三套模块代币 + 一笔全局货币 + 三个核心素材（A→B→C→A）
+     §9-建议1    "核心素材保底：概率掉落 + **保底计数** + 多路径获取。"
+     §7-12       "模块代币兑换…需高税、限额、单向或消耗全局货币。"
 
-     [1] 表与自检：四笔钱各有层级、来源、去向、why；三档层级都有人在用
-     [2] **只有战斗能产出**：局外系统不许自己印钱（那是"模块嵌合"的入口）
-     [3] 局内 / 跨局的分界：局内货币必须有局内去向，跨局货币不许有
-     [4] 循环连通：战斗 → 经营、战斗 → 养成两条边都有货币；
-         三个系统每一个都既在产出、也在被投入（没有"不参与循环"的模块）
-     [5] 核心材料（meta-rare）：**只有 Boss 掉**，而且经营与养成都要花它
-         —— 一条只能在战斗里拿到、必须在两个局外模块里花的钱
-     [6] 真的接上了：会话字段 / 存档往返 / 结算入档 / 不吃倍率
-
-   用法： node test/economy.mjs
+   ⚠ 与上一版的区别：上一版测的是"一张表上七八笔代币各自的 from/to"
+   —— 那套模型本身已经被 v3 否掉了（它就是错误1）。现在测的是**结构**：
+   每本账归谁、核心素材在不在账本里、循环是不是由核心素材构成的。
    ========================================================= */
-import fs from 'node:fs';
-import path from 'node:path';
-import { installDom } from './_ctx.mjs';
-import { loadAll, SIM_MODULES, enterFightRoom } from './_load.mjs';
+import { loadAll, SIM_MODULES } from './_load.mjs';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
-installDom();
-const g = globalThis;
 await loadAll(SIM_MODULES);
+const { Economy, Ledger, Link, Registry } = globalThis;
 
 let failures = 0;
 function ok(cond, label, extra) {
@@ -30,190 +25,204 @@ function ok(cond, label, extra) {
   else { failures++; console.log('  \x1b[31mFAIL\x1b[0m ' + label + (extra !== undefined ? '  → ' + extra : '')); }
 }
 
-const { Economy, Game, Profile, Enemies, Registry, Storage } = g;
-
-console.log('\n=== Bronana · 货币与三模块循环 ===\n');
+console.log('\n=== Bronana · 账本 / 核心素材 / 循环 ===\n');
 
 /* =========================================================
-   [1] 表与自检
+   [1] 四本账：每个模块只定义自己的代币（v3 §5.4-错误1 的头号禁令）
    ========================================================= */
-console.log('[1] 货币表与三档层级');
+console.log('[1] 四本账（禁止"一张表定义所有货币"）');
 {
   const v = Economy.audit();
-  ok(v.ok, '货币表自检通过（' + v.counts.currencies + ' 笔 / ' + v.counts.tiers +
-    ' 档层级 / ' + v.counts.systems + ' 个系统）', v.problems.join(' | '));
-  ok(Economy.LIST.length >= 4, '至少四笔钱（材料 / 核心材料 / 孢子 / 合金）', Economy.LIST.length);
-  ok(Economy.LIST.every(d => d.name && d.note && d.why), '每笔钱都写了名字、说明与 why');
-  ok(Object.keys(Economy.SYSTEMS).length === 3, '循环正好三个模块（战斗 / 经营 / 养成）',
-    Object.keys(Economy.SYSTEMS).join(','));
+  ok(v.ok, '聚合自检通过（' + v.counts.ledgers + ' 本账 / ' + v.counts.currencies +
+    ' 笔代币 / ' + v.counts.links + ' 个核心素材）', (v.problems || []).join(' | '));
 
-  // 审计真的能抓错
-  const probe = Economy.BY_ID['spore'];
-  const keepTier = probe.tier;
-  probe.tier = 'noSuchTier';
-  const a1 = Economy.audit();
-  ok(!a1.ok && a1.problems.some(p => /层级没登记/.test(p)), '把层级写错 → 审计报出来（否则那笔钱被静默带出局）', a1.problems[0]);
-  probe.tier = keepTier;
+  for (const id of ['combat', 'manage', 'grow', 'global']) {
+    ok(!!Ledger.byId(id), '账本「' + id + '」已定义');
+  }
 
-  const keepFrom = probe.from.slice();
-  probe.from = ['manage'];
-  const a2 = Economy.audit();
-  ok(!a2.ok && a2.problems.some(p => /只有战斗能产出/.test(p)), '让经营"印钱" → 审计报出来', a2.problems[0]);
-  probe.from = keepFrom;
-
-  const keepTo = probe.to.slice();
-  probe.to = [];
-  const a3 = Economy.audit();
-  ok(!a3.ok && a3.problems.some(p => /没有去向/.test(p)), '把去向删空 → 审计报出来（只能攒不能花）', a3.problems[0]);
-  probe.to = keepTo;
-  ok(Economy.audit().ok, '改回来之后审计重新通过');
-}
-
-/* =========================================================
-   [2][3] 只有战斗能产出 / 局内外分界
-   ========================================================= */
-console.log('\n[2] 只有战斗能产出，且局内外不串');
-{
-  const bad = Economy.LIST.filter(d => d.from.some(f => f !== 'combat'));
-  ok(bad.length === 0, '每笔钱的来源都只有战斗（局外不许自己印钱）',
-    bad.map(d => d.id + '<-' + d.from.join('/')).join(','));
-
-  for (const d of Economy.LIST) {
-    const isSession = Economy.isSession(d.id);
-    if (isSession) {
-      ok(d.to.indexOf('combat') >= 0 && d.from.indexOf('combat') >= 0,
-        '局内货币「' + d.name + '」只在战斗内部流转（进战斗、花在战斗）');
-    } else {
-      ok(d.to.indexOf('combat') < 0 && Economy.isAccount(d.id),
-        '跨局货币「' + d.name + '」带得出去、且不在局内花');
-      ok(d.to.some(t => t === 'manage' || t === 'grow'),
-        '跨局货币「' + d.name + '」流向局外模块（' + d.to.join('/') + '）');
+  /* 每本账归一个模块，而且里面的模块代币**必须**归那个模块 */
+  for (const b of Ledger.all()) {
+    for (const c of b.currencies) {
+      if (c.role === 'module') {
+        ok(b.owner === c.owner,
+          '模块代币「' + c.name + '」住在自己的账本里（' + b.id + '）—— 不许出现在别人的账本里');
+      }
     }
   }
+
+  /* **内嵌的头号禁令**：别的模块的代币不许出现在这本账里 */
+  for (const b of Ledger.all()) {
+    const mine = b.currencies.filter(c => c.owner !== b.owner);
+    ok(mine.length === 0, '账本「' + b.name + '」里没有别人的代币', mine.map(c => c.id).join(','));
+  }
+
+  const led = Economy.ledgerOf('combat');
+  ok(!!led && led.currencies.length === 1 && led.currencies[0].id === 'scrap',
+    '战斗账本里只有 `scrap` 一笔（"战斗的成长在战斗内部"）');
 }
 
 /* =========================================================
-   [4] 循环连通
+   [2] 核心素材：**不在任何账本里**（v3 §5.4-错误2）
    ========================================================= */
-console.log('\n[4] 循环连通：三个模块互相喂');
+console.log('\n[2] 核心素材不是钱，是钥匙');
+{
+  for (const l of Link.LIST) {
+    ok(!Economy.BY_ID[l.id], '核心素材「' + l.name + '」**不在账本汇总里**（进了账本就会被兑换）');
+    ok(!Ledger.currency(l.id), '核心素材「' + l.name + '」不在任何一本账里');
+  }
+  ok(Economy.LINKS.length === 3, '核心素材**恰好 3 个**（v3 §5.2：一条边一个）');
+
+  for (const l of Link.LIST) {
+    ok(l.producedBy !== l.consumedBy,
+      '「' + l.name + '」的产出地（' + l.producedBy + '）与消费地（' + l.consumedBy + '）是分开的');
+  }
+
+  ok(Economy.EXCHANGE.every(e => e.from !== 'core' && e.to !== 'core'),
+    '核心素材不参与任何兑换（能换就等于没锁）');
+}
+
+/* =========================================================
+   [3] 循环：**由核心素材推出来**（v3 §5.2）
+   ========================================================= */
+console.log('\n[3] 循环 = 战斗 → 经营 → 养成 → 战斗');
 {
   const loop = Economy.loop();
-  ok(loop.edges.length >= 2, '循环图有 ≥2 条边（' + loop.edges.length + ' 条）',
-    loop.edges.map(e => e.from + '→' + e.to).join(' '));
-  ok(Economy.edge('combat', 'manage').length > 0,
-    '战斗 → 经营 这条边有货币：' + Economy.edge('combat', 'manage').join('/'));
-  ok(Economy.edge('combat', 'grow').length > 0,
-    '战斗 → 养成 这条边有货币：' + Economy.edge('combat', 'grow').join('/'));
-  for (const s of Object.keys(Economy.SYSTEMS)) {
-    const produce = Economy.LIST.some(d => d.from.indexOf(s) >= 0);
-    const consume = Economy.LIST.some(d => d.to.indexOf(s) >= 0);
-    ok(produce || consume, '系统「' + Economy.SYSTEMS[s].name + '」参与了货币流动');
-    if (s !== 'combat') ok(consume, '局外模块「' + Economy.SYSTEMS[s].name + '」有投入（否则它没有存在理由）');
+  ok(loop.edges.length === 3, '循环正好 3 条边（' + loop.edges.map(e => e.from + '→' + e.to).join(' ') + '）');
+
+  for (const [a, b] of [['combat', 'manage'], ['manage', 'grow'], ['grow', 'combat']]) {
+    const hit = Economy.edge(a, b);
+    ok(hit.length === 1,
+      '链边「' + a + ' → ' + b + '」**恰好一个**核心素材锁着' +
+      (hit.length ? '（' + hit[0] + '）' : ' —— 缺一环，会退回"并列独立"'), hit.join(','));
   }
 
-  /* ---- 反哺边：局外 → 战斗（不是货币，是"下一局的开局条件"）----
-     这两条边曾经登记在 `Eco.GAPS` 里当**缺口**，而它们其实一直在工作 ——
-     那张缺口表因此会永远报"缺 2 条"，是一把会撒谎的尺子。
-     现在它们是正面声明：每条都写清"谁提供 / 什么在限制它"。 */
-  ok(Economy.BACKFLOW.length >= 2, '登记了 ≥2 条反哺边（' +
-    Economy.BACKFLOW.map(b => b.from + '→' + b.to).join(' ') + '）');
-  for (const s of Object.keys(Economy.SYSTEMS)) {
-    if (s === 'combat') continue;
-    ok(Economy.backflowFrom(s).length >= 1,
-      '局外模块「' + Economy.SYSTEMS[s].name + '」有一条反哺边回到战斗（不是死胡同）');
+  const pairs = new Map();
+  for (const l of Link.LIST) {
+    const k = l.producedBy + '>' + l.consumedBy;
+    pairs.set(k, (pairs.get(k) || 0) + 1);
   }
-  ok(Economy.BACKFLOW.every(b => b.to === 'combat'), '每条反哺边的终点都是战斗');
-  ok(Economy.BACKFLOW.every(b => /核心材料|孢子|合金|通关|波次/.test(b.limit)),
-    '每条反哺边都写清了"什么在限制它"——**白给的反哺不是循环的一环**',
-    Economy.BACKFLOW.map(b => b.limit).join(' | '));
+  ok([...pairs.values()].every(n => n === 1), '每对模块之间只有一条核心素材边（多一条 = 没锁）');
 
-  /* ---- 缺口清单：机制留在、数据为空 ----
-     空不是"没做"，是"补完了"。反过来，一旦有东西登记进来，
-     `audit` 会要求它带 todo（补它要做什么）。 */
-  ok(Economy.GAPS.length === 0, '缺口清单是空的（两条反哺边已改成正面声明）',
-    Economy.GAPS.map(g => g.from + '→' + g.to).join(','));
-  ok(Economy.missingEdges().length === 0, '没有"还缺的边"');
-  /* 反证：把一条反哺边摘掉，自检必须报出来（尺子不是装饰） */
-  const savedBf = Economy.BACKFLOW.slice();
-  Economy.BACKFLOW.length = 0;
-  const broke = Economy.audit();
-  Economy.BACKFLOW.push(...savedBf);
-  ok(!broke.ok && broke.problems.some(p => /反哺边|死胡同/.test(p)),
-    '摘掉全部反哺边 → 自检报"只进不出的死胡同"', broke.problems[0]);
-  ok(Economy.audit().ok, '装回去之后重新通过');
+  for (const r of Link.closed()) {
+    ok(r.produce === 1 && r.consume === 1,
+      '模块「' + (Ledger.SYSTEMS[r.sys] ? Ledger.SYSTEMS[r.sys].name : r.sys) +
+      '」产 ' + r.produce + ' 个、消费 ' + r.consume + ' 个核心素材');
+  }
+  ok(Economy.SYSTEMS && Object.keys(Economy.SYSTEMS).length === 3,
+    '循环正好**三个**模块（战斗 / 经营 / 养成，不是四个）', Object.keys(Economy.SYSTEMS).join(','));
 }
 
 /* =========================================================
-   [5] 核心材料：meta-rare 那一档
+   [4] 全局货币：恰好一笔，且是"行动成本"不是钱（v3 §5.1 + §9-建议3）
    ========================================================= */
-console.log('\n[5] 核心材料：只有 Boss 掉，两个局外模块都要花');
+console.log('\n[4] 全局货币（三模块通用的那一笔）');
 {
-  const core = Economy.BY_ID['core'];
-  ok(!!core && core.tier === 'meta-rare', '核心材料是 meta-rare 那一档（每局只有几笔）');
-  ok(Economy.byTier('meta-rare').length >= 1, 'meta-rare 这一档不是空的');
-  ok(core.to.indexOf('manage') >= 0 && core.to.indexOf('grow') >= 0,
-    '经营与养成**都**要花核心材料（于是它们争的是同一笔稀有资源）',
-    core.to.join('/'));
-  ok(!Economy.isSession('core'), '核心材料不进局内经济（它是局外的钱）');
-
-  const src = fs.readFileSync(path.join(ROOT, 'src', 'game.ts'), 'utf8');
-  ok(/CORE_PER_BOSS/.test(src), 'game.ts 里有 CORE_PER_BOSS 这个常量');
-  const inBoss = /if \(e\.def\.boss\) \{[\s\S]{0,700}?coreEarned/.test(src);
-  ok(inBoss, '核心材料**只在 Boss 死亡那一支**里加（普通怪不掉）');
-  const normal = /e\.elite \? 2 : 0[\s\S]{0,200}?coreEarned/.test(src);
-  ok(!normal, '普通掉落那一段里没有核心材料（否则它就退化成"多打几把"）');
+  const globals = Economy.LIST.filter(c => c.role === 'global');
+  ok(globals.length === 1, '全局货币**恰好一笔**（多一笔它就变成另一笔模块钱）', globals.map(c => c.id).join(','));
+  ok(globals[0] && globals[0].id === 'material', '那一笔是「材料」');
+  ok(globals[0] && globals[0].ledger === 'global', '它住在 global 账本里，不和任何模块的代币同住');
+  const gbook = Ledger.byId('global');
+  ok(gbook && gbook.currencies.length === 1, 'global 账本里只有它一笔');
 }
 
 /* =========================================================
-   [6] 接线：字段 / 存档 / 结算
+   [5] 保底：v3 §9-建议1（概率 + 保底计数 + 多路径）
    ========================================================= */
-console.log('\n[6] 接线：会话字段 · 存档往返 · 结算入档');
+console.log('\n[5] 核心素材保底（v3 §9-建议1）');
 {
-  Storage.use(Storage.memory(Object.create(null)));
-  Storage.wipe();
+  for (const l of Link.LIST) {
+    ok(l.chance > 0 && l.chance < 1, '「' + l.name + '」有掉率且不是必掉（' + l.chance + '）');
+    ok(l.pity >= 1, '「' + l.name + '」有保底计数（连续 ' + l.pity + ' 次没出必出）');
+    ok(l.paths.length >= 2, '「' + l.name + '」有多路径（' + l.paths.length + ' 条）');
+  }
 
-  Game.newRun('ranger', 4242);
-  const sess = Game.getSession();
-  ok(sess.coreEarned === 0, '开局这一局的核心材料是 0');
-  sess.coreEarned = 2;
-  const data = Game.exportRun();
-  ok(data.coreEarned === 2, '核心材料进了存档（不存就能靠读档刷 Boss）', String(data.coreEarned));
-  const s2 = Game.importRun(JSON.parse(JSON.stringify(data)));
-  ok(s2 && s2.coreEarned === 2, '读档还原核心材料', s2 ? String(s2.coreEarned) : 'null');
+  for (const l of Link.LIST) {
+    const st = Link.empty();
+    const never = () => 0.999;
+    let got = null;
+    for (let i = 1; i <= l.pity; i++) got = Link.roll(l.id, st, never);
+    ok(got.got && got.byPity,
+      '「' + l.name + '」连 ' + l.pity + ' 次不出之后，第 ' + l.pity + ' 次**保底必出**');
+  }
 
-  // 结算入档
-  const before = Profile.core();
-  const rep = Profile.applyRun({
-    char: 'ranger', wave: 5, level: 6, kills: 40, scrap: 120, damage: 900,
-    taken: 30, healed: 0, packs: 0, coreEarned: 3
-  }, null);
-  ok(rep.core === 3, '结算报告里带出这一局拿到的核心材料', String(rep.core));
-  ok(Profile.core() === before + 3, '核心材料入档了（' + before + ' → ' + Profile.core() + '）');
-
-  /* **不吃倍率**：孢子有倍率（打得深更多），核心材料没有（固定几笔）。
-     这一条守着"meta-rare 那一档不被 bridge 那一档的复利吃掉"。 */
-  const p2 = Profile.core();
-  Profile.applyRun({
-    char: 'ranger', wave: 40, level: 20, kills: 900, scrap: 9000, damage: 99999,
-    taken: 0, healed: 0, packs: 9, coreEarned: 2
-  }, null);
-  ok(Profile.core() === p2 + 2, '深局的核心材料也是"打几个 Boss 给几笔"（不吃深度倍率）');
-
-  // 存档卫生：坏值不许进档
-  const evil = JSON.parse(JSON.stringify(data));
-  evil.coreEarned = 1e9;
-  const s3 = Game.importRun(evil);
-  ok(s3 && s3.coreEarned >= 0 && isFinite(s3.coreEarned), '坏档里的巨额核心材料被夹回', s3 ? String(s3.coreEarned) : 'null');
-
-  // 总账登记
-  ok(Registry.has('currency') && Registry.has('currencyTier') && Registry.has('loopSystem'),
-    '三个货币家族都登记进了扩展点总账');
-  ok(Registry.ids('currency').length === Economy.LIST.length, '总账里的货币数与表一致');
-  ok(Registry.ids('currencyTier').join(',') === Object.keys(Economy.TIERS).join(','),
-    '层级家族就是层级表本身');
+  {
+    const st = Link.empty();
+    const r = Link.roll('core', st, () => 0.01);
+    ok(r.got && !r.byPity, '掉率生效：随机数低于 chance 时直接出（不是靠保底）');
+  }
+  {
+    const st = Link.empty();
+    const never = () => 0.999;
+    const pit = Link.BY_ID['core'].pity;
+    const a = Link.roll('core', st, never).until;
+    const b = Link.roll('core', st, never).until;
+    /* ⚠ `until` 是"还差**几次尝试**必出"，所以它**不会到 0** ——
+       到了 0 之前那一发就已经走保底分支出了（`miss + 1 >= pity`）。
+       第一版把断言写成 `b === 0` 是错的：`pity = 3` 时两发之后
+       `miss = 2`、`until = 1`，而**第三发**才是保底那一发。 */
+    const c = Link.roll('core', st, never);
+    ok(a === pit - 1 && b === pit - 2 && c.byPity,
+      '保底进度逐次递减（' + a + ' → ' + b + '），而下一发走保底（byPity=' + c.byPity + '）');
+  }
+  ok(Link.untilPity('core', Link.empty()) === Link.BY_ID['core'].pity,
+    '刚开局时"还差 N 次必出" = 该素材的 pity');
+  ok(!Link.roll('nope', Link.empty(), () => 0).got, '掷一个不存在的核心素材 → 不出、不炸');
+  ok(!Link.roll('core', Link.empty(), null).got, '不给随机源 → 不出（回放要可复现，不给就不掷）');
 }
 
-console.log('\n=== 结果 ===');
-if (failures === 0) console.log('\x1b[32m全部通过 ✔\x1b[0m');
-else console.log('\x1b[31m' + failures + ' 项失败 ✘\x1b[0m');
+/* =========================================================
+   [6] 兑换：只有**模块代币之间**，而且必须带限制（v3 §5.3 + §7-12）
+   ========================================================= */
+console.log('\n[6] 兑换（模块代币 ↔ 模块代币）');
+{
+  const savedEx = Economy.EXCHANGE.slice();
+  const bad = (label, ex) => {
+    Economy.EXCHANGE.length = 0;
+    Economy.EXCHANGE.push(ex);
+    const v = Economy.audit();
+    ok(!v.ok, label, (v.problems || [])[0]);
+  };
+
+  bad('把**核心素材**塞进兑换 → 审计报出来（它是钥匙不是钱）',
+    { id: 'x', from: 'core', to: 'material', rate: 0.5, cap: 1, cost: 1, where: 'combat', note: '反证' });
+  bad('拿全局货币当模块代币换 → 审计报出来（兑换只谈模块代币之间）',
+    { id: 'x', from: 'material', to: 'capacity', rate: 0.5, cap: 1, cost: 1, where: 'manage', note: '反证' });
+  bad('汇率 ≥ 1（不是高税）→ 审计报出来',
+    { id: 'x', from: 'scrap', to: 'capacity', rate: 1, cap: 1, cost: 1, where: 'manage', note: '反证' });
+  bad('既不限额也不要手续费 → 审计报出来（玩家会拿它绕过整个模块）',
+    { id: 'x', from: 'scrap', to: 'capacity', rate: 0.5, cap: 0, cost: 0, where: 'manage', note: '反证' });
+
+  Economy.EXCHANGE.length = 0;
+  Economy.EXCHANGE.push(...savedEx);
+  ok(Economy.audit().ok, '兑换表装回去之后重新通过');
+
+  const n = Economy.EXCHANGE.length;
+  ok(n === 0, '当前登记的兑换条数：' + n +
+    '（机制已就位；真正的兑换要等三个模块各自成立之后再定）');
+}
+
+/* =========================================================
+   [7] 守卫：`economy.ts` **自己不许定义货币**（v3 §8-7）
+   ========================================================= */
+console.log('\n[7] 守卫：禁止统一 economy.ts');
+{
+  ok(Registry.has('currency'), '代币进了总账（family: currency）');
+  ok(Registry.has('ledger'), '四本账进了总账（family: ledger）');
+  ok(Registry.has('currencyRole'), '代币角色进了总账（family: currencyRole）');
+  ok(Registry.has('coreLink'), '核心素材进了总账（family: coreLink）');
+  ok(!Registry.has('currencyTier'), '旧的 `currencyTier`（按"能不能带出局"分档）已经**不存在**');
+
+  ok(Registry.ids('currency').length === Economy.LIST.length, '总账里的代币数与汇总视图一致');
+  ok(Registry.ids('ledger').length === 4, '总账里有 4 本账');
+  ok(Registry.ids('coreLink').length === 3, '总账里有 3 个核心素材');
+
+  const orphan = Economy.LIST.filter(c => !Ledger.byId(c.ledger));
+  ok(orphan.length === 0, '汇总视图里没有"无账可归"的代币（手写的会露出来）',
+    orphan.map(c => c.id).join(','));
+
+  const v = Registry.audit();
+  ok(v.ok, '总账整体自洽（跨表引用都真的存在）', (v.missing || []).slice(0, 3).join(' | '));
+}
+
+console.log(failures ? '\n  \x1b[31m' + failures + ' 项失败 ✘\x1b[0m' : '\n  全部通过 ✔');
 process.exit(failures ? 1 : 0);

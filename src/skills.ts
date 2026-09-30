@@ -143,7 +143,7 @@ var LIST: SkillRow[] = [
   { id: 's_ring', name: '冲击环', note: '以自己为中心震开一圈',
     owner: null, ch: 'shared', form: 'nova', payload: 'knock', cd: 4.2, cost: 20, target: 'self' },
 
-  /* ---- 全能豆豆：均衡，能攻能守 ---- */
+  /* ---- 全能人：均衡，能攻能守 ---- */
   { id: 's_ranger_volley', name: '三连射', note: '一次打出三发，散得很开',
     owner: 'ranger', ch: 'ranger', form: 'bolt', payload: 'damage', cd: 2.2, cost: 16, target: 'aim',
     form_: { count: 3, spread: 0.34, radius: 5, speed: 620 } },

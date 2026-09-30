@@ -135,7 +135,7 @@ console.log('\n[2] 成本：跨扇区更贵，且层级序不能被压平');
   ok(Talent.costFor(r1, sprinter) === 1 && Talent.costFor(m1, sprinter) === 2, '疾行者反过来');
   ok(Talent.costFor(m1, ranger) === 1 && Talent.costFor(r1, ranger) === 1 &&
      Talent.costFor(Talent.BY_ID['m5'], ranger) === 3,
-    '均衡豆豆没有本命扇区：所有扇区同价（不便宜也不贵）');
+    '全能人没有本命扇区：所有扇区同价（不便宜也不贵）');
   ok(Talent.costFor(Talent.BY_ID['c_brawler'], brawler) === Talent.costFor(Talent.BY_ID['c_brawler'], ranger),
     '本职子树不参与扇区差价（它本来就是"你自己的"）');
 
@@ -220,58 +220,73 @@ console.log('\n[5] 天赋点从哪来');
   ok(Talent.pointsForRun(null) === 0, '空输入安全');
 }
 
-/* ---------------- 6. 账目（点 / 撤销 / 洗点） ---------------- */
-console.log('\n[6] 账目：点、撤销、洗点');
+/* ---------------- 6. 账目（训练产点 / 点 / 撤销 / 洗点） ---------------- */
+console.log('\n[6] 账目：训练产成长点、点天赋、撤销、洗点');
 {
   Storage.use(Storage.memory(Object.create(null)));
   Storage.wipe();
   Profile.reset();
   const cid = 'brawler';
-  ok(Profile.talentPoints(cid) === 0 && Profile.talentFree(cid) === 0, '新档没有天赋点');
 
-  // 先给点：一局通关
-  Profile.applyRun({ char: cid, wave: 20, level: 20, kills: 100, scrap: 100, damage: 1, taken: 1, healed: 1, packs: 0, win: true, danger: 0, peaks: {} }, {});
-  const earned = Profile.talentPoints(cid);
-  ok(earned === 5, '一局通关给 5 点（2 + 里程碑 3）', earned);
+  /* ⚠ **语义反转**（M3，2026-09）：天赋与成长点都**住在局内**了。
+     它们以前是账号级的 —— 结算是唯一的产出（通关给点），点是"累计预算"。
+     现在：① 产出走**训练**（`Game.train`：花材料换成长点）
+           ② 天赋**花成长点余额**（`Talent.canTake` 的 `balance` 语义）
+     所以这一块必须**先起一局**才有状态可测。 */
+  Game.newRun(cid, 4242, 0, null, null);
+  Game.addMaterial(1000);
+  ok(Game.talentsOf().length === 0 && Game.growth() === 0, '开局没有天赋、也没有成长点');
 
-  let r = Profile.takeTalent(cid, 'm1');
-  ok(r.ok && r.cost === 1 && Profile.talentFree(cid) === earned - 1, '点一条扣 1 点', Profile.talentFree(cid));
-  ok(Profile.talentsOf(cid).join(',') === 'm1', '记到了档案里');
-  ok(Profile.takeTalent(cid, 'm1').ok === false, '重复点被拒');
+  /* 产出：训练三次「突破」（每波上限 3 次） */
+  const gains = [Game.train('breakthrough'), Game.train('breakthrough'), Game.train('breakthrough')];
+  ok(gains.every(g => g.ok), '三次训练都成功（材料足够）');
+  ok(Game.train('breakthrough').ok === false, '每波训练次数有上限（第 4 次被拒）');
+  const earned = Game.growth();
+  ok(earned === gains.reduce((s, g) => s + g.gain, 0), '成长点 = 三次训练的产出之和（' + earned + '）', earned);
 
-  // 花光点数
-  Profile.takeTalent(cid, 'm2');
-  Profile.takeTalent(cid, 'm3');
-  const spentNow = Talent.spentOn(Profile.talentsOf(cid), cid);
-  const free2 = Profile.talentFree(cid);
+  /* 点天赋：花成长点余额 */
+  let r = Game.takeTalent('m1');
+  const afterOne = Game.growth();
+  ok(r.ok && r.cost === 1 && afterOne === earned - 1, '点一条扣 1 点成长（' + earned + ' → ' + afterOne + '）', afterOne);
+  ok(Game.talentsOf().join(',') === 'm1', '记到了**这一局**里');
+  ok(Game.takeTalent('m1').ok === false, '重复点被拒');
+
+  /* 成本按节点档位累加（微点 1 + 微点 1 + 显著点 2） */
+  Game.takeTalent('m2');
+  Game.takeTalent('m3');
+  const spentNow = Talent.spentOn(Game.talentsOf(), cid);
+  const free2 = Game.talentFree();
   ok(free2 === earned - spentNow && spentNow === 1 + 1 + 2,
-    '成本累计正确（微点1 + 微点1 + 显著点2，本扇区基准价）', free2 + ' / 已花 ' + spentNow);
+    '成本累计正确（微点1 + 微点1 + 显著点2）', free2 + ' / 已花 ' + spentNow);
 
-  // 撤销是免费的，且只撤最后一个
-  const before = Profile.talentFree(cid);
-  ok(Profile.undoTalent(cid) === true && Profile.talentFree(cid) === before + 2, '撤销上一点把成本还回来',
-    before + ' → ' + Profile.talentFree(cid));
-  ok(Profile.talentsOf(cid).join(',') === 'm1,m2', '撤掉的是最后一条', Profile.talentsOf(cid).join(','));
+  /* 撤销免费，且只撤最后一个，**成长点退回来** */
+  const before = Game.talentFree();
+  ok(Game.undoTalent() === true && Game.talentFree() === before + 2, '撤销上一点把成长点还回来',
+    before + ' → ' + Game.talentFree());
+  ok(Game.talentsOf().join(',') === 'm1,m2', '撤掉的是最后一条', Game.talentsOf().join(','));
 
-  // 洗点：前几次免费
-  ok(Profile.respecTalents(cid).cost === 0, '第一次洗点免费');
-  ok(Profile.talentsOf(cid).length === 0 && Profile.talentFree(cid) === earned, '洗点把点数全还回来');
-  ok(Profile.respecTalents(cid).ok === false, '没点过天赋时洗点被拒');
+  /* 洗点：前几次免费 */
+  ok(Game.respecTalents(cid).cost === 0, '第一次洗点免费');
+  ok(Game.talentsOf().length === 0 && Game.talentFree() === earned, '洗点把成长点全还回来');
+  ok(Game.respecTalents(cid).ok === false, '没点过天赋时洗点被拒');
 
-  // 免费次数用完 → 开始花孢子
-  for (let i = 0; i < Talent.FREE_RESPECS; i++) { Profile.takeTalent(cid, 'm1'); Profile.respecTalents(cid); }
-  Profile.takeTalent(cid, 'm1');
-  const cost = Profile.respecTalents(cid).cost;
+  /* 免费次数用完 → 开始花材料 */
+  for (let i = 0; i < Talent.FREE_RESPECS; i++) { Game.takeTalent('m1'); Game.respecTalents(cid); }
+  Game.takeTalent('m1');
+  const cost = Game.respecTalents(cid).cost;
   ok(cost === Talent.RESPEC_COST, '免费次数用完 → 洗点要花材料（' + cost + '）', cost);
-  ok(Profile.respecTalents(cid).ok === false, '材料不够时洗点被拒（此时已洗过，无天赋可洗）');
-  Profile.addMaterial(100);
-  Profile.takeTalent(cid, 'm1');
-  const matsBefore = Profile.material();
-  const paid = Profile.respecTalents(cid);
-  ok(paid.ok && paid.cost === Talent.RESPEC_COST && Profile.material() === matsBefore - Talent.RESPEC_COST,
-    '材料够 → 扣掉并洗成功', matsBefore + ' → ' + Profile.material());
-}
+  ok(Game.respecTalents(cid).ok === false, '材料不够时洗点被拒（此时已洗过，无天赋可洗）');
+  Game.addMaterial(100);
+  Game.takeTalent('m1');
+  const matsBefore = Game.material();
+  const paid = Game.respecTalents(cid);
+  ok(paid.ok && paid.cost === Talent.RESPEC_COST && Game.material() === matsBefore - Talent.RESPEC_COST,
+    '材料够 → 扣掉并洗成功', matsBefore + ' → ' + Game.material());
 
+  /* 洗点把成长点退回来 —— 余额语义与原来'累计预算'语义的分界点：
+     不退的话那些成长点就凭空消失了。 */
+  ok(paid.refund === Talent.spentOn(['m1'], cid), '洗点退还的数额 = 已投进天赋的那一份', paid.refund);
+}
 /* ---------------- 7. 验收：天赋只改开局条件 ---------------- */
 console.log('\n[7] 验收：天赋是"开局输入的一部分"，不是运行期隐藏加成');
 {
@@ -279,7 +294,7 @@ console.log('\n[7] 验收：天赋是"开局输入的一部分"，不是运行�
   const gameSrc = fs.readFileSync(path.join(ROOT, 'src', 'game.ts'), 'utf8');
   /* **先剥注释再数**：这条测的是"代码在哪里碰 opening"，而注释里提一句
      `Game.newRun(…, data.opening)` 会把计数推上去 —— 于是它变成一条
-     "谁的说明文字多谁违规"的规则（和 arch-audit 那把尺子踩过的坑是同一个）。 */
+     "谁的说明文字多谁违规"的规则（和 arch-audit 那条校验踩过的坑是同一个）。 */
   const gameCode = gameSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
   const openingUse = (gameCode.match(/opening/g) || []).length;
   ok(openingUse > 0 && openingUse < 20,
@@ -291,7 +306,11 @@ console.log('\n[7] 验收：天赋是"开局输入的一部分"，不是运行�
   // 模拟层不认识"天赋"这个词。**先去掉注释再查** ——
   // 否则"这个对象由 talents.ts 折出来"这类说明会误报成反向依赖。
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  const simFiles = ['game.ts', 'enemies.ts', 'ai.ts', 'emit.ts', 'stats.ts', 'collide.ts', 'arena.ts', 'depth.ts'];
+    /* ⚠ **射程在 M3 收窄了**：`game.ts` 是**会话层**，而 v3 §二 说三个模块
+     （战斗 / 经营 / 养成）**全在局内** —— 所以会话层认识 `Talent` 是**对的**。
+     该守的是**更下面的模拟层**（敌人 / AI / 数值 / 碰撞 / 竞技场）：
+     那一层不该知道'天赋'这个概念，否则就成了'运行期的隐藏加成'（E43 的原意）。 */
+  const simFiles = ['enemies.ts', 'ai.ts', 'emit.ts', 'stats.ts', 'collide.ts', 'arena.ts', 'depth.ts'];
   const leak = [];
   simFiles.forEach(f => {
     const src = strip(fs.readFileSync(path.join(ROOT, 'src', f), 'utf8'));
@@ -425,28 +444,30 @@ console.log('\n[10] 经营扇区：折扣与孢子真的生效，且"空开局"�
      键名与实现分叉 4 个字段、3 份文档，谁都没红。它只在 `tools/balance.mjs`
      上显形：经济流换个货币变富，于是"战斗流在所有指标上都不弱于他人"。
      现在断言落在**材料**上 —— 那才是这个键名承诺的东西。 */
-  const matBefore = Profile.material();
+  /* ⚠ **材料是局内余额**（M1）：起新一局会**重置**它，
+     所以不能拿上一局的余额当基线 —— 基线就是"开局"，而开局是 0。 */
   Game.newRun('ranger', 4242, 0, { stats: {}, weapons: [], items: [], scrap: 0, econ: { waveIncome: 20 } }, null);
   const si = Game.getSession();
-  ok(Profile.material() === matBefore + 20,
-    '开局第一波就到账的是**材料**（每波 +20 → 材料 +20）',
-    String(Profile.material() - matBefore));
+    ok(Game.material() === 20,
+      '开局第一波就到账的是**材料**（每波 +20 → 材料 20）',
+      String(Game.material()));
   ok(si.materialEarned === 20,
     '并且记进了这一局的"打到多少材料"（结算与界面展示读它）', String(si.materialEarned));
   ok(si.player.scrap === 0 && si.stats_total.scrap === 0,
     '**一废料都不给**（材料与废料是两种货币，不能互换）',
     'p.scrap=' + si.player.scrap + ' total=' + si.stats_total.scrap);
 
-  const matBefore2 = Profile.material();
+    /* 材料是**局内余额**：`newRun` 一开就把上一局的数重置掉，
+     所以基线只能是「开局 0」，而 `newRun` 里第一波已经产了 6。 */
   Game.newRun('ranger', 4242, 0, Talent.openingFor('ranger', ['g6']), null);
-  ok(Profile.material() === matBefore2 + 6,
-    '「库存」每波 +6 材料', String(Profile.material() - matBefore2));
+  ok(Game.material() === 6,
+    '「库存」每波 +6 材料', String(Game.material()));
 
-  const matBefore3 = Profile.material();
+  /* 空开局 = 材料 0（恒等）—— 基线同样是「这一局」，不是上一局。 */
   Game.newRun('ranger', 4242, 0, null, null);
-  ok(Profile.material() === matBefore3 && Game.getSession().materialEarned === 0,
+  ok(Game.material() === 0 && Game.getSession().materialEarned === 0,
     '空开局 → 一分不给（恒等，这是行为指纹不受影响的前提）',
-    String(Profile.material() - matBefore3));
+    String(Game.material()));
 
   // 互斥：经营扇区的精通与工程扇区的「经济精通」是同一类 → 只能选一个
   const both = ['e4', 'g4'];
@@ -524,36 +545,43 @@ console.log('\n[10] 经营扇区：折扣与孢子真的生效，且"空开局"�
   ok(Game.getSession().offers[0].price === noOpenPrice,
     '不传开局 与 传"空开局对象" 价格逐位一致（恒等）');
 
-  /* ---- 孢子倍率：与据点相加后统一封顶 ---- */
+  /* ---- 产出倍率：**现在量的是"训练"**（M3 把养成代币的产出搬进了养成端）----
+
+/* ⚠ **语义反转**（M3，2026-09）：结算**不再发**养成代币。
+   它以前在这里发两笔（打得深 + 合成），而那两条都产在**战斗动作**上 ——
+   v3 §5.2 的边是 战斗→经营→养成→战斗，**没有"战斗 → 养成"**。
+   现在产出点在 `Game.train`（养成模块内部：花材料换成长点）。
+   所以天赋的 `sporeMul` 也从"乘结算"改指到"乘训练产出"上 ——
+   指到结算上的话，那两条天赋节点会**完全没有作用**。 */
+const trainOnce = (omods) => {
   Storage.wipe(); Profile.reset();
-  const runOf = (extra) => Object.assign({
-    char: 'ranger', wave: 10, level: 10, kills: 100, scrap: 400,
-    damage: 1, taken: 1, healed: 1, packs: 0, win: true, danger: 0, peaks: {}
-  }, extra);
-  const baseSpores = Math.round(Profile.sporesForRun(runOf({})));
-  Profile.applyRun(runOf({}), {});
-  const gotPlain = Profile.spores();
-  Profile.reset();
-  Profile.applyRun(runOf({ omods: { sporeMul: 0.15 } }), {});
-  const gotTalent = Profile.spores();
-  ok(gotTalent === Math.round(baseSpores * 1.15), '天赋孢子节点按倍率生效（' + gotPlain + ' → ' + gotTalent + '）');
-
-  Profile.reset();
-  Profile.applyRun(runOf({ omods: { sporeMul: Talent.ECON_CAP.sporeMul } }), {});
-  const gotMax = Profile.spores();
-  ok(gotMax === Math.round(baseSpores * (1 + 0.85)), '天赋两个孢子节点叠满 = +85%（' + gotMax + '）', gotMax);
-
-  /* 据点**不再**乘孢子了（那一条是"据点数值穿透"，已删）：
-     现在就算把 `kmods.sporeMul` 硬塞进来，孢子产出也不该变 —— 这条断言守的就是"删干净了"。 */
-  Profile.reset();
-  Profile.applyRun(runOf({
-    kmods: { sporeMul: 0.5 },                        // 已经不存在这一条了：假的修正不该生效
-    omods: { sporeMul: Talent.ECON_CAP.sporeMul }     // 天赋拉满
-  }), {});
-  const capped = Profile.spores();
-  ok(capped === Math.round(baseSpores * (1 + Talent.ECON_CAP.sporeMul)),
-    '据点不再影响孢子产出（只剩天赋那一份：+' + Math.round(Talent.ECON_CAP.sporeMul * 100) + '% → ' + capped + '）',
-    capped);
+  Game.newRun('ranger', 4321, 0, { stats: {}, weapons: [], items: [], scrap: 0, econ: omods }, null);
+  Game.addMaterial(100);
+  const before = Game.growth();
+  const r = Game.train('drill');
+  return { gain: Game.growth() - before, ok: r.ok, reason: r.reason };
+};
+const plain = trainOnce(null);
+ok(plain.ok && plain.gain === Train.BY_ID['drill'].gain, '不点天赋时训练拿基础产出（' + plain.gain + '）');
+const withTalent = trainOnce({ sporeMul: 0.15 });
+ok(withTalent.gain === Math.round(Train.BY_ID['drill'].gain * 1.15),
+  '天赋产出节点按倍率生效（' + plain.gain + ' → ' + withTalent.gain + '）', withTalent.gain);
+const withMax = trainOnce({ sporeMul: Talent.ECON_CAP.sporeMul });
+ok(withMax.gain === Math.round(Train.BY_ID['drill'].gain * (1 + Talent.ECON_CAP.sporeMul)),
+  '两个节点叠满 = +' + Math.round(Talent.ECON_CAP.sporeMul * 100) + '%（' + withMax.gain + '）', withMax.gain);
+/* 据点**不再**乘这条曲线了（那一条是"据点数值穿透"，已删）：
+   把 `kmods.sporeMul` 硬塞进来也不该变 —— 这条断言守的就是"删干净了"。 */
+const withFakeKeep = (() => {
+  Storage.wipe(); Profile.reset();
+  Game.newRun('ranger', 4321, 0, { stats: {}, weapons: [], items: [], scrap: 0, econ: { sporeMul: Talent.ECON_CAP.sporeMul } }, null);
+  Game.getSession().kmods.sporeMul = 0.5;      // 已经不存在这一条：假的修正不该生效
+  Game.addMaterial(100);
+  const before = Game.growth();
+  Game.train('drill');
+  return Game.growth() - before;
+})();
+ok(withFakeKeep === Math.round(Train.BY_ID['drill'].gain * (1 + Talent.ECON_CAP.sporeMul)),
+  '据点不再影响这条产出（只剩天赋那一份：' + withFakeKeep + '）', withFakeKeep);
   ok(Profile.SPORE_MUL_CAP >= Talent.ECON_CAP.sporeMul,
     '天赋的上限仍在（' + Profile.SPORE_MUL_CAP + ' ≥ ' + Talent.ECON_CAP.sporeMul + '）');
   Profile.reset();

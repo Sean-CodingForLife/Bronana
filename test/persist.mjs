@@ -128,7 +128,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'input.ts': ['hasDOM', '_capture', '_padKeys', '_padOnce', '_padHeld', '_stickEl', '_knobEl', '_stickReady'],
     /* `lastSfx` = 节流表（纯表现：同一音效的时间戳）。
        `duckTimer` = 闪避的放回定时器 —— 它也是纯表现，而且**必须**登记：
-       一个没被放回的定时器会让音乐永远小声，而这件事没有任何别的尺子看得见。 */
+       一个没被放回的定时器会让音乐永远小声，而这件事没有任何别的校验看得见。 */
     'audio.ts': ['lastSfx', 'duckTimer'],
     /* 手动模式的输入层状态（**纯表现性质**：它们只影响"这一帧的输入长什么样"，
        不进存档、不进模拟 —— `_padAim` 是手柄右摇杆方向、`_mouseSeen` 是
@@ -147,7 +147,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'registry.ts': ['FAMILIES', 'NAMES'],
     'containers.ts': ['DEFS', 'NAMES'],
     'record.ts': ['rec', 'events', 'inputs', 'seedOfRun', 'wrapped', 't0',
-      // 回放中标记：回放会真的跑到 gameOver，接线层靠它不往存档里写假数据
+      // 回放中标记：回放会真的跑到 gameOver，接入层靠它不往存档里写假数据
       'replaying'],
     'diag.ts': [],
     'comp.ts': ['DEFS', 'DEF_NAMES', 'ARCHS', 'ARCH_NAMES', 'SYSTEMS', 'SYS_NAMES'],
@@ -159,7 +159,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'save.ts': [],
     // autoPauseEnabled = "失焦自动暂停"设置的镜像；runPeaks = 本局峰值（挑战"极限"组读它）
     // lastDaily = 最近一局每日挑战的成绩码（结算页与图鉴面板要显示它）
-    // challenge = "这一局是挑战局"的标记（每日 / 每周共用；属于接线层，模拟层不认识它）
+    // challenge = "这一局是挑战局"的标记（每日 / 每周共用；属于接入层，模拟层不认识它）
     'main.ts': ['acc', 'last', 'running', 'testModeApplied', 'stepOnce', 'lastTape', 'autoPauseEnabled', 'runPeaks', 'lastDaily', 'challenge'],
     // 信封是工厂：状态全在闭包里，模块级没有可变状态
     'envelope.ts': [],
@@ -171,7 +171,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'challenges.ts': [],
     // 难度阶梯：一张声明表 + 折叠规则，全是常量；BY_LEVEL 只做属性写入
     'danger.ts': [],
-    // 每日挑战：规则是纯函数（"这一局是不是挑战"的标记已挪到 main.ts 的接线层）
+    // 每日挑战：规则是纯函数（"这一局是不是挑战"的标记已挪到 main.ts 的接入层）
     'daily.ts': [],
     // 每周挑战：同上
     'season.ts': [],

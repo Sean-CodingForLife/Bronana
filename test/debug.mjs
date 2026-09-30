@@ -1,5 +1,5 @@
 /* =========================================================
-   debug.mjs — 引擎级工具三件套的测试
+   debug.mjs — 引擎级工具三项的测试
      1) 存档迁移链：老档逐级升上来，而不是"拒绝"
      2) 录制 / 回放：同一条带子重放出逐位一致的对局
      3) 诊断面板：聚合的文本确实包含各系统的账目，且不参与玩法
@@ -21,7 +21,7 @@ function throws(fn) { try { fn(); return null; } catch (e) { return e.message; }
 installDom();
 const g = globalThis;
 
-console.log('\n=== Bronana · 调试与工具三件套 ===\n');
+console.log('\n=== Bronana · 调试与工具三项 ===\n');
 console.log('[1] 加载（含界面层：诊断面板要接上 DOM）');
 let loadErr = null;
 try { await loadAll(UI_MODULES); } catch (e) { loadErr = e.message; }

@@ -33,6 +33,34 @@ interface StatLine {
   key: string; value: number; text: string; good: boolean; label: string;
 }
 
+/* ---------------- 数值折叠（fold.ts） ----------------
+   改造前 `how` 在**四处**被写成裸 `string`（BoonsModKey / DungeonModKey /
+   Danger.deltaOf / Items.COST_KINDS），而分派手写了五遍、取值集合互不一致 ——
+   于是"改一处不同步"是静默的。现在它有一个联合类型：
+   源码里写错一个字母当场编译不过，存档/JSON 里溜进来的坏值由 `Registry` 家族
+   `foldOp` 在运行期挡掉。两道都在。 */
+type FoldOp = 'mul' | 'add' | 'min' | 'or';
+/** 折出来的值：`or` 是布尔（`DangerMods.doubleBoss: boolean`），其余是数 */
+type FoldValue = number | boolean;
+interface FoldDef {
+  id: FoldOp; name: string; sign: 'ratio' | 'amount' | 'flag'; identity: FoldValue; note: string;
+}
+interface FoldApi {
+  /** 一行一种折法（唯一的一张表） */
+  LIST: FoldDef[];
+  BY: Record<string, FoldDef>;
+  /** 只支持"倍率 / 加成"的子集（代价折算按折法分桶，用它兜住） */
+  BUCKET_OPS: FoldOp[];
+  /** 还没折过时的初值 —— 它必须是该折法的**恒等元**（audit 拿探针实测） */
+  identity(op: FoldOp): FoldValue;
+  numIdentity(op: FoldOp): number;
+  /** **唯一**的分派：认不出的折法原样返回（不动） */
+  apply(op: FoldOp, cur: FoldValue, v: FoldValue): FoldValue;
+  /** 数值门面：给键集里只可能出现 × / + / min 的表用（免掉 number | boolean 的传染） */
+  num(op: FoldOp, cur: number, v: number): number;
+  audit(): { ok: boolean; problems: string[]; counts: { ops: number; buckets: number } };
+}
+
 /* ---------------- 数据定义 ---------------- */
 /** 品级表的一行（data_tiers.ts）：档位、名字、界面 class、解锁波次、合成台阶 */
 interface TierRow {
@@ -112,6 +140,13 @@ interface CurvesApi {
   LIST: CurveDef[];
   BY_ID: Record<string, CurveDef>;
   SHAPES: Record<string, CurveShapeDef>;
+  /**
+   * **改造前那条式子**的参考实现（逐点等价校验的唯一出处）。
+   * 暴露出来是为了让 `test/curves.mjs` 直接读它，而不是自己再抄一份 ——
+   * 抄两份的代价实测过：改了 `LEGACY` 忘了 `REF`，一处红一处绿。
+   * 改曲线时**同时**改这里，并说明这是行为变更。
+   */
+  LEGACY: Record<string, (t: number) => number>;
   /** 求值：`t` 是原始自变量（房间号），`origin` 会自动减掉。可临时覆盖常量（实验用） */
   at(id: string, t: number, overrides?: CurveParams): number;
   shapeOf(id: string): string;
@@ -243,12 +278,12 @@ interface ArtShadersApi {
   usersOf(id: string): string[];
   /** 声明了却没有使用方的 shader（= 写着好玩的效果） */
   unused(): string[];
-  /** 登记为"备用"的效果（没接线，但说清了等什么条件才用） */
+  /** 登记为"备用"的效果（没接入，但说清了等什么条件才用） */
   RESERVED: ArtShaderReservedDef[];
   RESERVED_BY_ID: Record<string, ArtShaderReservedDef>;
-  /** 既没接线、也没登记为备用的 shader（= 真的漏了） */
+  /** 既没接入、也没登记为备用的 shader（= 真的漏了） */
   missingWiring(): string[];
-  /** 是否把"接线状态"算进自检（加载时不算；测试与工具会打开） */
+  /** 是否把"接入状态"算进自检（加载时不算；测试与工具会打开） */
   requireWiring: boolean;
   audit(): {
     ok: boolean; problems: string[];
@@ -512,7 +547,7 @@ interface ArtApi {
   LINT_RULES: ArtLintRuleDef[];
   LINT_BY_ID: Record<string, ArtLintRuleDef>;
   BUDGET: { drawsPerFrame: number; cacheBytes: number; perAtlas: number; framesPerClip: number };
-  /** 任何资源声明都要过的那把尺子 */
+  /** 任何资源声明都要过的那条校验 */
   lintAsset(a: ArtAssetDecl): { ok: boolean; problems: string[] };
   audit(): ArtAudit;
   /** 资源归属：类别 id → 生产它的模块名 */
@@ -531,39 +566,237 @@ interface ArtApi {
 }
 
 /* =========================================================
-   货币与循环（economy.ts）
+   账本与核心素材（ledger.ts / eco_*.ts / link.ts）
    ---------------------------------------------------------
-   一笔货币 = **层级**（能不能带出局）+ **来源与去向**（循环的哪条边）。
-   三个模块（战斗 / 经营 / 养成）靠这些边连成一条闭环 —— 于是
-   "三模块怎么互相喂"是可查的数据，不是散文。
+   设计上下文 v3 §5.4-错误1：
+     "把三个模块的货币压成一套。**禁止统一 `economy.ts`
+      定义五六种货币互相兑换。**"
+
+   所以类型也照着这个拆：**没有"一张表定义所有货币"的类型**。
+   货币定义分在四本账里（战斗 / 经营 / 养成 / 全局），
+   而**核心素材不在这套类型里** —— 它不是钱，是钥匙（见 `LinkDef`）。
    ========================================================= */
-interface CurrencyTierDef {
+
+/** 代币的**角色**（v3 §5.1 的两类；核心素材**不在账本里**，所以这里没有它） */
+interface CurrencyRoleDef {
   name: string;
   note: string;
-  /** `run` = 结算清零；`account` = 带得出去 */
-  lifetime: 'run' | 'account';
 }
 
-interface SystemDef {
-  name: string;
-  note: string;
-  where: 'in-run' | 'meta';
-}
-
-interface CurrencyDef {
+/**
+ * 一个 **NPC 关系阶段**（`bonds.ts`）。
+ *
+ * v3 §8-3：养成模块的**共享关系状态**（好感 / 信任 / 关系阶段）。
+ * `at` 是信任门槛，`growth` 是**到达这一级时产多少养成代币**。
+ */
+interface BondStageDef {
   id: string;
   name: string;
-  /** 层级（必须登记在 `Economy.TIERS` 里） */
-  tier: string;
-  /** 来源系统（**只有 `combat` 合法**：局外不许自己印钱） */
-  from: string[];
-  /** 去向系统 */
-  to: string[];
+  /** 信任门槛（第一级必须是 0；后面的必须严格递增） */
+  at: number;
+  /** 到达这一级产多少养成代币（初始级必须是 0 —— 玩家没"到达"过它） */
+  growth: number;
+  note: string;
+}
+
+interface BondsApi {
+  STAGES: BondStageDef[];
+  BY_STAGE: Record<string, BondStageDef>;
+  /** 每位 NPC 每次相处给多少信任 */
+  TRUST_PER_TALK: number;
+  /** 每位 NPC 每波能相处几次（**模块内的时间感**，与训练/制造同一个形状） */
+  TALK_PER_WAVE: number;
+  /** 现在处于第几级 */
+  stageIndex(trust: number): number;
+  /** 现在处于哪个阶段（返回定义） */
+  stageOf(trust: number): BondStageDef;
+  /** 与"某一位 NPC"的关系名单（**同源于 `story.ts`**，不另抄一份） */
+  NPCS(): Array<{ id: string; name: string }>;
+  /** 下一级还要多少信任（已满级返回 0） */
+  toNext(trust: number): number;
+  /** 界面铺一屏要的那些数 */
+  view(npcId: string, trust: number, talksUsed: number): {
+    id: string; trust: number; stage: string; stageName: string; note: string;
+    toNext: number; nextName: string; left: number;
+  };
+  audit(): { ok: boolean; problems: string[]; counts: { stages: number; npcs: number; perWave: number } };
+}
+
+/**
+ * 养成模块的一个**训练科目**（`training.ts`）。
+ *
+ * v3 §8-3 说养成的产出动作是"训练、突破、与 NPC 相处到某个关系阶段、把一条能力线走通"。
+ * 这是**第一个**：花 `material`（全局货币 = 行动成本）换 `growth`（养成代币）。
+ */
+interface TrainingDef {
+  id: string;
+  name: string;
+  /** 基础代价（材料，**递增**：第 n 次是 `cost + n × ceil(cost/3)`） */
+  cost: number;
+  /** 一次给多少养成代币 */
+  gain: number;
   note: string;
   why: string;
 }
 
-/** 反哺边（局外 → 战斗）：不是货币，是"下一局的开局条件" */
+interface TrainingApi {
+  LIST: TrainingDef[];
+  BY_ID: Record<string, TrainingDef>;
+  /** 每波能做几次训练（**模块内的时间感**：不是冷却，是回合数） */
+  PER_WAVE: number;
+  /** 第 n 次（从 0 数）训练某个科目要花多少材料 */
+  costOf(id: string, n: number): number;
+  /** 这一波还能训练几次 */
+  left(used: number): number;
+  /** 界面铺一屏（价钱 / 能不能练 / 练不练得起） */
+  options(used: number, material: number): Array<{ id: string; name: string; note: string; cost: number; gain: number; ok: boolean; reason: string }>;
+  audit(): { ok: boolean; problems: string[]; counts: { drills: number; perWave: number } };
+}
+
+/** 一个模块。v3 §二：**三个**模块（战斗 / 经营 / 养成），不是四个 */
+interface SystemDef {
+  name: string;
+  note: string;
+}
+
+/**
+ * 账本里的一笔代币。
+ *
+ * ⚠ 与旧版的区别：**没有 `from` / `to` / `tier` / `own`** ——
+ * 那些字段的存在本身就暗示"有人会去比它们的流向、给它们定汇率"，
+ * 而那正是 v3 §5.4-错误1 描述的失败路径。
+ * 现在一笔代币只回答两件事：**它归哪本账**（`ledger` / `owner`）、
+ * **它是什么角色**（`role`）。
+ */
+interface CurrencyDef {
+  id: string;
+  name: string;
+  note: string;
+  why: string;
+  /** `module` = 模块代币（只在本模块花）；`global` = 全局货币（行动成本） */
+  role: string;
+  /** 它住哪本账（`combat` / `manage` / `grow` / `global`） */
+  ledger: string;
+  /** 它归哪个模块（`global` 账本的归属就是 `global`） */
+  owner: string;
+}
+
+interface LedgerDef {
+  id: string;
+  owner: string;
+  name: string;
+  note: string;
+  currencies: CurrencyDef[];
+}
+
+/**
+ * **模块代币之间的兑换**（v3 §5.3 + §7-12）。
+ *
+ * v3 要的四条限制全在这里，`Ledger.audit()` 逐条查：
+ *   · `rate`   —— 汇率必须 **< 1**（高税：换一次就亏一截）
+ *   · `cap`    —— 每局限额（`0` = 不限）
+ *   · `oneWay` —— 单向
+ *   · `cost`   —— 兑换本身还要消耗**全局货币**（行动成本）
+ * 后两条至少满足一条，否则玩家会拿它当套利通道绕过整个模块。
+ */
+interface ExchangeDef {
+  id: string;
+  from: string;
+  to: string;
+  rate: number;
+  cap: number;
+  oneWay?: boolean;
+  cost: number;
+  where: string;
+  note: string;
+}
+
+interface LedgerApi {
+  SYSTEMS: Record<string, SystemDef>;
+  ROLES: Record<string, CurrencyRoleDef>;
+  /** 定义一个账本（每个模块自己调一次） */
+  define(def: {
+    id: string; owner: string; name?: string; note: string;
+    currencies: Array<{ id: string; name: string; note: string; why: string; role?: string }>;
+  }): LedgerDef;
+  byId(id: string): LedgerDef | null;
+  /** 全部账本（按定义顺序） */
+  all(): LedgerDef[];
+  /** 四本账里的全部代币（**只读聚合**，给工具打印用） */
+  currencies(): CurrencyDef[];
+  /** 按 id 查一笔代币（只读：它住哪本账不改变谁能花它） */
+  currency(id: string): CurrencyDef | null;
+  /** 某个模块的账本 */
+  of(owner: string): LedgerDef | null;
+  /** 某个模块自己的代币 id（"这笔钱只能在这个模块花"的判据） */
+  ownedBy(owner: string): string[];
+  /** 兑换表（v3 §5.3：只有**模块代币之间**才谈得上兑换） */
+  EXCHANGE: ExchangeDef[];
+  exchangeById(from: string, to: string): ExchangeDef | null;
+  /** 这笔兑换现在能不能做（余额、限额、全局货币都查） */
+  canExchange(from: string, to: string, n: number, have: number, global: number):
+    { ok: boolean; got?: number; cost?: number; reason?: string };
+  audit(): { ok: boolean; problems: string[]; counts: { ledgers: number; currencies: number; exchanges: number } };
+}
+
+/**
+ * **核心素材**（v3 §5.1 / §5.2）—— 跨模块代币。
+ *
+ * ⚠ **它不在任何账本里**（上面那套账本类型里没有它）。
+ * v3 §5.4-错误2："把核心素材当货币处理…一旦可兑换或流通，循环就散了。"
+ * 它是**钥匙**：产出地与消费地必须分开，不可兑换、不可替代。
+ *
+ * 两条数必须同时有（v3 §9-建议1）：
+ *   · `chance` —— 每次尝试的掉率（有多惊喜）
+ *   · `pity`   —— 连续几次没出就必出（有多不气人）
+ * 以及至少两条 `paths`（多路径）—— 不靠反复刷同一个点也能拿到。
+ */
+interface LinkDef {
+  id: string;
+  name: string;
+  /** 产出地（模块名） */
+  producedBy: string;
+  /** 消费地（模块名）—— **必须与产出地不同**，那是"循环"的定义本身 */
+  consumedBy: string;
+  /** 它从哪来（一句人话） */
+  source: string;
+  /** 每次尝试的掉率，落在 (0,1) */
+  chance: number;
+  /** 保底：连续这么多次没出，下一次**必出** */
+  pity: number;
+  /** 多路径获取（至少两条） */
+  paths: string[];
+  note: string;
+  why: string;
+}
+
+interface LinkApi {
+  LIST: LinkDef[];
+  BY_ID: Record<string, LinkDef>;
+  /**
+   * **声明了、但还没接入的核心素材**（已知欠账）。
+   * 范式同 `RUN_START` / `ONE_SHOT`：允许有欠账，不允许**悄悄**有欠账 ——
+   * 门 `drift` 的判据 G 读 `src/` 的调用点，找不到产出/消费点又不在这里登记的当场报红。
+   */
+  PENDING: Array<{ id: string; why: string }>;
+  /** 新的保底状态（它属于**这一局**，由调用方持有） */
+  empty(): { misses: Record<string, number> };
+  /**
+   * 掷一次。`byPity` 为真表示这一发是保底出的。
+   * `until` = 还差几次必出（界面要把它显示出来 —— 保底必须**看得见**）
+   */
+  roll(id: string, state: { misses: Record<string, number> } | null | undefined, rnd: (() => number) | null | undefined):
+    { got: boolean; byPity: boolean; misses: number; until: number; reason?: string };
+  /** 还差几次必出（`0` = 下一次就是保底） */
+  untilPity(id: string, state: { misses: Record<string, number> } | null | undefined): number;
+  producedBy(sys: string): LinkDef[];
+  consumedBy(sys: string): LinkDef[];
+  /** 链条有没有闭合：每个模块既产一个、又消费一个 */
+  closed(): Array<{ sys: string; produce: number; consume: number }>;
+  audit(): { ok: boolean; problems: string[]; counts: { links: number; closed: boolean } };
+}
+
+/** 反哺边（局外 → 战斗）：**旧架构的遗迹** —— 见 `EconomyApi.BACKFLOW` */
 interface BackflowDef {
   from: string;
   to: string;
@@ -577,37 +810,101 @@ interface BackflowDef {
   note: string;
 }
 
+/**
+ * **只读聚合视图**（`economy.ts`）。
+ *
+ * ⚠ 这个接口里**没有任何"定义货币"的方法** —— 定义在四本账文件里，
+ * 核心素材在 `link.ts`。这里只有读（外加一处把自己的诚实性也查了的 `audit`）。
+ *
+ * v3 §5.4-错误1 点名禁止的正是"统一 `economy.ts` 定义五六种货币互相兑换"，
+ * 所以本接口的规模本身就是那条约束的体现：它读得到一切，改不了任何一笔。
+ */
 interface EconomyApi {
+  /** 汇总视图：四本账里的全部代币（**只读**） */
   LIST: CurrencyDef[];
   BY_ID: Record<string, CurrencyDef>;
-  TIERS: Record<string, CurrencyTierDef>;
+  /** 三个模块（转发 `Ledger.SYSTEMS`） */
   SYSTEMS: Record<string, SystemDef>;
-  /** 这笔钱结算时清不清零（层级决定，不是各处自己判） */
-  isSession(id: string): boolean;
-  /** 这笔钱能不能带出去 */
-  isAccount(id: string): boolean;
-  flowsFrom(id: string, sys: string): boolean;
-  flowsTo(id: string, sys: string): boolean;
-  byTier(tier: string): string[];
-  /** 某一条循环边上有哪几笔钱（`combat → manage` …） */
-  edge(from: string, to: string): string[];
-  /** **循环图**：三个模块之间的边，以及每条边上流的是什么 */
+  /** 代币角色（转发 `Ledger.ROLES`） */
+  ROLES: Record<string, CurrencyRoleDef>;
+
+  /** 四本账（战斗 / 经营 / 养成 / 全局） */
+  ledgers(): LedgerDef[];
+  /** 某个模块的账本 */
+  ledgerOf(sys: string): LedgerDef | null;
+  /** 这笔代币归哪个模块（"只能在自己模块花"的判据） */
+  ownerOf(id: string): string;
+  /** 某个模块自己的代币 id */
+  ownedBy(sys: string): string[];
+  /** 这笔代币是模块代币吗（产在本模块、只在本模块花） */
+  isModule(id: string): boolean;
+  /** 这笔代币是全局货币吗（三模块都产都花，是行动成本） */
+  isGlobal(id: string): boolean;
+  /** 全库唯一的那笔全局货币 */
+  globalCurrency(): CurrencyDef | null;
+
+  /** 兑换表（v3 §5.3：只有**模块代币之间**才谈得上兑换） */
+  EXCHANGE: ExchangeDef[];
+  exchangeById(from: string, to: string): ExchangeDef | null;
+  /** 这笔兑换现在能不能做（余额、限额、全局货币都查） */
+  canExchange(from: string, to: string, n: number, have: number, global: number):
+    { ok: boolean; got?: number; cost?: number; reason?: string };
+
+  /** **循环图**：由**核心素材**推出来（不是由货币流向）*/
   loop(): { systems: string[]; edges: Array<{ from: string; to: string; what: string[] }> };
-  /**
-   * **反哺边**（局外 → 战斗）：不是货币，是"下一局的开局条件"
-   * （折成 `kmods` / `fmods` / `opening`，开局那一刻并进会话）。
-   */
-  BACKFLOW: BackflowDef[];
-  /** 某个系统通过哪几条反哺边回到战斗（空 = 只进不出的死胡同） */
-  backflowFrom(sys: string): BackflowDef[];
-  /** **已知缺口**：循环里还没有的东西（现在是空的 —— 机制留着，数据空是**好消息**） */
-  GAPS: Array<{ from: string; to: string; what: string; now: string; todo: string }>;
-  /** 循环图里**还缺**的边（audit 与体检工具同一份判据） */
-  missingEdges(): Array<{ from: string; to: string; what: string }>;
+  /** 某一条链边上的核心素材 */
+  edge(from: string, to: string): string[];
+
+  /** 核心素材（**在账本之外**：它们是钥匙不是钱） */
+  LINKS: LinkDef[];
+  linkOf(id: string): LinkDef | null;
+
+  /** 把三处自检合起来，外加"`economy.ts` 自己不许定义代币"那一条 */
   audit(): {
     ok: boolean; problems: string[];
-    counts: { currencies: number; tiers: number; systems: number; edges: number; backflow: number; gaps: number };
+    counts: {
+      currencies: number; ledgers: number; links: number;
+      exchanges: number; systems: number; edges: number;
+    };
   };
+}
+
+/* ---------------- 大厅（station.ts） ---------------- */
+/**
+ * 大厅里的一个**站点**。
+ *
+ * 大厅 = 每次开局进入的地方（参考深岩银河的太空站），三扇门通向三个模块。
+ * 用户的设计："点开始是进入一个大厅，通过大厅再去其他的模块玩…
+ * 怎么去别的模块？通过传送门…每次游戏开始时进入的就是这个大厅"。
+ */
+interface StationSiteDef {
+  id: string;
+  name: string;
+  /** `portal` = 一扇通向模块的门；`board` = 不是门，是读账的地方 */
+  kind: 'portal' | 'board';
+  /** 通向哪个模块（`board` 这一档是 null） */
+  to: string | null;
+  /** **建成它要花多少全局货币「材料」**（0 = 出生就开着） */
+  cost: number;
+  /** 前置站点 id：先盖起它们才谈得上这一扇 */
+  req: string[];
+  note: string;
+  why: string;
+}
+
+interface StationApi {
+  LIST: StationSiteDef[];
+  BY_ID: Record<string, StationSiteDef>;
+  /** 出生就开着的站点（`cost` 为 0 且没有前置） */
+  defaultOpen(): string[];
+  /** 这道门现在能不能开（三种"不行"分得清：已开 / 前置没开 / 材料不够） */
+  canOpen(built: Record<string, boolean> | null | undefined, id: string, material: number):
+    { ok: boolean; reason: string; cost: number };
+  /** 从大厅能去哪些模块（只算开着的门） */
+  reachable(built: Record<string, boolean> | null | undefined): string[];
+  /** 这一局还没盖的门（界面用：把"下一条要什么"摆出来） */
+  locked(built: Record<string, boolean> | null | undefined): StationSiteDef[];
+  audit(): { ok: boolean; problems: string[]; counts: { sites: number; portals: number } };
 }
 
 /* ---------------- 元素（data_elems.ts） ---------------- */
@@ -713,7 +1010,7 @@ interface AffixesApi {
      两者类型等价，但 `tools/arch-audit.cjs` 的 [5] 节按"方法 / 字段"给接口分类，
      函数属性会被数成**字段** —— 于是 `AffixesApi` 会显示成"0 个方法 / 30 个字段"，
      而它其实是一个纯函数模块。真按字段堆出来的接口是一个真实的坏味道，
-     尺子不该因为写法不同就看不见它（也不该因为写法不同就误报）。 */
+     校验不该因为写法不同就看不见它（也不该因为写法不同就误报）。 */
   /** 滚动生成时一件装备最多几条（按**品级**，T4 起 3 条） */
   rollCount(tier: number): number;
   /** 槽位字符串 → { base, tag } */
@@ -738,8 +1035,15 @@ interface AffixesApi {
   rollStream(state: number | undefined, n: number): RngFn;
   /** 合并两套词条（合成/熔接：各取最好的一条，上限为 `max`） */
   merge(a: AffixSet | null, b: AffixSet | null, max: number): AffixSet;
-  /** 一条实例 → 真值（整数 ÷ scale） */
+  /** 一条实例 → 真值（整数 ÷ scale）—— **数值侧**的单位，`fold` 用它 */
   valueOf(inst: AffixInst): number;
+  /**
+   * **显示侧**的那个数（原始整数，不除 `scale`）。`text` 函数吃它。
+   * ⚠ 与 `valueOf` 是两个单位，不能混：混过一次，19 条里 10 条显示成 `+0%`。
+   */
+  shownOf(inst: AffixInst | null | undefined): number;
+  /** 一条词条的**含义**（`MODS[mod].note` + 家族 + 最高档位）；界面与图鉴用 */
+  meaningOf(id: string, inst?: AffixInst | null): string;
   /** 一条词条 → 一句人话 */
   line(inst: AffixInst, opts?: { withName?: boolean }): string;
   /** 一条词条 → 一行 HTML（界面用；颜色按家族分） */
@@ -889,7 +1193,7 @@ interface RecApi {
   start(): boolean;
   stop(): RecTape;
   isRecording(): boolean;
-  /** 正在回放？（回放会真的推进模拟并触发 gameOver，接线层靠这个不落账） */
+  /** 正在回放？（回放会真的推进模拟并触发 gameOver，接入层靠这个不落账） */
   replaying(): boolean;
   input(input: { x?: number; y?: number } | null): void;
   tape(): RecTape;
@@ -1299,8 +1603,17 @@ interface SessionCore {
   itemCost: ItemCostFold;
   /** 回收返还比例（工坊「废料回收」把它从 0.5 抬到 0.7）—— 开局折一次，模拟里只读 */
   salvageRate: number;
-  /** 本局累积的**合金**（合成产出；局内不能花，结算时才入账） */
-  alloy: number;
+  /**
+ * **养成代币余额**（局内）。
+ *
+ * ⚠ 它有过两段历史，都在 2026-09 的 M3 里收口：
+ *   ① 原名 `alloy`（"本局合成攒下的合金"）—— 它**产出在战斗动作上**，
+ *      而 v3 §5.2 没有"战斗 → 养成"这条边。
+ *   ② 合并进 `growth` 之后一度还只是"结算时入账的一个计数"；现在它是
+ *      **真正的余额**：训练（`Game.train`）产它，天赋与图纸花它。
+ *
+ * 一句话说清它现在的身份：**"这一局还剩多少养成代币可以花"**。 */
+  growth: number;
   /** 本局滚过的词条批数（`Affixes.rollStream` 的计数）。
    *  为什么要有它：词条用**自己的**随机流（由主随机流的状态派生），
    *  所以它不会扰动主序列 —— 这条计数保证"同一状态下的下一次派生是同一个数"
@@ -1324,12 +1637,46 @@ interface SessionCore {
  * —— 也就是"这一局临时盖的工坊"。营地搬到经营场景之后那四个字段全部迁去档案
  * （`Profile.campOwned()` / `campRow()` / `wallet.material` / `campFx()`），
  * 留在会话里的只有这两个计数加一个回合列表。接口改名是为了让"这里还有没有营地状态"
- * 这个问题在类型层面就能回答：**没有**。 */
+ * 这个问题在类型层面就能回答：**没有**。
+ *
+ * ⚠ **M1 又把 `material` 搬回来了**（2026-09）。上面那段"迁去档案"的记述是
+ * 当时的结论，而设计上下文 v3 §5.1 + §二 要求相反：全局货币"三模块通用"，
+ * 而三个模块**全在局内** ⇒ **材料是局内货币，不跨局**。
+ * 所以 `material` 重新住在这里（详见 `game.ts` 里那段说明）。 */
 interface SessionCraft {
+  /** **工坊设施 → 等级**（这一局建的；v3 §二：经营模块全在局内） */
+  camp: Record<string, number>;
+  /** 建造顺序（相邻组合靠它判定，所以顺序本身是数据） */
+  campRow: string[];
+  /** 工坊效果的折叠结果（派生值；改动后由 `refreshCampFx` 重算） */
+  campEffects: CampEffects | null;
   /** 这一波已经用过的产线（每波重置：经营那一侧的"回合"） */
   craftUsed: number[];
+  /** **这一波训练了几次**（养成那一侧的"回合"；每波重置，与 `craftUsed` 同一个形状） */
+  trainUsed: number;
+  /** 这一局点过的**天赋节点**（一局一个角色，所以是一张平表；M3） */
+  talents: string[];
+  /** 这一局洗过几次点（免费次数用完之后要花材料） */
+  respecs: number;
+  /** NPC id → **信任**（关系阶段由它推出来，不另存字段 —— 多存的一定会漂） */
+  bonds: Record<string, number>;
+  /** NPC id → **这一波**相处了几次（模块内的时间感；每波重置） */
+  talks: Record<string, number>;
+  /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()`。
+   *  没有它就只能整个重折一遍，那会把属性加两次。 */
+  talentFx: { stats: Record<string, number>; econ: Record<string, number> } | null;
   /** 本局造了几件（结算展示；进存档） */
   craftCount: number;
+  /**
+   * **材料（全局货币）余额 —— 局内**（v3 §5.1）。
+   *
+   * 它是三个模块唯一的共同语言：战斗的掉落与清间、经营的设施运转、
+   * 养成的里程碑都产它；三处的大动作也都花它（v3 §9-建议3：
+   * "行动成本，不是钱 —— 获取有限，消耗刚性"）。
+   *
+   * ⚠ 开局是 **0**（"打才有"，见 `game.ts`）。跨局不带出。
+   */
+  material: number;
   /** 本局打到多少**材料**（`gainMaterial` 记账）。只用于展示 —— 材料是**当场进钱包**的
    *  （不等结算），所以它不是"待入账"的数，而是"这一局赚了多少"的数 */
   materialEarned: number;
@@ -1494,7 +1841,8 @@ interface BoonDef {
 interface BoonsModKey {
   /** 折到哪一组：enemy 进 wmods / econ 模拟层各读一次 / stats 并进属性表 */
   group: string;
-  how: string;
+  /** 折法（`fold.ts` 的 `foldOp` 家族）。`game.foldInto` 折 enemy 那一组时读的就是它 */
+  how: FoldOp;
   note: string;
 }
 interface BoonsFold {
@@ -1507,6 +1855,8 @@ interface BoonsApi {
   LIST: BoonDef[];
   BY_ID: Record<string, BoonDef>;
   MOD_KEYS: Record<string, BoonsModKey>;
+  /** 键 → 折法的扁平表（`game.foldInto` 折 enemy 那一组时读它，不借别人家的表） */
+  OPS: Record<string, FoldOp>;
   /** 把一条契约折成三组（缺省 = 恒等） */
   fold(id: string | BoonDef | null): BoonsFold;
   /** 一条契约的一行行说明（键自带文案） */
@@ -1936,9 +2286,8 @@ interface PerCharRecord {
   respecs: number;
 }
 interface ProfileSnapshot {
-  spores: number;
-  /** 局外第二种货币：**合金**（只由"合成"这条链产出，只用于图纸工坊） */
-  alloy: number;
+  /** **养成代币**（`孢子` 与 `合金` 合并之后的唯一余额；R43） */
+  growth: number;
   /** 已解锁的图纸 id */
   forge: string[];
   unlocked: string[];
@@ -1956,9 +2305,9 @@ interface ProfileSnapshot {
 }
 /** 一局结束后的并入报告：界面用它做提示 */
 interface ProfileRunReport {
-  spores: number;
-  /** 这一局结算到的合金（合成链的产出） */
-  alloy: number;
+  /** **养成代币**这一局进账多少（两条来源之和：打得深 + 合成；R43） */
+  growth: number;
+  /* （合金那条收入已经并进 `growth` —— 见上面） */
   /** 这一局打到的**核心材料**（Boss 掉落；`economy.ts` 的 meta-rare 那一档） */
   core: number;
   /** 这一局带出去的**材料**（`economy.ts` 的 bridge 那一档，只供经营） */
@@ -1970,7 +2319,7 @@ interface ProfileRunReport {
   dangerUnlocked: number;
   /** 这一局获得的天赋点（0 = 没有） */
   pointsGained: number;
-  /** 这一局推进的剧情（接线层据此弹提示；界面不认识 story 表） */
+  /** 这一局推进的剧情（接入层据此弹提示；界面不认识 story 表） */
   story: ProfileStoryReport;
 }
 
@@ -2004,7 +2353,7 @@ interface StoryCtx {
   fragments: number; bosses: number; secrets: number; endings: number;
   flags: Record<string, boolean>;
 }
-/** applyRun 的入参：本局观察值（peaks 由接线层在换波时采样） */
+/** applyRun 的入参：本局观察值（peaks 由接入层在换波时采样） */
 interface ProfileRunInput {
   char: string; wave: number; level: number;
   kills: number; scrap: number; damage: number; taken: number; healed: number;
@@ -2019,9 +2368,9 @@ interface ProfileRunInput {
   danger?: number;
   /** 本局的据点修正（只读 sporeMul：孢子产出倍率） */
   kmods?: StrongholdMods | null;
-  /** 天赋折出来的经济修正（接线层从会话上取，与 kmods 同一条路径） */
+  /** 天赋折出来的经济修正（接入层从会话上取，与 kmods 同一条路径） */
   omods?: OpeningEcon | null;
-  /** 本局累积的合金（合成产出；见 Profile.alloyForRun） */
+  /** 本局**合成**攒下的那一份（`profile.ts` 的 `alloyForRun` 读它） */
   alloy?: number;
   /** 本局打到的核心材料（Boss 掉落；见 game.ts 的 CORE_PER_BOSS） */
   coreEarned?: number;
@@ -2038,6 +2387,8 @@ interface ProfileRunInput {
   secrets?: number;
   /** 这一局见到的所有事件房遭遇 id */
   events?: string[];
+  /** **这一局结束时的据点快照**（离线产出读它 —— 据点本身是局内的，局外读不到） */
+  keep?: Record<string, number>;
 }
 interface ProfileApi {
   CODEX_SEEN: number; CODEX_USED: number; CODEX_MASTERED: number;
@@ -2065,12 +2416,18 @@ interface ProfileApi {
   codexLevel(family: string, id: string): number;
   markCodex(family: string, id: string, level: number): boolean;
   codexStats(family: string): { total: number; seen: number; used: number; mastered: number };
-  spores(): number;
+  /** **养成代币**余额（角色成长 / NPC 羁绊 / 能力解锁共用） */
+  growth(): number;
   /** 孢子产出倍率的**总量**上限（据点"菌床" + 天赋经济节点，相加后封顶） */
   SPORE_MUL_CAP: number;
+  /** 这一局进账多少养成代币（两条来源之和：打得深 + 合成；R43） */
+  growthForRun(run: ProfileRunInput | null): number;
+  /** 只看"打得深"那一条（合成那条在 `alloyForRun`） */
   sporesForRun(run: ProfileRunInput | null): number;
-  addSpores(n: number): number;
-  spendSpores(n: number): boolean;
+  /** 进养成代币（**账号侧**：老档迁移用） */
+  addGrowth(n: number): number;
+  /** 花养成代币；不够就**不扣**并返回 false */
+  spendGrowth(n: number): boolean;
   isDone(challengeId: string): boolean;
   doneIds(): string[];
   perChar(charId: string): PerCharRecord;
@@ -2120,7 +2477,7 @@ interface ProfileApi {
   /* ---- 离线产出 ---- */
   lastSeen(): number;
   /** 结算离线产出（结算即把"上次见面"推到现在） */
-  settleOffline(now?: number): { spores: number; minutes: number; minutesCounted: number; capped: boolean; reason: string; sporebed: number };
+  settleOffline(now?: number): { growth: number; minutes: number; minutesCounted: number; capped: boolean; reason: string; sporebed: number };
   /** 只把"上次见面"推到现在（不结算） */
   touchSeen(now?: number): number;
   /* ---- 天赋（角色养成） ---- */
@@ -2137,7 +2494,8 @@ interface ProfileApi {
   /** 撤销最后一点（免费） */
   undoTalent(charId: string): boolean;
   /** 洗点：清空该角色的天赋，返回花了多少孢子（-1 = 孢子不够） */
-  respecTalents(charId: string): { ok: boolean; reason: string; cost: number };
+  /** 洗点。**材料由调用方扣**（`Game.respecTalents`）—— 它现在是局内余额。 */
+  respecTalents(charId: string, mat: number): { ok: boolean; reason: string; cost: number };
   /** 该角色开局条件的汇总（界面显示与开局都用它） */
   openingOf(charId: string): OpeningLoadout;
   /** 加天赋点（通关 / 里程碑给的），返回加了多少 */
@@ -2149,31 +2507,30 @@ interface ProfileApi {
   /* ---- 跨局据点 ---- */
   keepLevel(id: string): number;
   keepOwned(): Record<string, number>;
+  /** **上一局结束时的据点快照**（账号侧的据点视图 —— 据点本身住在局内 `S.keep`） */
+  keepLast(): Record<string, number>;
   /** 据点的折叠修正（开局交给 Game.newRun） */
   keepMods(): StrongholdMods;
   keepInvested(): number;
-  /** 买 / 升级一个据点设施（花材料） */
-  keepBuy(id: string): { ok: boolean; reason: string; cost: number; toLevel: number };
-  /* ---- 跨局工坊（经营场景的产线）----
-     改造前它在**局内会话**里（每局从零盖）；现在是账号资产。 */
-  campLevel(id: string): number;
-  campOwned(): Record<string, number>;
-  /** 建造顺序（相邻组合靠它判定；升级不挪位置） */
-  campRow(): string[];
-  /** 顺序里剔除"不是真的建了"的设施（坏档防线） */
-  campRowClean(): string[];
-  /** 工坊效果的折叠（省料 / 抬档 / 回收） */
-  campFx(): CampEffects;
-  /** 这一局有几条产线（= 已建设施数；图纸名额由 craft.ts 另加） */
-  campLines(): number;
-  /** 买 / 升级一个工坊设施（花材料） */
-  campBuy(id: string, opts?: { slots?: number; discount?: number; fullRefund?: boolean }):
-    { ok: boolean; reason: string; cost: number; toLevel: number };
-  /** 拆掉一个工坊设施（退一半材料；`fullRefund` 时全额） */
-  campSell(id: string, opts?: { slots?: number; discount?: number; fullRefund?: boolean }):
-    { ok: boolean; reason: string; refund: number };
+  /**
+   * 买 / 升级一个据点设施。**材料由调用方扣**（`Game.keepBuy`）—— 材料是
+   * **局内**余额（v3 §5.1 + §二），而本模块在 `game.ts` 之下，不能反向 import 它，
+   * 所以按本仓范式**收参数**。核心材料仍在这里扣（它是账号资产，M4 才搬）。
+   * @param mat 局内的材料余额
+   */
+  keepBuy(id: string, mat: number): { ok: boolean; reason: string; cost: number; core?: number; toLevel: number };
+  /* =========================================================
+     ⚠ **工坊的访问器与买卖已经删掉了**（M1 第三块，2026-09）
+     ---------------------------------------------------------
+     它们以前读 `data.camp` / `data.campRow`（账号档案）。
+     现在工坊整个搬进了局内（v3 §二："三个模块全在局内"）：
+       · 等级与建造顺序住在 `S.camp` / `S.campRow`（会话）
+       · 规则仍然是纯函数 `Camp.canBuy / refundOf / effects`（它们本来就收 state）
+       · 入口是 `Game.campBuy / campSell`，读出口是 `Game.campOwned / campRow / campFx`
+     `data.camp` / `data.campRow` 只保留给**旧档读取**，不再被写入。
+     ========================================================= */
   /** 界面铺一屏配方（费用 / 能不能造 / 造不造得起）—— **不写规则** */
-  craftOptions(mods: ForgeMods): Array<{
+  craftOptions(mods: ForgeMods, mat: number, fx: CampEffects): Array<{
     id: string; kind: 'weapon' | 'item'; refId: string; name: string; tier: number;
     cost: number; ok: boolean; reason: string; affordable: boolean;
   }>;
@@ -2181,15 +2538,23 @@ interface ProfileApi {
   audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
   /* ---- 图纸工坊（局外第三条腿：只解锁能力）---- */
   /** 现有合金 */
-  alloy(): number;
+
   /** **核心材料**（economy.ts 的 meta-rare 那一档）：只有 Boss 掉。
    *  **没有 `spendCore`** —— 花钱的点各自在自己的账里扣（`keepBuy` / `forgeNode`
    *  本来就要一起落盘）；一个"只扣钱不保存"的公开方法只会多一次落盘，
    *  而且它曾经躺在那里一个调用点都没有（`core → 经营/养成` 因此是假边）。 */
   core(): number;
+  /** 花核心材料；不够就**不扣**并返回 false。
+   *  ⚠ 它一度被删（"没有调用点"），M1 之后 `Game.keepBuy` 成了真实调用点，加回来。 */
+  spendCore(n: number): boolean;
+  /** 记一份**据点快照**（`keepLast`）。离线产出与剧情 flag 读它 ——
+   *  据点住在局内（`S.keep`），而这两处是**局外**机制，读不到会话。 */
+  noteKeep(keep: Record<string, number> | null | undefined): void;
   addCore(n: number): number;
   /** 加合金（结算入账），返回加完的余额 */
-  addAlloy(n: number): number;
+
+  /** 花合金；不够就**不扣**并返回 false */
+
   /** 钱包里的**材料**（跨局、从局内带出来、只供经营） */
   material(): number;
   /** 加材料（结算入账），返回加完的余额 */
@@ -2197,6 +2562,7 @@ interface ProfileApi {
   /** 花材料；不够就**不扣**并返回 false（调用方据此拒绝） */
   spendMaterial(n: number): boolean;
   /** 这一局能结算多少合金（基础产出 + 局内合成 + 熔炉加成） */
+  /** 只看"合成 + 基础产出"那一条（"打得深"那条在 `sporesForRun`） */
   alloyForRun(run: ProfileRunInput | null): number;
   /** 已解锁的图纸 id 列表 */
   forgeOwned(): string[];
@@ -2212,8 +2578,7 @@ interface ProfileApi {
 }
 
 /* ---------------- 离线产出（offline.ts） ---------------- */
-interface OfflineResult {
-  spores: number; minutes: number; minutesCounted: number; capped: boolean; reason: string;
+interface OfflineResult { growth: number; minutes: number; minutesCounted: number; capped: boolean; reason: string;
 }
 interface OfflineApi {
   MAX_HOURS: number;
@@ -2316,7 +2681,7 @@ interface ForgeApi {
   modsFor(owned: unknown): ForgeMods;
   reqsMet(owned: unknown, d: ForgeNodeDef): boolean;
   /** `core` 单列出来：两种资源都不够时要分得清"去打 Boss"和"多拆几件装备" */
-  canUnlock(owned: unknown, id: string, alloy: number, core?: number):
+  canUnlock(owned: unknown, id: string, growth: number, core?: number):
     { ok: boolean; reason: string; cost: number; core: number; locked: boolean };
   nodeText(d: ForgeNodeDef): string;
   effectLines(mods: ForgeMods | null | undefined): string[];
@@ -2493,13 +2858,15 @@ interface StoryEndingDef {
 interface StoryPastDef { char: string; line: string; epilogue: string; }
 /** 层间旁白（翻层时打在横幅上的那一句；不带条件，所以不剧透） */
 interface StoryNarrationDef { floor: number; text: string; }
-/** 剧情条件上下文（接线层从档案里算出来喂给纯函数） */
+/** 剧情条件上下文（接入层从档案里算出来喂给纯函数） */
 interface StoryCtx {
   runs: number; wins: number; floor: number; fragments: number;
   bosses: number; secrets: number; endings: number;
   flags: Record<string, boolean>;
 }
 interface StoryApi {
+  /** NPC 名单（`bonds.ts` 的**同源**来源；不要另抄一份） */
+  NPCS: StoryNpcDef[];
   NPCS: StoryNpcDef[];
   /** 枢纽站点（4 位 NPC + 4 件设施）—— 枢纽界面的**唯一**数据来源 */
   STATIONS: StoryStationDef[];
@@ -2547,7 +2914,7 @@ interface DungeonRoomTypeDef {
   cls: string;
 }
 /** 地牢修正键的折法（与 danger.ts 同构） */
-interface DungeonModKey { how: string; note: string }
+interface DungeonModKey { how: FoldOp; note: string }
 /** 一套环境配色（**看得见的那一半**：地面/碎石/岩石/裂纹/装饰物）
  *
  *  为什么配色属于"数据"而不是"渲染层的一堆 if"：
@@ -2768,12 +3135,19 @@ interface OpeningEcon {
   /** 每波到账的材料（与击杀脱钩的固定产出 —— 经济流能立住的原因） */
   waveIncome: number;
 }
-/** 开局条件：天赋唯一能改的东西（起始属性 / 起始携带 / 起始材料 / 经济修正） */
+/** 开局条件：天赋唯一能改的东西（起始属性 / 起始携带 / 起始资源 / 经济修正）
+ *
+ * ⚠ `material` 是 M1 加的（2026-09）。它在语义上与据点给的 `startMaterials`
+ * 同类（都是开局条件），但它必须走**这里**而不是一个直调，理由是录制回放：
+ * `record.ts` **只录离散命令**，`Game.addMaterial` 不在命令表里 ——
+ * 于是"回放时那笔开局资金"只能靠 `newRun` 的实参重建。 */
 interface OpeningLoadout {
   stats: Record<string, number>;
   weapons: string[];
   items: string[];
   scrap: number;
+  /** **开局材料**（全局货币）。省略 = 0 */
+  material?: number;
   econ?: OpeningEcon;
 }
 interface TalentTypeDef { label: string; cost: number; note: string; }
@@ -2783,7 +3157,7 @@ interface TalentNodeDef {
   type: string;
   name: string;
   desc: string;
-  effects: { stats?: Record<string, number>; weapons?: string[]; items?: string[]; scrap?: number; econ?: Partial<OpeningEcon> };
+  effects: { stats?: Record<string, number>; weapons?: string[]; items?: string[]; scrap?: number; material?: number; econ?: Partial<OpeningEcon> };
   /** 精通 / 本职归属：'offense' 之类是精通类别；'char:xxx' 是本职子树归属 */
   mastery: string | null;
 }
@@ -2833,7 +3207,7 @@ interface DangerApi {
   BY_LEVEL: Record<number, DangerLevelDef>;
   MAX: number;
   BASE: DangerMods;
-  FOLD: Record<string, string>;
+  FOLD: Record<string, FoldOp>;
   NOTES: Record<string, string>;
   /** 每个键的难度方向：'down' = 越小越难（只有 waveTime） */
   DIRECTION: Record<string, string>;
@@ -2844,9 +3218,9 @@ interface DangerApi {
   name(level: number): string;
   note(level: number): string;
   /** 这一级新增了什么 */
-  deltaOf(level: number): Array<{ key: string; value: any; how: string }>;
+  deltaOf(level: number): Array<{ key: string; value: any; how: FoldOp }>;
   /** 到这一级为止偏离基准的全部修正 */
-  activeOf(level: number): Array<{ key: string; value: any; base: any; how: string }>;
+  activeOf(level: number): Array<{ key: string; value: any; base: any; how: FoldOp }>;
   describe(level: number): string;
   /** 定义期自检（表自身的完整性；"键有没有人读"是测试的活） */
   audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
@@ -3098,6 +3472,8 @@ interface StatsApi {
   damageMul(s: StatMap, weapon?: WeaponDef | null): number;
   rangeMul(s: StatMap): number;
   moveSpeed(s: StatMap): number;
+  /** 护甲倍率（**双方共用**）：`armor` 点的护甲把一击乘成几倍。敌人侧也走它 */
+  armorMul(armor: number): number;
   damageTaken(s: StatMap, raw: number): number;
   critChance(s: { critChance: number }): number;
   critMul(): number;
@@ -3148,8 +3524,8 @@ interface ItemsApi {
      声明表 + 折叠出口是完整的：`COST_KINDS` 里写清每个代价键怎么折（属性 / 经济 /
      敌人 / 规则），写错一个键会被自检当场抓住。但 29 件道具此刻**还没有填 cost** ——
      那是一次平衡改版，不该藏在架构复查里。 */
-  /** 代价键的声明表（`fold` 决定它折到哪里去） */
-  COST_KINDS: Record<string, { fold: 'stat' | 'econ' | 'enemy' | 'flag'; note: string; how?: string }>;
+  /** 代价键的声明表（`fold` 决定它折到哪里去）。`how` 必须显式写，且只能是 `BUCKET_OPS` */
+  COST_KINDS: Record<string, { fold: 'stat' | 'econ' | 'enemy' | 'flag'; note: string; how: FoldOp }>;
   /** 代价**轴**（界面上按它分类；也是"取舍要有种类"的守卫依据） */
   COST_AXES: Record<string, { name: string; note: string }>;
   /** 效果键 → 代价轴（审计用它回答"这件在换什么"） */
@@ -3512,6 +3888,12 @@ interface RenderApi {
 }
 
 interface UIApi {
+  /**
+   * **唯一**的开局入口：把局外状态（开局道具 / 据点 / 工坊 / **技能构筑**）凑齐
+   * 再交给 `Game.newRun`。界面与快捷键都必须走它 —— 改造前有两份，而两份都漏东西
+   *（其中漏 `skillBuild` 会让整个技能系统在正式游戏里从不发生）。
+   */
+  startRun(): void;
   selectedChar: string;
   /** 选人页选的难度等级（受 Profile.dangerOf(char) 限制） */
   selectedDanger: number;
@@ -3558,7 +3940,7 @@ interface UIApi {
   actGroups(): Record<string, string[]>;
   /** 已注册的"重画"名（对着 scene.ts 的 REFRESH 表比一遍） */
   renderNames(): string[];
-  /** 由 main.ts 注入的接线（每日挑战与回放都属于"接线"这一层，不属于界面层） */
+  /** 由 main.ts 注入的接入（每日挑战与回放都属于"接入"这一层，不属于界面层） */
   dailyStart?: (rule?: any) => any;
   weeklyStart?: (rule?: any) => any;
   dailyResult?: () => any;
@@ -3636,9 +4018,6 @@ interface GameApi {
   chooseLevelCard(i: number): boolean;
   buyOffer(i: number): boolean;
   buyPack(kind: string): boolean;
-  /** 建材包：花材料买建材（商店那一栏"原料"） */
-  buildPrice(): number;
-  buyBuild(): boolean;
   packPrice(kind: string): number;
   packOdds(kind: string): string;
   sellWeapon(i: number): boolean;
@@ -3684,7 +4063,95 @@ interface GameApi {
   /** 回收价（含品级与**这一局的**回收比例：工坊「废料回收」会抬它） */
   salvageOf(w: WeaponInst): number;
   /** 本局累积的合金（合成产出；结算入账） */
-  alloyEarned(): number;
+  growthEarned(): number;
+  /* =========================================================
+     **材料（全局货币）= 这一局的钱**（M1，2026-09）
+     ---------------------------------------------------------
+     v3 §5.1："三模块通用，每个模块都要用它，每个模块也都能产出它"
+     + §二："三个模块全在局内" ⇒ 材料是**局内**货币，不跨局。
+     开局是 0（"打才有" —— 那是 v3 §5.2 那条链的第一环）。
+     ========================================================= */
+  /* ---- 训练（养成模块的局内行动）：**M3**（2026-09）----
+     花 `material`（全局货币 = 行动成本）换 `growth`（养成代币）。
+     这是"把 `growth` 的产出从战斗端搬进养成端"的第一步。 */
+  /* ---- 养成代币与天赋：**局内**（M3 第二块，2026-09）----
+     v3 §5.1：模块代币"产出在本模块、**消费在本模块**"；§二：三个模块全在局内。
+     `growth` 由训练产（`Game.train`），由天赋与图纸花。 */
+  /** 养成代币余额（**局内**） */
+  growth(): number;
+  /** 进养成代币 */
+  addGrowth(n: number): number;
+  /** 这一局点过的天赋节点 */
+  talentsOf(): string[];
+  /** 天赋已经投进去多少成长点（**展示用**；判定走余额） */
+  talentSpent(): number;
+  /** 这一局洗过几次点 */
+  respecsUsed(): number;
+  /** **累计获得过多少成长点**（派生值 = 余额 + 已投进天赋的） */
+  talentEarned(): number;
+  /** 还能花多少成长点（余额语义下它就是余额） */
+  talentFree(): number;
+  /** 点一个天赋：**花成长点**（v3 §8-3）。失败一律不动任何状态。 */
+  takeTalent(nodeId: string): { ok: boolean; reason: string; cost: number };
+  /** 撤销最后点的一个（**免费**，并把成长点退回去） */
+  undoTalent(): boolean;
+  /* ---- NPC 关系：**局内**（M3 第三块）----
+     v3 §8-3 的"共享关系状态"：叙事线与养成线读**同一份**。
+     ⚠ §6.5：NPC 互动**不能花战斗/经营的钱** —— 相处不花钱，它只**产**养成那一侧。 */
+  /** 列出所有 NPC 的关系 */
+  bondsAll(): Array<{ id: string; trust: number; stage: string; stageName: string; note: string; toNext: number; nextName: string; left: number }>;
+  /** 相处一次（养成线的动作）：信任 +1，**跨阶段就产成长点** */
+  talkTo(npcId: string): { ok: boolean; reason: string; gain: number; stage: string };
+  /** 界面铺一屏训练科目（价钱 / 能不能练 / 练不练得起） */
+  trainingOptions(): Array<{ id: string; name: string; note: string; cost: number; gain: number; ok: boolean; reason: string }>;
+  /** 这一波还能训练几次 */
+  trainingLeft(): number;
+  /** 训练一次（失败**不动任何状态**） */
+  train(id: string): { ok: boolean; reason: string; cost: number; gain: number };
+  /** 现在的材料余额（**局内**，不是账号钱包） */
+  material(): number;
+  /** 进材料（产出走内部的 `gainMaterial`；这是给界面/经营侧的访问器） */
+  addMaterial(n: number): number;
+  /** 花材料；不够就**不扣**并返回 false */
+  spendMaterial(n: number): boolean;
+  /** 买 / 升级据点设施（**材料在这里扣**，`Profile.keepBuy` 只改状态） */
+  keepBuy(id: string): { ok: boolean; reason: string; cost: number; core?: number; toLevel: number };
+  /** 洗点（**材料在这里扣**，`Profile.respecTalents` 只改状态） */
+  respecTalents(charId: string): { ok: boolean; reason: string; cost: number };
+  /* ---- 据点：**局内**（M1 第二块，2026-09）----
+     v3 §二：据点属于经营模块的"建造"那一半，所以它的等级是这一局的状态。
+     以前 `S.keep` 只是开局快照（从账号读一次、折成 `kmods` 后再也不变）。 */
+  /** 这一局建了哪些据点设施（id → 等级） */
+  keepOwned(): Record<string, number>;
+  /** 某个据点设施的等级（0 = 没建） */
+  keepLevel(id: string): number;
+  /** 据点折叠出来的修正（界面读它，不自己算） */
+  keepMods(): StrongholdMods;
+  /* ---- 图纸（能力解锁）：**局内**（M1 第四块，2026-09）----
+     ⚠ 只搬了"已解锁的集合住在哪"，**没动"用哪笔钱解锁"** ——
+     `Forge.canUnlock` 收的仍是 `合金` + `核心材料`，而 `合金` 不在 v3 的货币模型里。 */
+  /** 这一局已解锁的图纸（id 数组） */
+  forgeOwned(): string[];
+  /** 某张图纸解锁了吗 */
+  isForged(id: string): boolean;
+  /** 图纸折叠出来的修正（界面读它，不自己算） */
+  forgeMods(): ForgeMods;
+  /** 这张图纸现在能不能解锁（规则在 `Forge.canUnlock`，纯函数） */
+  canForge(id: string): { ok: boolean; reason: string; cost: number; core: number; locked: boolean };
+  /** 解锁一张图纸。⚠ `合金` 与 `核心材料` 暂时仍从账号扣 —— 见实现里的说明。 */
+  forgeNode(id: string): { ok: boolean; reason: string; cost: number; core?: number };
+  /** 这一局往据点投了多少材料 */
+  keepInvested(): number;
+  /* ---- 工坊（经营模块的制造设施）：**局内**（M1 第三块，2026-09）----
+     与据点同一套路：等级与建造顺序都在 `Session`，钱是 `S.material`。 */
+  /** 这一局建的工坊设施（id → 等级） */
+  campOwned(): Record<string, number>;
+  /** 建造顺序（相邻组合靠它判定） */
+  campRow(): string[];
+  /** 工坊效果的折叠结果（界面读它，不自己算） */
+  campFx(): CampEffects;
+  /** 某个工坊设施的等级（0 = 没建） */
+  campLevel(id: string): number;
   /** 本局的工坊修正（界面提示"合一次给多少合金"要读它） */
   forgeMods(): ForgeMods;
   /* ---- 制造（经营那一侧的主行动） ---- */

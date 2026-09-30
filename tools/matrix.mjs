@@ -221,7 +221,7 @@ if (MERGE.length) {
       rec.runs.push({
         dim: job.dim, key: job.key, char: r.char, danger: r.danger, waves: r.waves, floor: r.floor,
         level: r.level, kills: r.kills, won: r.won, hpAtEnd: r.hpAtEnd, maxHp: r.maxHp,
-        materials: r.materials, alloy: r.alloy, coreEarned: r.coreEarned, healed: r.healed,
+        materials: r.materials, alloy: r.growth, coreEarned: r.coreEarned, healed: r.healed,
         weapons: r.weapons, items: r.items, secs: r.secs, state: r.state,
         buildChoices: r.buildChoices, buysOk: r.buysOk, buysTried: r.buysTried,
         snaps: r.snaps || []
@@ -449,10 +449,10 @@ console.log('[5] 循环维度：三模块的入口产出（每局带出多少）
   const mk = (r) => ({
     char: r.char, wave: r.waves, level: r.level, kills: r.kills, materials: r.materials,
     damage: 0, taken: 0, healed: r.healed, packs: 0, win: r.won, danger: r.danger,
-    alloy: r.alloy, coreEarned: r.coreEarned
+    alloy: r.growth, coreEarned: r.coreEarned
   });
-  const spores = runs.map(r => { try { return Profile.sporesForRun(mk(r)) || 0; } catch (e) { return 0; } });
-  const alloy = runs.map(r => { try { return Profile.alloyForRun(mk(r)) || 0; } catch (e) { return 0; } });
+  const spores = runs.map(r => { try { return Profile.growthForRun(mk(r)) || 0; } catch (e) { return 0; } });
+  const alloy = runs.map(r => { try { return Profile.growthForRun(mk(r)) || 0; } catch (e) { return 0; } });
   console.log('  ' + PAD('孢子', 8) + '中位 ' + PADL(med(spores), 5) + ' 合计 ' +
     spores.reduce((a, b) => a + b, 0) + '（经营与养成的通用燃料）');
   console.log('  ' + PAD('合金', 8) + '中位 ' + PADL(med(alloy), 5) + ' 合计 ' +

@@ -75,20 +75,20 @@ console.log('\n[3] 槽位之间互不影响（这一条是"多存档"的全部�
   Storage.wipe();
   Slots.select(0);
   Profile.load();
-  Profile.addSpores(100);
-  const s0 = Profile.spores();
+  Profile.addGrowth(100);
+  const s0 = Profile.growth();
 
   Slots.select(1);
   Profile.load();
-  ok(Profile.spores() === 0, '切到**空**槽位读到的是干净档案（不是 0 号槽的 100）', Profile.spores());
-  Profile.addSpores(7);
+  ok(Profile.growth() === 0, '切到**空**槽位读到的是干净档案（不是 0 号槽的 100）', Profile.growth());
+  Profile.addGrowth(7);
 
   Slots.select(0);
   Profile.load();
-  ok(Profile.spores() === s0, '切回 0 号槽读到的是它自己的 100', Profile.spores());
+  ok(Profile.growth() === s0, '切回 0 号槽读到的是它自己的 100', Profile.growth());
   Slots.select(1);
   Profile.load();
-  ok(Profile.spores() === 7, '1 号槽还是 7（没有被 0 号槽污染）', Profile.spores());
+  ok(Profile.growth() === 7, '1 号槽还是 7（没有被 0 号槽污染）', Profile.growth());
 
   ok(Slots.used(0) && Slots.used(1), '两个槽位都被标记为"有档"');
   Slots.select(0);
@@ -101,18 +101,18 @@ console.log('\n[4] 备份与坏档回退（崩溃安全）');
   Storage.wipe();
   Slots.select(0);
   Profile.load();
-  Profile.addSpores(50);
+  Profile.addGrowth(50);
   const key = Slots.key(Storage.KEYS.profile);
   ok(Storage.get(key) !== null, '主键写了');
   /* 第一次写入**没有**备份可留（上一版不存在）—— 这不是缺陷，是定义 */
   ok(Storage.get(Storage.backupKey(key)) === null, '第一次写入没有上一版，于是没有备份');
 
   // 写第二次 → 备份应该变成上一版（孢子 50 那一份）
-  Profile.addSpores(10);
-  ok(Profile.spores() === 60, '第二次写生效', Profile.spores());
+  Profile.addGrowth(10);
+  ok(Profile.growth() === 60, '第二次写生效', Profile.growth());
   const bak = Storage.get(Storage.backupKey(key));
   ok(bak !== null, '第二次写入留下了上一版备份（每写一次留一份）', String(bak && bak.length));
-  ok(!!bak && /"spores":50/.test(bak), '备份里是**上一版**的值（50），不是当前值', bak && bak.slice(0, 120));
+  ok(!!bak && /"growth":50/.test(bak), '备份里是**上一版**的值（50），不是当前值', bak && bak.slice(0, 120));
 
   // 把主键写坏：读的时候应当**回退到备份**并记一笔
   Storage.set(key, '{坏掉的 json');
@@ -139,9 +139,9 @@ console.log('\n[5] 清档 / 重置（**必须连备份一起删**）');
   Storage.wipe();
   Slots.select(0);
   Profile.load();
-  Profile.addSpores(30);
+  Profile.addGrowth(30);
   const key = Slots.key(Storage.KEYS.profile);
-  ok(Profile.spores() === 30, '先造一份档');
+  ok(Profile.growth() === 30, '先造一份档');
 
   Slots.clear(Storage.KEYS.profile);
   ok(Storage.get(key) === null, '主键被删', String(Storage.get(key)));
@@ -149,17 +149,17 @@ console.log('\n[5] 清档 / 重置（**必须连备份一起删**）');
     '备份也被删（只删主键的话下一次读会从备份"复活"，表现是"重置了但进度还在"）',
     String(Storage.get(Storage.backupKey(key))));
   Profile.load();
-  ok(Profile.spores() === 0, '清档之后重读是干净档案', Profile.spores());
+  ok(Profile.growth() === 0, '清档之后重读是干净档案', Profile.growth());
 
   // Slots.reset 只碰当前槽位
   Storage.wipe();
-  Slots.select(0); Profile.load(); Profile.addSpores(11);
-  Slots.select(1); Profile.load(); Profile.addSpores(22);
+  Slots.select(0); Profile.load(); Profile.addGrowth(11);
+  Slots.select(1); Profile.load(); Profile.addGrowth(22);
   Slots.reset(1);
   Slots.select(1); Profile.load();
-  ok(Profile.spores() === 0, 'reset 清掉了 1 号槽');
+  ok(Profile.growth() === 0, 'reset 清掉了 1 号槽');
   Slots.select(0); Profile.load();
-  ok(Profile.spores() === 11, 'reset 没碰 0 号槽（这是"重置本槽位"与"清空全部"的区别）', Profile.spores());
+  ok(Profile.growth() === 11, 'reset 没碰 0 号槽（这是"重置本槽位"与"清空全部"的区别）', Profile.growth());
 }
 
 /* ---------------- [6] 导出 / 导入 ---------------- */
@@ -168,7 +168,7 @@ console.log('\n[6] 导出 / 导入（带校验和的文本）');
   Storage.wipe();
   Slots.select(0);
   Profile.load();
-  Profile.addSpores(123);
+  Profile.addGrowth(123);
   Profile.addCore(4);
   Save.addRun({ win: true, wave: 12, level: 20, kills: 300, scrap: 400 });
 
@@ -180,13 +180,13 @@ console.log('\n[6] 导出 / 导入（带校验和的文本）');
   // 导到另一个槽位，内容要一致
   Slots.select(2);
   Profile.load();
-  ok(Profile.spores() === 0, '2 号槽本来是空的');
+  ok(Profile.growth() === 0, '2 号槽本来是空的');
   const r = Slots.importText(text);
   ok(r.ok === true, '导入成功', r.reason);
   ok(r.keys >= 2, '至少导入了档案与战绩两份', r.keys);
   Profile.load();
-  ok(Profile.spores() === 123 && Profile.core() === 4, '导入后档案内容与导出方一致',
-    Profile.spores() + '/' + Profile.core());
+  ok(Profile.growth() === 123 && Profile.core() === 4, '导入后档案内容与导出方一致',
+    Profile.growth() + '/' + Profile.core());
   ok(Save.records().runs === 1, '战绩也一起过来了（否则"搬了档但战绩归零"）', Save.records().runs);
 
   // 同一份存档导出两次 → 同样的文本（不然没法比对）
@@ -207,7 +207,7 @@ console.log('\n[6] 导出 / 导入（带校验和的文本）');
 
   /* **拒绝之后好档不能被破坏** —— 这是导入这类功能最贵的一类 bug */
   Slots.select(2); Profile.load();
-  ok(Profile.spores() === 123, '失败导入没有破坏目标槽位（先验证再落盘）', Profile.spores());
+  ok(Profile.growth() === 123, '失败导入没有破坏目标槽位（先验证再落盘）', Profile.growth());
 
   // 不是存档的文本
   ok(Slots.importText('随便一段话').ok === false, '随便一段话拒绝导入');
@@ -232,15 +232,15 @@ console.log('\n[7] 与其它系统的关系');
   Settings.set('volume', 0.22);
 
   // Profile.clear 走的是当前槽位
-  Slots.select(0); Profile.load(); Profile.addSpores(9);
-  Slots.select(1); Profile.load(); Profile.addSpores(8);
+  Slots.select(0); Profile.load(); Profile.addGrowth(9);
+  Slots.select(1); Profile.load(); Profile.addGrowth(8);
   Slots.select(1);
   Profile.clear();
   Profile.load();
-  ok(Profile.spores() === 0, 'clear 清的是**当前**槽位', Profile.spores());
+  ok(Profile.growth() === 0, 'clear 清的是**当前**槽位', Profile.growth());
   Slots.select(0);
   Profile.load();
-  ok(Profile.spores() === 9, '别的槽位不受影响', Profile.spores());
+  ok(Profile.growth() === 9, '别的槽位不受影响', Profile.growth());
   Slots.select(0);
   Storage.wipe();
 }

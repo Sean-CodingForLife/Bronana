@@ -6,7 +6,11 @@
   "description": "Bronana · 纯 Canvas 独立肉鸽游戏 —— TypeScript + ES 模块 + Vite，零运行时依赖。三种运行形态：web / cli（含服务器模式）/ desktop",
   "packageManager": "pnpm@12.5.1",
   "scripts": {
+    "test:bonds": "node test/bonds.mjs",
+    "test:storage-fs": "node test/storage-fs.mjs",
     "test:for": "node tools/test-for.mjs",
+    "test:station": "node test/station.mjs",
+    "test:fold": "node test/fold.mjs",
     "dev": "vite",
     "web": "vite",
     "build": "vite build",

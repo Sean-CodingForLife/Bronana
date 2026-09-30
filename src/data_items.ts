@@ -8,6 +8,7 @@ import { SelfCheck } from './selfcheck.ts';
 import { Tiers } from './data_tiers.ts';
 import { Affixes } from './affixes.ts';
 import { U } from './utils.ts';
+import { Fold } from './fold.ts';
 var I = {} as ItemsApi;
 
 /**
@@ -390,9 +391,15 @@ I.AXIS_OF_MOD = {
 I.foldCosts = function (items) {
   var mul: Record<string, number> = {};
   var add: Record<string, number> = {};
+  /* 为什么这里按折法**分桶**而不是折成一个数：一件道具的代价要在不同时机被读
+     （商店价为货架算一次、敌人修正开局折一次），所以这里只如实分组、由消费方决定何时合。
+     桶只有两个 —— 那正是 `Fold.BUCKET_OPS`（代价只有"翻倍"与"加固定量"两种性质，
+     不是漏了另两种）。哪一桶、初值多少都取自折法表，不在这里写死 1 / 0。 */
+  function bucket(op: FoldOp): Record<string, number> { return op === 'add' ? add : mul; }
   for (var k in I.COST_KINDS) {
     if (!Object.prototype.hasOwnProperty.call(I.COST_KINDS, k)) continue;
-    if (I.COST_KINDS[k].how === 'add') add[k] = 0; else mul[k] = 1;
+    var ko = I.COST_KINDS[k].how;
+    bucket(ko)[k] = Fold.numIdentity(ko);
   }
   for (var i = 0; i < (items || []).length; i++) {
     var it = items[i];
@@ -404,8 +411,9 @@ I.foldCosts = function (items) {
       if (!kind) continue;
       var v = Number(cost[key]);
       if (!isFinite(v)) continue;
-      if (kind.how === 'add') add[key] = (add[key] || 0) + v;
-      else mul[key] = (mul[key] === undefined ? 1 : mul[key]) * v;
+      var dst = bucket(kind.how);
+      if (dst[key] === undefined) dst[key] = Fold.numIdentity(kind.how);
+      dst[key] = Fold.num(kind.how, dst[key], v);
     }
   }
   return { mul: mul, add: add };
@@ -414,6 +422,18 @@ I.foldCosts = function (items) {
 /** 定义期自检：包的权重表长度、档位均价表的长度都必须跟着品级表走 */
 I.audit = function () {
   var problems = [];
+  /* 代价的折法只能是 `Fold.BUCKET_OPS`（× / +）——
+     `foldCosts` 按折法分桶，桶只有那两个；写一个 `min` 进来它会被静默折进 mul 桶。
+     这条以前是隐式假设（代码里就一句 `how === 'add' ? add : mul`），现在显式声明。 */
+  for (var ck in I.COST_KINDS) {
+    if (!Object.prototype.hasOwnProperty.call(I.COST_KINDS, ck)) continue;
+    var cHow = I.COST_KINDS[ck].how;
+    if (!cHow) problems.push('代价键 ' + ck + ' 没有折法（how）——它会被静默当成 mul');
+    else if (Fold.BUCKET_OPS.indexOf(cHow) < 0) {
+      problems.push('代价键 ' + ck + ' 的折法不在分桶子集里：' + cHow +
+        '（代价只有 ' + Fold.BUCKET_OPS.join(' / ') + ' 两种性质）');
+    }
+  }
   for (var kind in I.PACK_BASE) {
     if (!Object.prototype.hasOwnProperty.call(I.PACK_BASE, kind)) continue;
     var row = I.PACK_BASE[kind];

@@ -130,8 +130,13 @@ RunSave.serialize = function (input) {
        （`Profile.campOwned()` / `Profile.campRow()` / `Profile.wallet.material`），
        它们本来就跨局活着，一局存档再存一份只会制造两个真相。
        会话里与制造有关的只剩 `craftUsed`（这一波用过哪几条产线），见下面。 */
-    /* 本局打到多少材料（**只用于展示**；材料是即时进钱包的，不靠结算再发） */
+    /* 本局打到多少材料（**只用于展示**；材料是即时进余额的，不靠结算再发） */
     materialEarned: Math.round(sess.materialEarned || 0),
+    /* **材料余额（局内的全局货币）** —— v3 §5.1 + §二：三个模块全在局内，
+       所以它是**这一局的钱**。不带它读档，玩家会静默丢掉自己攒的材料
+       （界面上的数会跳回 0，而他刚在工坊里看到过那个数）。
+       ⚠ 它以前住在账号钱包（`Profile.wallet.material`），M1 搬到这里。 */
+    material: Math.max(0, Math.round(sess.material || 0)),
     // 据点等级同理：它是开局修正的来源，不带着读档会静默降级成"没有据点"
     keep: input.keep,
     /* **技能构筑**：与 keep/forge 同一理由 —— 存的是"这一局开局时的那一份"。
@@ -139,7 +144,8 @@ RunSave.serialize = function (input) {
        而玩家记得自己点过）。 */
     skillBuild: (sess.skillBuildSource || []).slice(),
     /** 图纸：同样是一局开局修正的来源（存的是**开局时**那一份，见 `importRun`） */
-    forge: input.forge,
+    /* **图纸 = 局内状态**（M1 第四块，2026-09）：不带它，读档会把这一局解锁的图纸丢掉。 */
+    forge: Object.keys(sess.forge || {}),
     /* ---- 地牢进度 ----
        地图**不进存档**（它由种子长出来，同一个种子必然同一张图），
        存的是"走到哪了"：层号 / 当前房 / 打过的房 / 破过的墙 / 发现过几间密室。
@@ -183,8 +189,26 @@ RunSave.serialize = function (input) {
     craftCount: sess.craftCount || 0,
     /** 这一波用掉的产线（存档点在商店里，所以它必须跟着走 —— 否则读档可以把产线刷回来） */
     craftUsed: (sess.craftUsed || []).slice(),
+    /* **工坊 = 局内状态**（M1 第三块，2026-09）：等级与建造顺序都在会话里，
+       不带它们读档会静默丢掉这一局盖的工坊。
+       ⚠ **顺序必须一起存**：相邻组合靠它判定，只存等级会让组合凭空消失
+       （界面上设施都在、等级也对，可「淬火」那类加成没了）。 */
+    camp: (function () {
+      var src = sess.camp || {}, out: Record<string, number> = {};
+      for (var k in src) {
+        if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+        var v = Math.max(0, Math.round(Number(src[k]) || 0));
+        if (v > 0) out[k] = v;
+      }
+      return out;
+    })(),
+    campRow: (sess.campRow || []).filter(function (x) { return typeof x === 'string'; }).slice(0, 16),
+    /* **NPC 关系 = 局内状态**（M3 第三块）：与 `growth` 同一组 —— 它们都是
+       养成模块在这一局里的账。不带的话，读档会把聊出来的关系丢掉。 */
+    bonds: sess.bonds || {},
+    talks: sess.talks || {},
     /** 本局累积的合金（合成产出；结算入账，**读档不该丢**） */
-    alloy: sess.alloy || 0,
+    growth: sess.growth || 0,
     rerolls: sess.rerolls || 0,
     rerollCost: sess.rerollCost,
     shopLocked: !!sess.shopLocked,
