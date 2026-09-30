@@ -173,6 +173,7 @@ UI.init = function () {
   el.bossHp = q('boss-hp');
   el.hubStatus = q('hub-status');
   el.hubStations = q('hub-stations');
+  el.hubGuide = q('hub-guide');
   el.hubTalk = q('hub-talk');
   el.hubNews = q('hub-news');
   el.toastWrap = q('toast-wrap');
@@ -557,6 +558,14 @@ function renderHub() {
   }
 
   if (el.hubStatus) el.hubStatus.innerHTML = hubStatusHtml();
+  /* **软引导**（v3 §8-15）：撞墙提示 + 路径指引。
+     ⚠ `null` 不是"没有建议" —— 那是**循环转起来了**，换个说法（不然玩家会以为坏了）。 */
+  if (el.hubGuide) {
+    var gd = Game.guide();
+    el.hubGuide.textContent = gd
+      ? ('下一步：' + gd.text)
+      : '循环转起来了 —— 三个模块随便挑一个推';
+  }
 
   U.clear(el.hubStations);
   stations.forEach(function (st) {

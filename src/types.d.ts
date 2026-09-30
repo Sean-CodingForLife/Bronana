@@ -624,6 +624,40 @@ interface ManageSubDef {
  * v3 §5.3：可以把本模块的代币换成另一个模块的。§7-12：必须有
  * **高税 / 限额 / 单向 / 消耗全局货币**，否则玩家会用它绕过整个模块。
  */
+/**
+ * 一条**软引导规则**（`guide.ts`）：v3 §8-15 / §9-建议7
+ * "撞墙提示 + 路径指引"。
+ *
+ * `when` 收一个折好的状态（这个文件不认识会话），`next()` 返回**第一条**
+ * 满足的 —— 所以表里的**顺序就是优先级**。
+ */
+interface GuideRuleDef {
+  id: string;
+  when(state: GuideState): boolean;
+  /** 指去哪个站（必须是 `station.ts` 里真实存在的 id） */
+  to: string;
+  text: string;
+  why: string;
+}
+
+/** `guide.ts` 要的那些数（由 `game.ts` 折好传进来） */
+interface GuideState {
+  material: number; capacity: number; growth: number;
+  core: number; relic: number; sigil: number;
+  /** 经营的关键建筑盖到几级（0 = 还没盖） */
+  keyBuilding: number;
+  /** 「神话图纸」解锁了没有 */
+  mythForged: boolean;
+}
+
+interface GuideApi {
+  RULES: GuideRuleDef[];
+  BY_ID: Record<string, GuideRuleDef>;
+  /** 该去哪、为什么（一条都不匹配 = 循环转起来了，返回 null） */
+  next(state: GuideState): { id: string; to: string; text: string; why: string } | null;
+  audit(sites: Array<{ id: string; to: string | null }> | null): { ok: boolean; problems: string[]; counts: { rules: number } };
+}
+
 interface ExchangeApi {
   LIST: ExchangeDef[];
   BY_ID: Record<string, ExchangeDef>;
@@ -4168,6 +4202,8 @@ interface GameApi {
      判定在 `Ledger.canExchange`。 */
   /** 兑换一次：扣源代币 + 扣全局货币手续费 + 给目标代币。**失败整笔回滚**。 */
   exchange(from: string, to: string, n: number): { ok: boolean; reason: string; got: number; cost: number };
+  /** **下一步该去哪**（软引导，v3 §8-15）；`null` = 循环转起来了 */
+  guide(): { id: string; to: string; text: string; why: string } | null;
   /** 界面铺一屏兑换选项 */
   exchangeOpts(): Array<{ id: string; from: string; to: string; rate: number; cap: number; fee: number; have: number; note: string; ok: boolean; reason: string }>;
   /** **用徽记重掷一次货架**（M4）：`养成 → 战斗` 那条边的**消费点** */

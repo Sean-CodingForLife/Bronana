@@ -31,6 +31,8 @@ import { Camp } from './camp.ts';
 import { Train } from './training.ts';
 /* **模块代币之间的兑换**（v3 §5.3 + §7-12，M5）：表在那边，钱在这边。 */
 import { Exchange } from './exchange.ts';
+/* **软引导**（v3 §8-15）：规则在那边，状态在这边折。 */
+import { Guide } from './guide.ts';
 /* 兑换的**判定**在机制层（那四条限制的审计也在那里）—— 这里只改状态。 */
 import { Ledger } from './ledger.ts';
 /* 天赋的规则全在 `talents.ts`（纯函数收 state）；这里只用它的判定与折叠。 */
@@ -4115,6 +4117,31 @@ Game.exchange = function (from, to, n) {
   return { ok: true, reason: '', got: chk.got, cost: chk.cost };
 };
 /** 界面铺一屏兑换选项（价钱 / 能不能换 / 换多少） */
+/**
+ * **下一步该去哪**（M5 的软引导，v3 §8-15 / §9-建议7）。
+ *
+ * 它把会话折成 `GuideState` 再问规则表 —— 规则表**不认识会话**
+ * （与 `talents.ts` / `stronghold.ts` / `craft.ts` 同一形状）。
+ *
+ * 返回 `null` 表示**循环转起来了**（没有任何一条规则觉得你卡住了）——
+ * 那不是"没有建议"，那是最好的状态，界面据此换个说法。
+ */
+Game.guide = function () {
+  if (!S) return null;
+  return Guide.next({
+    material: material(),
+    capacity: capacity(),
+    growth: growth(),
+    core: Profile.core(),
+    relic: relic(),
+    sigil: sigil(),
+    /* 「关键建筑」= 花核心材料盖起来的那座（档案馆 L3）。
+       ⚠ 判据沿用 `keepBuy` 里的那一句：**花了 `core` 就算**，不新开字段。 */
+    keyBuilding: (Stronghold.BY_ID['archive'] ? keepLevel('archive') : 0),
+    mythForged: isForged('myth')
+  });
+};
+
 Game.exchangeOpts = function () {
   return Exchange.LIST.map(function (e) {
     var amt = Math.min(e.cap > 0 ? e.cap : 1, tokenBalance(e.from));

@@ -33,6 +33,7 @@ export const MODULES = {
   training: '../src/training.ts',
   bonds:   '../src/bonds.ts',
   exchange: '../src/exchange.ts',
+  guide:   '../src/guide.ts',
   craft: '../src/craft.ts',
   skills:  '../src/skills.ts',
   talents: '../src/talents.ts',
@@ -105,7 +106,7 @@ export const SIM_MODULES = [
   'utils', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story', 'comp', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats', 'tiers', 'elems', 'curves',
   /* 账本四本 + 核心素材 + 只读聚合（顺序见 MODULES 里那段说明） */
   'ledger', 'eco_combat', 'eco_manage', 'eco_grow', 'eco_global', 'link', 'economy', 'station',
-  'exchange', 'art_spec', 'affixes', 'synergy', 'weapons',
+  'exchange', 'guide', 'art_spec', 'affixes', 'synergy', 'weapons',
   'items', 'chars', 'enemies', 'arena', 'ai', 'depth', 'sprites', 'emit', 'training', 'bonds', 'game', 'grid', 'chamber', 'impact', 'market', 'scene', 'demo',
   /* 从 `game.ts` 拆出去的两块（都是"数据 ↔ 数据"的变换，不推进任何状态）：
      `levelup` = 升级池（声明表 + 两条随等级走的纯计算），

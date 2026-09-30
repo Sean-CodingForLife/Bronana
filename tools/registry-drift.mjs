@@ -820,6 +820,27 @@ try {
   }
 
   /* =========================================================
+     **软引导指向的站必须真实存在**（v3 §8-15）
+     ---------------------------------------------------------
+     `guide.ts` 的每条规则都有一个 `to`（指去哪），而那是**另一个文件**
+     （`station.ts`）里的 id —— 两边靠字符串对上，**没有任何类型能拦**。
+
+     指错的后果不是崩溃，是**玩家点过去发现那里什么都没有**：
+     软引导最怕的就是"它开始胡说"，而胡说里最难查的一种是"地址写错了"。
+   ========================================================= */
+  const guideSrc = stripComments(fs.readFileSync(path.join(ROOT, 'src', 'guide.ts'), 'utf8'));
+  const stationSrc = stripComments(fs.readFileSync(path.join(ROOT, 'src', 'station.ts'), 'utf8'));
+  const stationIds = new Set((stationSrc.match(/id: '[a-z-]+'/g) || []).map(s => s.slice(5, -1)));
+  const targets = (guideSrc.match(/to: '[a-z-]+'/g) || []).map(s => s.slice(5, -1));
+  for (const to of targets) {
+    if (!stationIds.has(to)) {
+      materialProblems.push('软引导指向一个不存在的站：`' + to + '` —— ' +
+        '玩家点过去会发现那里什么都没有（`guide.ts` 的 `to` 与 `station.ts` 的 id 靠字符串对上）');
+    }
+  }
+  if (!targets.length) materialProblems.push('`guide.ts` 里一条 `to` 都没有 —— 软引导指不了路');
+
+  /* =========================================================
      **双轨守卫**（v3 §8-3）：叙事线**不产经济**
      ---------------------------------------------------------
      `story.ts` 只管「哪句话说得出」，它**一个铜板都不该碰**。

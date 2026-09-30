@@ -88,7 +88,7 @@ const SYSTEMS = [
       '它们的修正**在开局时折成普通对象**（campFx / fmods / dmods / kmods…），' +
       '模拟层跑起来之后不再回表 —— 这是"经营与战斗不互相穿透"的实现方式',
     modules: ['camp.ts', 'stronghold.ts', 'forge.ts', 'craft.ts', 'talents.ts', 'training.ts',
-        'bonds.ts', 'exchange.ts', 'boons.ts',
+        'bonds.ts', 'exchange.ts', 'guide.ts', 'boons.ts',
       'synergy.ts', 'challenges.ts', 'profile.ts', 'daily.ts', 'season.ts', 'danger.ts',
       'offline.ts', 'settings.ts', 'storage.ts',
       /* `slots.ts` 与 `storage.ts` 同层：它只认识"键名与一段文本"，
