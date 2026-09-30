@@ -209,6 +209,38 @@ Stronghold.BASE = BASE;
 /* =========================================================
    3. 查询（纯函数）
    ========================================================= */
+/* =========================================================
+   **产能（`capacity`）的产出与消费**（M2，2026-09）
+   ---------------------------------------------------------
+   v3 §8-2 要求"接上 `capacity` 代币的真实产出点与消费点（现在 0/0）"。
+   这两个数就是那两个点 —— 规则在这里（纯函数），钱在会话层（`game.ts`）。
+
+   ⚠ **为什么有一个不依赖设施的底数**：
+     如果产能**只**由设施产，开局就是 0 设施 → 0 产能 → 建不了设施 ——
+     一个把自己锁死的循环。v3 §5.3-9 的"撞墙不卡死"要求的正是这一条：
+     经营模块**自己会运转**，设施是让它转得更快，不是让它开始转。
+   ========================================================= */
+Stronghold.CAPACITY_BASE = 1;      // 每波的基础运转（不依赖任何设施）
+Stronghold.CAPACITY_PER_LEVEL = 2; // 每波、每级设施额外产的
+
+/** 这一波的**产能产出**：基础运转 + 设施产出（v3 §8-2 的"设施产出"） */
+Stronghold.produce = function (owned) {
+  var lv = 0;
+  for (var i = 0; i < LIST.length; i++) lv += Stronghold.levelOf(owned, LIST[i].id);
+  return Stronghold.CAPACITY_BASE + lv * Stronghold.CAPACITY_PER_LEVEL;
+};
+
+/**
+ * 升这一级要多少**产能**（v3 §8-2 的消费点：**建造子模块**用它盖设施）。
+ *
+ * 与材料造价成比例：越贵的设施越"重"，需要的产能越多 ——
+ * 于是"先把经营盘起来"这件事在越大的工程上越要紧。
+ */
+Stronghold.capacityFor = function (step) {
+  if (!step) return 0;
+  return Math.max(1, Math.ceil((Number(step.cost) || 0) / 12));
+};
+
 Stronghold.maxLevel = function (id) {
   var d = BY_ID[id];
   return d ? d.levels.length : 0;
@@ -227,7 +259,7 @@ Stronghold.levelOf = function (owned, id) {
  * @param core 核心材料余额（缺省 0 = 旧调用点的行为不变；只有要核心的等级才读它）
  * @returns { ok, reason, cost, core, toLevel, locked }
  */
-Stronghold.canBuy = function (owned, id, material, core) {
+Stronghold.canBuy = function (owned, id, material, core, capacity) {
   var d = BY_ID[id];
   if (!d) return { ok: false, reason: '没有这个设施', cost: 0, core: 0, toLevel: 0, locked: false };
   var cur = Stronghold.levelOf(owned, id);
@@ -256,7 +288,17 @@ Stronghold.canBuy = function (owned, id, material, core) {
       cost: cost, core: needCore, toLevel: cur + 1, locked: false
     };
   }
-  return { ok: true, reason: '', cost: cost, core: needCore, toLevel: cur + 1, locked: false };
+  /* **产能**（M2）：建造子模块花的是**经营自己的钱** ——
+     v3 §5.1 说模块代币"产出在本模块、消费在本模块"，而盖设施正是建造子模块。
+     放在材料与核心材料之后：先说更容易解决的那一样，玩家才知道该去干什么。 */
+  var needCap = Stronghold.capacityFor(step);
+  if (needCap > 0 && Math.max(0, Number(capacity) || 0) < needCap) {
+    return {
+      ok: false, reason: '产能不够（需要 ' + needCap + '，每波由据点运转产出）',
+      cost: cost, core: needCore, capacity: needCap, toLevel: cur + 1, locked: false
+    };
+  }
+  return { ok: true, reason: '', cost: cost, core: needCore, capacity: needCap, toLevel: cur + 1, locked: false };
 };
 
 /** 这个设施**下一级**要不要核心材料（界面用它标出"这一级要打过 Boss"） */

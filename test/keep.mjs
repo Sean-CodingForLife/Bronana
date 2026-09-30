@@ -126,23 +126,37 @@ console.log('\n[4] 用材料买（永久，不退还）');
      所以这个代码块必须先起一局。以前据点买的是账号钱包，不需要会话。 */
   Game.newRun('ranger', 4242, 0, null, null);
   ok(Game.keepInvested() === 0 && Game.keepLevel('shelves') === 0, '新档据点全空');
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）。
+     这一套测的是据点的**档案语义**（等级 / 前置 / 退款 / 核心材料），不是经营 ——
+     所以在买之前把产能补满，别让新门槛干扰它。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   let r = Game.keepBuy('shelves');
   ok(!r.ok && /材料不够/.test(r.reason), '材料不够被拒', r.reason);
   ok(Game.material() === 0, '被拒时不扣材料');
 
   Game.addMaterial(1000);
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   r = Game.keepBuy('shelves');
   ok(r.ok && r.cost === 50 && Game.material() === 950, '买下货架（50 材料）', Game.material());
   ok(Game.keepLevel('shelves') === 1, '等级落到了档案里');
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   ok(Game.keepBuy('shelves').ok === false, '单级设施买第二次被拒（满级）');
   ok(Game.material() === 950, '被拒时不扣材料');
 
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   Game.keepBuy('storehouse');
   const before = Game.material();
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   Game.keepBuy('storehouse');
   ok(Game.material() === before - 80, '升级扣的是第二级的价（80）', Game.material());
   ok(Game.keepLevel('storehouse') === 2, '等级到 2');
 
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   ok(Game.keepBuy('不存在').ok === false, '没有这个设施 → 拒绝');
   ok(Game.keepMods().startMaterials === 140, '折叠修正跟着等级走', Game.keepMods().startMaterials);
 
@@ -318,16 +332,21 @@ console.log('\n[9] 据点 → 天赋：档案馆把孢子变成"养成更便宜�
      注意前置链：档案馆要求「钟楼」Lv.1，所以先得买钟楼 */
   Game.addMaterial(3000);
   const buy = (id) => {
+    /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）。
+       这一套测的是据点的**档案语义**（等级、前置、退款、核心材料），不是经营，
+       所以在每次买之前把产能补满 —— 否则它会因为"钱不够"红，
+       而那与它要验的东西无关。 */
+    if (Game.getSession()) Game.getSession().capacity = 999;
     const r = Game.keepBuy(id);
     ok(r.ok === true, '买下 ' + Stronghold.BY_ID[id].name + ' Lv.' + r.toLevel, r.reason);
     return r;
   };
-  const locked = Stronghold.canBuy(Game.keepOwned(), 'archive', 99999);
+  const locked = Stronghold.canBuy(Game.keepOwned(), 'archive', 99999, 0, 999);
   ok(locked.ok === false && locked.locked === true && /钟楼/.test(locked.reason),
     '前置链挡住：没钟楼时档案馆是"锁着"的，而不是"孢子不够"', locked.reason);
   const freeBefore = Profile.freeRespecsOf(cid);
   buy('clocktower');
-  ok(Stronghold.canBuy(Game.keepOwned(), 'archive', 99999).ok === true, '钟楼 Lv.1 → 档案馆解锁');
+  ok(Stronghold.canBuy(Game.keepOwned(), 'archive', 99999, 0, 999).ok === true, '钟楼 Lv.1 → 档案馆解锁');
   buy('archive');
   ok(Stronghold.modsFor(Game.keepOwned()).freeRespecs === 1, '档案馆 Lv.1 → 免费洗点 +1');
   ok(Profile.freeRespecsOf(cid) === freeBefore + 1, '档案层算得对（' + freeBefore + ' → ' +
@@ -484,8 +503,12 @@ console.log('\n[10] 结构性解锁：给的不是数值，是"新的可能"');
   Storage.wipe();
   Profile.reset();
   Game.addMaterial(3000);
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   Game.keepBuy('shelves');           // 靶场的前置
   const beforeItems = Profile.openingOf('ranger').items.length;
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）——这里补满。 */
+  if (Game.getSession()) Game.getSession().capacity = 999;
   Game.keepBuy('range');             // 靶场
   ok(Stronghold.modsFor(Game.keepOwned()).rangeItem === 1, '靶场 → rangeItem = 1');
   const withRange = Profile.openingOf('ranger').items.slice();

@@ -456,6 +456,11 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
     bonds: {},
     /** NPC id → **这一波**相处了几次（模块内的时间感；每波重置） */
     talks: {},
+    /* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
+       v3 §5.1：模块代币"产出在本模块、消费在本模块"；§二：三个模块全在局内。
+       产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
+    /** **经营代币余额**（局内）：每波由据点产出，盖设施时花掉 */
+    capacity: 0,
     /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()` */
     talentFx: null,
     /** 本局造了几件（结算展示用；进存档） */
@@ -1688,6 +1693,10 @@ function startWave(n) {
      每条产线每波只能造一件 —— 于是"这一波造什么、造不造"是真决定，
      而空着的产线就是浪费（它自己的失败状态，不需要额外的惩罚机制）。 */
   S.craftUsed = [];
+  /* **经营模块每波自己运转一次**（M2）：产出 = 基础 + 设施产出。
+     ⚠ 之所以有一个不依赖设施的底数，见 `Stronghold.CAPACITY_BASE` 那段说明 ——
+       没有它，开局 0 设施 → 0 产能 → 建不了设施，是个把自己锁死的循环。 */
+  addCapacity(Stronghold.produce(keepOwned()));
   /* **相处次数也跟着每波重置**：它与 `craftUsed` 是同一个东西（模块内的回合数），
      只是分别属于经营与养成两条线。放一起才看得出来它们是同一套时间感。 */
   S.talks = {};
@@ -3867,6 +3876,9 @@ Game.importRun = function (data) {
     ? data.craftUsed.map(function (v) { return Math.max(0, Math.round(Number(v) || 0)); }).slice(0, 8)
     : [];
   S.growth = Math.max(0, Math.round(Number(data.growth) || 0));
+  /* **产能**（M2）：与 `growth` 同一组 —— 局内的模块代币。
+     ⚠ 只写不读的话 `flow` 门会报"存档不幂等"：读档后它归零，再存一次就与上一份不同。 */
+  S.capacity = Math.max(0, Math.round(Number(data.capacity) || 0));
   /* **工坊（局内）**：从存档恢复等级与建造顺序。
      老档没有这两个字段 → 空工坊（工坊以前在账号档案里，那一份不再被读）。 */
   S.camp = {};
@@ -4111,17 +4123,25 @@ Game.respecTalents = function (charId) {
 Game.keepBuy = function (id) {
   var key = String(id || '');
   if (!S) return { ok: false, reason: '还没开局', cost: 0, toLevel: 0 };
-  /* 三条校验都在 `Stronghold.canBuy`（规则层），这里只负责改局内状态：
-     ① 材料够不够（**局内余额**）② 核心材料够不够（钱在哪本账见 M4）③ 到没到满级 / 前置。 */
-  var chk = Stronghold.canBuy(S.keep, key, material(), Profile.core());
+  /* 四条校验都在 `Stronghold.canBuy`（规则层），这里只负责改局内状态：
+     ① 材料（**局内余额**）② 核心材料（钱在哪本账见 M4）③ **产能**（M2：经营自己的钱）
+     ④ 到没到满级 / 前置。 */
+  var chk = Stronghold.canBuy(S.keep, key, material(), Profile.core(), capacity());
   if (!chk.ok) return chk;
   if (!spendMaterial(chk.cost)) {
     return { ok: false, reason: '材料不够（需要 ' + chk.cost + '）', cost: chk.cost, toLevel: 0 };
   }
   /* 核心材料**仍然从账号扣** —— 它还没搬进局内（M4 的事，它是战斗→经营的核心素材）。
      ⚠ 放在改状态**之前**：`canBuy` 已经验过余额，真扣不动就整笔不动（与 `craft` 同一条纪律）。 */
+  /* **产能也在这里扣**（M2）：它与材料一样是"局内的钱"，所以走同一条纪律 ——
+     任何一步扣不动就**整笔回滚**。 */
+  if ((chk.capacity || 0) > 0 && !spendCapacity(chk.capacity)) {
+    addMaterial(chk.cost);   // 材料退回去，这一笔不算
+    return { ok: false, reason: '产能不够（需要 ' + chk.capacity + '）', cost: chk.cost, toLevel: 0 };
+  }
   if (chk.core > 0 && !Profile.spendCore(chk.core)) {
     addMaterial(chk.cost);   // 材料退回去，这一笔不算
+    if (chk.capacity > 0) addCapacity(chk.capacity);   // 产能也退回去
     return { ok: false, reason: '核心材料不够（需要 ' + chk.core + '）', cost: chk.cost, core: chk.core, toLevel: 0 };
   }
   S.keep[key] = chk.toLevel;
@@ -4291,6 +4311,22 @@ function spendGrowth(n) {
 }
 /** 这一局点过的天赋节点 */
 function talentsOf() { return (S && S.talents) || []; }
+/** **经营代币余额**（局内）。未开局时 0。 */
+function capacity() { return (S && S.capacity) || 0; }
+function addCapacity(n) {
+  if (!S) return 0;
+  var add = Math.max(0, Math.floor(Number(n) || 0));
+  S.capacity = capacity() + add;
+  return S.capacity;
+}
+/** 花产能；不够就**不扣**并返回 false（与 `spendMaterial` 同一纪律）。 */
+function spendCapacity(n) {
+  var cost = Math.max(0, Math.floor(Number(n) || 0));
+  if (cost <= 0) return true;
+  if (!S || capacity() < cost) return false;
+  S.capacity = capacity() - cost;
+  return true;
+}
 /** 与某位 NPC 的信任 */
 function bondTrust(npcId) { return (S && S.bonds && S.bonds[String(npcId || '')]) || 0; }
 /** 这一波与某位 NPC 相处了几次 */
@@ -4339,6 +4375,13 @@ function refoldTalents() {
 /* ---- 养成代币与天赋：**局内**（M3，2026-09）----
    ⚠ v3 §5.1：模块代币"产出在本模块、消费在本模块"；§二：三个模块全在局内。
    所以余额与已点节点都住在 `Session`，`data.growth` 只剩**老档迁移**的用途。 */
+/* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
+   v3 §8-2：产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
+/** **经营代币余额**（局内） */
+Game.capacity = function () { return capacity(); };
+/** 这一波的**产能产出**是多少（界面拿它显示"每波 +N"） */
+Game.capacityPerWave = function () { return S ? Stronghold.produce(keepOwned()) : 0; };
+
 /** 养成代币余额（**局内**） */
 Game.growth = function () { return growth(); };
 /** 这一局点过的天赋节点 */

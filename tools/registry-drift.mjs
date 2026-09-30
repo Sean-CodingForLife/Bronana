@@ -721,6 +721,52 @@ try {
       '养成代币也只许有一个入账出口（R43 那次翻倍就是这里漏的）');
   }
   /* =========================================================
+     **每个模块代币都必须同时有产出点与消费点**（M2 的守卫）
+     ---------------------------------------------------------
+     v3 §5.1 说模块代币"产出在本模块、**消费在本模块**"。
+     这一条最容易变成一句空话：`capacity` 声明了整整一轮，
+     而它在全仓**一处读写都没有**（0/0）—— 账本上有一笔钱，游戏里没有。
+
+     为什么是**登记表**而不是命名约定：战斗代币 `scrap` 是散着写的
+     （`S.player.scrap += m` 出现在好几处），并不走 `addScrap` 那样的出口。
+     约定会漏掉它，登记表不会 —— 表里没有的币**当场报红**。
+   ========================================================= */
+  const TOKEN_SITES = {
+    scrap:    { produce: ['S.player.scrap +=', 'p.scrap +='],  consume: ['p.scrap -=', '.scrap -='],
+                note: '战斗代币：局内刷怪掉、商店与合成花' },
+    capacity: { produce: ['addCapacity('],   consume: ['spendCapacity('],
+                note: '经营代币：每波据点运转产出、盖设施花' },
+    growth:   { produce: ['addGrowth('],     consume: ['spendGrowth('],
+                note: '养成代币：训练与 NPC 相处产出、天赋与图纸花' }
+  };
+  const allSrc = readDir('src').filter(f => f.endsWith('.ts') && f !== 'types.d.ts')
+    .map(f => stripComments(fs.readFileSync(path.join(ROOT, 'src', f), 'utf8'))).join('\n');
+  /* ① 登记表里的每一笔都**真的**有产出与消费 */
+  for (const id of Object.keys(TOKEN_SITES)) {
+    const spec = TOKEN_SITES[id];
+    const hitP = spec.produce.filter(s => allSrc.includes(s));
+    const hitC = spec.consume.filter(s => allSrc.includes(s));
+    if (!hitP.length) {
+      materialProblems.push('模块代币 `' + id + '` **没有产出点**——账本上有它，游戏里产不出来（v3 §5.1）。' +
+        '登记表里的候选：' + spec.produce.join(' / '));
+    }
+    if (!hitC.length) {
+      materialProblems.push('模块代币 `' + id + '` **没有消费点**——产得出来但花不掉，' +
+        '它就不是一笔钱而是一个计数器（v3 §5.1）。登记表里的候选：' + spec.consume.join(' / '));
+    }
+  }
+  /* ② 账本里声明的模块代币，登记表里一个都不许漏 */
+  const declared = [];
+  for (const f of readDir('src').filter(x => /^eco_(combat|manage|grow)\.ts$/.test(x))) {
+    const src = fs.readFileSync(path.join(ROOT, 'src', f), 'utf8');
+    for (const m of src.matchAll(/id: '([a-z]+)', name:/g)) declared.push(m[1]);
+  }
+  for (const id of declared) {
+    if (!TOKEN_SITES[id]) materialProblems.push('模块代币 `' + id + '` 没有登记产出点与消费点 —— ' +
+      '新加一笔模块代币时，要在 `TOKEN_SITES` 里说清它产在哪、花在哪（否则它会变成下一个 0/0）');
+  }
+
+  /* =========================================================
      **双轨守卫**（v3 §8-3）：叙事线**不产经济**
      ---------------------------------------------------------
      `story.ts` 只管「哪句话说得出」，它**一个铜板都不该碰**。

@@ -89,6 +89,8 @@ console.log('\n[2] ctx：条件要的每个数字都能从档案里算出来');
 if (!Game.getSession()) Game.newRun('ranger', 999, 0, null, null);
 
   Game.addMaterial(StrongholdCost());
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）。这一套测的是剧情接入。 */
+  Game.getSession().capacity = 999;
   Game.keepBuy('clocktower');
   ctx = Profile.storyCtx();
   ok(ctx.flags.keepClocktower === true, '买了钟楼 → keepClocktower 变真（据点接进了剧情）');

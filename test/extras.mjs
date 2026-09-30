@@ -92,6 +92,9 @@ console.log('\n[2] 状态：结算即前进（反复刷新不能刷孢子）');
 Game.newRun('ranger', 777, 0, null, null);
 
   Game.addMaterial(1000);
+  /* ⚠ **盖设施要花产能**（M2：建造子模块花经营自己的钱）。
+     这一套测的不是经营，所以直接给一笔，不让新门槛干扰它。 */
+  Game.getSession().capacity = 999;
   const matsBefore = Game.material();
   ok(Game.keepBuy('sporebed').ok === false, '前置没满足时买不了菌床（先要有仓库）');
   ok(Game.keepBuy('storehouse').ok === true, '先买仓库 Lv.1');

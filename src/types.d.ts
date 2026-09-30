@@ -1662,6 +1662,8 @@ interface SessionCraft {
   bonds: Record<string, number>;
   /** NPC id → **这一波**相处了几次（模块内的时间感；每波重置） */
   talks: Record<string, number>;
+  /** **经营代币余额**（局内）：每波由据点产出，盖设施时花掉（M2） */
+  capacity: number;
   /** 上一次折过的**天赋开局效果**（M3）：用来算差 —— 见 `refoldTalents()`。
    *  没有它就只能整个重折一遍，那会把属性加两次。 */
   talentFx: { stats: Record<string, number>; econ: Record<string, number> } | null;
@@ -2736,8 +2738,19 @@ interface StrongholdApi {
   maxLevel(id: string): number;
   levelOf(owned: Record<string, number> | null, id: string): number;
   /** `core` 单列出来：两种资源都不够时要分得清"去打 Boss"和"再打两把攒孢子" */
-  canBuy(owned: Record<string, number> | null, id: string, spores: number, core?: number):
-    { ok: boolean; reason: string; cost: number; core: number; toLevel: number; locked: boolean };
+  /* ---- 产能（`capacity`）：M2 的产出点与消费点 ----
+     v3 §8-2 要求"接上 `capacity` 代币的真实产出点与消费点"。
+     产出 = 每波由据点运转（基础 + 设施产出）；消费 = 建造子模块盖设施。 */
+  /** 每波的基础运转（**不依赖设施** —— 否则 0 设施 → 0 产能 → 建不了设施，是个死锁） */
+  CAPACITY_BASE: number;
+  /** 每波、每级设施额外产的产能 */
+  CAPACITY_PER_LEVEL: number;
+  /** 这一波的产能产出：基础运转 + 设施产出 */
+  produce(owned: Record<string, number> | null): number;
+  /** 升这一级要多少产能 */
+  capacityFor(step: { cost: number } | null): number;
+  canBuy(owned: Record<string, number> | null, id: string, material: number, core?: number, capacity?: number):
+    { ok: boolean; reason: string; cost: number; core: number; capacity?: number; toLevel: number; locked: boolean };
   /** 下一级要几个核心材料（界面用它标出"这一级要打过 Boss"） */
   coreFor(owned: Record<string, number> | null, id: string): number;
   /** 还差哪个前置（都满足就是 null） */
@@ -4077,6 +4090,13 @@ interface GameApi {
   /* ---- 养成代币与天赋：**局内**（M3 第二块，2026-09）----
      v3 §5.1：模块代币"产出在本模块、**消费在本模块**"；§二：三个模块全在局内。
      `growth` 由训练产（`Game.train`），由天赋与图纸花。 */
+  /* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
+     v3 §8-2：产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
+  /** **经营代币余额**（局内） */
+  capacity(): number;
+  /** 这一波的产能产出（界面拿它显示"每波 +N"） */
+  capacityPerWave(): number;
+
   /** 养成代币余额（**局内**） */
   growth(): number;
   /** 进养成代币 */

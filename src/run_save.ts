@@ -209,6 +209,9 @@ RunSave.serialize = function (input) {
     talks: sess.talks || {},
     /** 本局累积的合金（合成产出；结算入账，**读档不该丢**） */
     growth: sess.growth || 0,
+    /* **产能**（M2）：局内的经营代币。与 `growth` 同一组 —— 不带它，读档会让
+       玩家刚在据点界面看到的那笔钱**静默归零**（`flow` 门会当场报"进度漂移"）。 */
+    capacity: sess.capacity || 0,
     rerolls: sess.rerolls || 0,
     rerollCost: sess.rerollCost,
     shopLocked: !!sess.shopLocked,

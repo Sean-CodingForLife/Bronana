@@ -740,6 +740,9 @@ function renderKeep() {
   var core = Profile.core();
 
   var head = setRow('材料', String(Game.material()));
+  /* **产能**（M2）：经营自己的钱。与材料并列显示 —— 它们**是两种钱**：
+     材料是全局货币（出击打出来的行动成本），产能是经营模块自己运转出来的。 */
+  head += setRow('产能', Game.capacity() + '（每波 +' + Game.capacityPerWave() + '）');
   /* 核心材料单列一行：它是**唯一**一种"只有关底 Boss 掉"的资源，
      玩家看到这一行才知道"那 2 个数字要去哪挣"（而不是以为它又是孢子）。 */
   head += setRow('核心材料', String(core) + '（只有关底 Boss 掉）');
@@ -756,7 +759,9 @@ function renderKeep() {
   Keep.LIST.forEach(function (d) {
     /* 等级走 `Game.keepLevel`（据点是**局内**的，界面不自己 `levelOf`）。 */
     var lvl = Game.keepLevel(d.id);
-    var chk = Keep.canBuy(owned, d.id, spores, core);
+    /* ⚠ 产能也要传进来 —— 它是**建造子模块的钱**（M2）。界面与实际扣费用同一个
+       `canBuy`，所以显示的价格与真正扣的必然一致。 */
+    var chk = Keep.canBuy(owned, d.id, spores, core, Game.capacity());
     var nextTxt;
     if (lvl >= d.levels.length) nextTxt = '已满级';
     else {
@@ -770,7 +775,11 @@ function renderKeep() {
       /* 要核心材料的那一级必须**在按钮之前**说出来：
          否则玩家攒够孢子、点下去、才知道要打过 Boss —— 那是最差的一种顺序。 */
       var needCore = Keep.coreFor(owned, d.id);
+      /* 造价在这里就**说全**：材料 + 产能（+ 核心材料）。
+         三样缺哪一样都在按钮**之前**讲清楚 —— 让玩家点下去才发现缺东西是最差的一种顺序。 */
+      var needCap = Keep.capacityFor(d.levels[lvl]);
       nextTxt = '下一级：' + parts.join('、') +
+        (needCap > 0 ? '　【另需产能 ' + needCap + '】' : '') +
         (needCore > 0 ? '　【另需核心材料 ' + needCore + '】' : '');
     }
     var btn;
