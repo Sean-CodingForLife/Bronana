@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { Writable } from 'node:stream';
+import zlib from 'node:zlib';
 import { installDom } from './_ctx.mjs';
 import { loadAll, SIM_MODULES } from './_load.mjs';
 import { createHandler, resolveInside, listen } from '../server/static.mjs';
@@ -369,6 +370,52 @@ console.log('\n[8] 三种形态共用一个入口（不各写一套）');
   ok(!/open:\s*true/.test(vite), 'dev/preview 不会自动开浏览器（我这边不能被拉起浏览器）');
   const htmlInner = readSrc('index.html');
   ok(!/electron|nodeIntegration/i.test(htmlInner), 'index.html 里没有桌面/Node 相关分支');
+}
+
+console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一份）');
+{
+  /* 为什么要有这一节：`pnpm build` 会打印一条 Vite 的默认警告
+     "Some chunks are larger than 500 kB"。那条阈值说明不了任何事 ——
+     它按**未压缩**算，也不知道这个仓库有没有依赖（0 个运行时依赖，
+     87 个被转换的模块全是自己写的 src/*.ts，没有能拆出去的 vendor）。
+     真正该守住的是**玩家下载的字节**：gzip 之后的 html + css + js。
+
+     ⚠ 上限只有**一处**：`vite.config.ts` 的 `chunkSizeWarningLimit`
+       （未压缩 JS）。这里把它读出来当判据 —— 两边各写一个数就迟早对不上。
+     ⚠ 超预算只有两条路：砍体积，或者在 CHANGELOG 里写明为什么长。 */
+  const cfg = readSrc('vite.config.ts');
+  const capM = /chunkSizeWarningLimit:\s*(\d+)/.exec(cfg);
+  const rawCap = capM ? Number(capM[1]) : 0;
+  ok(rawCap > 0, 'vite.config.ts 里写着我们自己的 chunk 上限（不再吃 Vite 默认的 500 kB）',
+    String(rawCap));
+  /* sourcemap 是一条"体积承诺"，不是口味问题：它在 dist/ 里比整个游戏还大，
+     而玩家一个字节都用不到。要它必须**显式**开（BRONANA_SOURCEMAP=1）。 */
+  ok(/sourcemap:\s*process\.env\.BRONANA_SOURCEMAP/.test(cfg),
+    'sourcemap 默认不发（要它得显式开 BRONANA_SOURCEMAP=1）');
+
+  const assetsDir = path.join(DIST, 'assets');
+  const files = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir) : [];
+  const jsName = files.find(f => f.endsWith('.js'));
+  const cssName = files.find(f => f.endsWith('.css'));
+  if (!jsName) {
+    ok(false, 'dist/assets 里有 JS 产物（先跑 pnpm run build）', buildNote);
+  } else {
+    /* 单位与 Vite 的报表一致：kB = 1000 字节（不是 KiB） */
+    const kb = n => Math.round(n / 100) / 10;
+    const gz = buf => zlib.gzipSync(buf).length;
+    const js = fs.readFileSync(path.join(assetsDir, jsName));
+    const css = cssName ? fs.readFileSync(path.join(assetsDir, cssName)) : Buffer.alloc(0);
+    const html = fs.readFileSync(path.join(DIST, 'index.html'));
+    const gzAll = gz(js) + gz(css) + gz(html);
+    console.log('      产物：js ' + kb(js.length) + ' kB（gzip ' + kb(gz(js)) + '）· css ' +
+      kb(css.length) + ' kB（gzip ' + kb(gz(css)) + '）· html ' + kb(html.length) +
+      ' kB（gzip ' + kb(gz(html)) + '）· **全站 gzip ' + kb(gzAll) + ' kB**');
+    ok(js.length <= rawCap * 1000,
+      '未压缩 JS 在配置的上限内（' + kb(js.length) + ' ≤ ' + rawCap + ' kB）');
+    ok(gz(js) <= 270 * 1000, 'gzip 后的 JS ≤ 270 kB（现在 ' + kb(gz(js)) + '）');
+    ok(gzAll <= 300 * 1000,
+      '全站 gzip ≤ 300 kB —— 玩家真正下载的那一份（现在 ' + kb(gzAll) + '）');
+  }
 }
 
 console.log('\n=== 结果 ===');

@@ -67,7 +67,7 @@
 4. 筛掉了非需求：9 条 `Current runtime context` 注入块、7 条"继续"、
    约 20 条 background job 通知、10 条自动压缩检查点。
 
-**本书现在共 132 条**：B 批 11 条 · E 批 74 条 · R 批 47 条（R01~R47）。
+**本书现在共 133 条**：B 批 11 条 · E 批 74 条 · R 批 48 条（R01~R48）。
 
 ---
 
@@ -1364,6 +1364,40 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 
 ---
 
+### R48 · 构建体积：把那把"错的尺子"换成自己的预算（2026-10-01）
+
+> 用户原话：「`pnpm build` …这个是什么问题检查下，有问题就解决问题，不要拖拖拉拉的」
+> （附 `pnpm build` 的输出：结尾一段 `Some chunks are larger than 500 kB`）
+
+#### 病灶（查之前 vs 查之后）
+
+| 结论 | 实测 |
+| --- | --- |
+| 那段警告**不是错误**，是 Vite/Rolldown 的默认阈值（按**未压缩**体积、且不看依赖） | 87 个被转换的模块全是自己写的 `src/*.ts`，**0 个运行时依赖** —— 没有 vendor 可拆 |
+| 包里**没有**混进 CLI / 服务器 / 测试代码 | 产物里 `--port` / `process.argv` / `node:fs` / `createServer` 零命中 |
+| 但警告顺手带出两个**真问题** | ① `sourcemap: true` 让 `dist/` 里躺着一张 **2.75 MB** 的 `.map`（比整个游戏还大三倍）② **体积没有判据**：长过多少、谁来拦，都没有定义 |
+
+#### 改法
+
+| 之前 | 现在 |
+| --- | --- |
+| `sourcemap: true`（默认发布带图） | 默认**不发**；显式开才带（`BRONANA_SOURCEMAP=1 pnpm run build`）—— `dist` 3.32 MB → **0.73 MB** |
+| Vite 默认的 500 kB 阈值（错的尺子） | `chunkSizeWarningLimit: 720`（未压缩 JS 上限，**只此一处**）+ `test/modes.mjs` [9] 量 **gzip 后**的实测值：JS ≤ 270 kB · 全站 ≤ 300 kB |
+| 超了没人管 | 超预算 = 门变红；放宽只有一条路：在 CHANGELOG 里写明为什么长（与 `hardcode-audit` 的"基线只能变小"同规矩） |
+
+实测：JS 672.3 kB（**gzip 247.8**）· CSS 23.3 kB（gzip 5.4）· HTML 30.0 kB（gzip 8.8）·
+全站 gzip **262.0 kB**。
+
+#### 证据（全绿）
+
+| 验证 | 结果 |
+| --- | --- |
+| `npx vite build` | ✅ 369ms · **警告消失** · dist 只剩 3 个文件（不再有 .map） |
+| `node test/modes.mjs` | ✅ 新增 [9] 体积预算一节（6 条断言，含"上限只有一处"与 gzip 实测值） |
+| `node tools/verify.mjs` | ✅ **17 / 17 门**（门数不变：预算搭在既有的 `test` 门里，不新开一道） |
+
+---
+
 ## 十一、当前项目基线（讨论时引用这一节，不要凭记忆）
 
 | 维度 | 实测值 |
@@ -1377,6 +1411,7 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 | 家族（扩展点总账） | **120 个**，0 个没人守（`Registry.family` 各有一条 `SelfCheck` 或跨表引用） |
 | 内容规模 | 9 角色 · 24 武器（10 近战 + 14 远程）· 13 怪物 · 20 技能 / 15 符文 / 9 树 · 两种战斗模式 |
 | 运行时依赖 | **0** |
+| 构建产物 | JS 672.3 kB（gzip **247.8**）· CSS 23.3 kB（gzip 5.4）· HTML 30.0 kB（gzip 8.8）· **全站 gzip 262.0 kB**（默认不发 sourcemap）；预算与判据在 `test/modes.mjs` [9]（JS ≤ 270 · 全站 ≤ 300） |
 | 模块级可变状态 | 全部登记在 `test/persist.mjs` 的清单里 |
 
 **一条命令看全貌**：
