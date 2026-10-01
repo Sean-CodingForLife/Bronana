@@ -1437,9 +1437,25 @@ function drawTexts(x, sess) {
 }
 
 /* =========================================================
-   屏幕层（不随摄像机缩放）
+   变换域：把画布重置到**基准变换**
+   ---------------------------------------------------------
+   ⚠ 这个函数以前叫 `screenSetup`，那个名字把两件事混成了一件：
+
+     · **基准变换**（这个函数真正做的）：1 单位 = 1 CSS 像素 × DPR。
+       它是**帧的起点**，也是 `screen` 域的变换 —— 但它**不等于** `screen` 域：
+       战斗画面在设相机变换之前也要先回到基准（否则上一帧的相机变换会残留）。
+     · **`screen` 域**（`depth.ts` 的层表里声明的属性）：不吃相机变换的那些层。
+
+   分开的意义：**"这一层吃不吃相机变换"现在写在层表里**（`Depth.bandDomain`），
+   而不是靠"谁记得在这一段之前调一次 resetTransform"。行业通行模型是
+   `Window ⊃ Viewport ⊃ Layer ⊃ Item`，相机属于 Viewport 并修改它的 canvas 变换 ——
+   **相机不是层**，层只声明自己绑定哪个域。
+
+   调用点的两类用途（现在名字能说清了）：
+     ① 帧的开头 / 进入另一段世界绘制前 → 回到基准（否则残留上一段的变换）
+     ② 画 `screen` 域的层（危险边框 / 横幅 / 调试叠层）→ 本来就在基准上
    ========================================================= */
-function screenSetup(x) {
+function resetToBase(x) {
   x.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
 }
 
@@ -1532,7 +1548,7 @@ R.draw = function (dt) {
 
   updateCamera(dt);
   updateView();
-  screenSetup(x);
+  resetToBase(x);
   R.phase = 'clear';
   x.clearRect(0, 0, R.cam.w, R.cam.h);
   // 战场外那一圈底色也属于环境：用这一层最暗的那一档，边界之外不会是另一种气候
@@ -1545,7 +1561,7 @@ R.draw = function (dt) {
   if (hall) {
     applyCamera(x);
     drawHall(x, hall);
-    screenSetup(x);
+    resetToBase(x);
     R.phase = 'idle';
     return;
   }
@@ -1577,7 +1593,7 @@ R.draw = function (dt) {
   R.phase = 'swing'; drawSwing(x, sess);
   R.phase = 'texts'; drawTexts(x, sess);
 
-  screenSetup(x);
+  resetToBase(x);
   R.phase = 'overlay';
   drawDangerFrame(x, sess);
   drawBanner(x);
@@ -1601,7 +1617,7 @@ var idleT = 0;
 R.drawIdle = function (dt) {
   var x = R.ctx;
   if (!x) return;
-  screenSetup(x);
+  resetToBase(x);
   idleT += Math.max(0, Number(dt) || 0);
 
   var W = R.cam.w, H = R.cam.h, horizon = H * 0.52;

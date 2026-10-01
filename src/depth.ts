@@ -31,27 +31,65 @@ var Depth = {} as DepthApi;
 /* =========================================================
    1. 层带表
    ========================================================= */
-var BAND_LIST: [string, number, string][] = [
-  ['ground', 0, '地面与静态装饰（烘焙成一张图，每帧一次 blit）'],
-  ['decal', 100, '血迹贴花：在地面之上、一切实体之下'],
-  ['prop', 200, '岩石与白骨（与地面分成两层，保持"地面→贴花→岩石"的叠放顺序）'],
-  ['bounds', 300, '战场围墙'],
-  ['shadow', 400, '影子：单独一遍。这样 A 的影子不会压在后画的 B 身上'],
-  ['marker', 450, '地面标记（拾取范围圈）：属于地面语义，压在实体之下'],
-  ['actor', 500, '站在地上的实体：拾取物 / 炮塔 / 怪 / 玩家，**同带内按 y 排**'],
-  ['air', 600, '（预留）悬浮实体：飞行怪、升空的弹道'],
-  ['projectile', 700, '子弹与敌弹：压在实体之上，保证弹幕可读'],
-  ['fx', 800, '命中粒子'],
-  ['swing', 850, '挥击弧与冲击环：压在实体与粒子之上'],
-  ['text', 900, '伤害飘字：最上层的世界内内容'],
-  ['screen', 1000, '屏幕层：不随摄像机（危险边框 / 横幅 / 调试叠层）']
+/* =========================================================
+   1. 层带的声明表
+   ---------------------------------------------------------
+   ⚠ **层是一等实体，不是"画法的先后"**。每一条层带声明四件事：
+
+     · `name`    名字（写错即抛错 —— 层名错是配置错误，不该静默画错层次）
+     · `z`       稀疏整数（0/100/200…），表序 = 叠放顺序
+     · `domain`  **变换域**：`world` 吃相机变换 / `screen` 不吃
+     · `note`    这一层放什么
+
+   外加两个可选：
+     · `baked`       这一层是否烘焙成离屏位图（每帧一次 blit）
+     · `ySort`       同层内是否按 y 排（2D 俯视的通行做法）
+
+   ## 为什么 `domain` 必须是**声明**而不是靠代码顺序
+
+   改造前"不随相机"是靠 `render.ts` 的 `screenSetup()` **在画之前重置一次变换**
+   实现的 —— 那是一句**调用约定**，不是层自己的属性。后果：
+   任何人在那之前插一层绘制，它就会**静默地**吃上相机变换；
+   而"哪些层该吃变换"这件事，**在层表里读不出来**。
+
+   调研了六家引擎（Godot `CanvasLayer` 自带 transform / Unity 的
+   `Screen Space - Overlay` vs `World Space` / Phaser 的 `scrollFactor`
+   / libgdx 的"HUD 用另一个 Viewport"），**通行模型**是：
+
+       Window ⊃ Viewport ⊃ Layer ⊃ Item
+       相机**属于 Viewport**并修改 Viewport 的 canvas 变换 —— **相机不是层**
+
+   所以变换域是**层的属性**（层绑定到哪个域），而相机是域的变换来源。
+   启动期自检会强制"屏幕域恰好一层、且必须是最高层"（见第 6 节）。
+   ========================================================= */
+var LAYERS: DepthLayerDef[] = [
+  { name: 'ground', z: 0, domain: 'world', baked: true, note: '地面与静态装饰（烘焙成一张图，每帧一次 blit）' },
+  { name: 'decal', z: 100, domain: 'world', note: '血迹贴花：在地面之上、一切实体之下' },
+  { name: 'prop', z: 200, domain: 'world', note: '岩石与白骨（与地面分成两层，保持"地面→贴花→岩石"的叠放顺序）' },
+  { name: 'bounds', z: 300, domain: 'world', note: '战场围墙' },
+  { name: 'shadow', z: 400, domain: 'world', note: '影子：单独一遍。这样 A 的影子不会压在后画的 B 身上' },
+  { name: 'marker', z: 450, domain: 'world', note: '地面标记（拾取范围圈）：属于地面语义，压在实体之下' },
+  { name: 'actor', z: 500, domain: 'world', ySort: true, note: '站在地上的实体：拾取物 / 炮塔 / 怪 / 玩家，**同带内按 y 排**' },
+  { name: 'air', z: 600, domain: 'world', note: '（预留）悬浮实体：飞行怪、升空的弹道' },
+  { name: 'projectile', z: 700, domain: 'world', note: '子弹与敌弹：压在实体之上，保证弹幕可读' },
+  { name: 'fx', z: 800, domain: 'world', note: '命中粒子' },
+  { name: 'swing', z: 850, domain: 'world', note: '挥击弧与冲击环：压在实体与粒子之上' },
+  { name: 'text', z: 900, domain: 'world', note: '伤害飘字：最上层的世界内内容' },
+  { name: 'screen', z: 1000, domain: 'screen', note: '屏幕层：不随摄像机（危险边框 / 横幅 / 调试叠层）' }
 ];
 var BANDS: Record<string, number> = Object.create(null);
 var BAND_NOTE: Record<string, string> = Object.create(null);
-for (var bi = 0; bi < BAND_LIST.length; bi++) {
-  BANDS[BAND_LIST[bi][0]] = BAND_LIST[bi][1];
-  BAND_NOTE[BAND_LIST[bi][0]] = BAND_LIST[bi][2];
+var BAND_DOMAIN: Record<string, string> = Object.create(null);
+/* z → 名字（`flush` 的账目、`describe`、调试叠层都读它） */
+var BAND_LIST_NAME: Record<number, string> = Object.create(null);
+for (var bi = 0; bi < LAYERS.length; bi++) {
+  BANDS[LAYERS[bi].name] = LAYERS[bi].z;
+  BAND_NOTE[LAYERS[bi].name] = LAYERS[bi].note;
+  BAND_DOMAIN[LAYERS[bi].name] = LAYERS[bi].domain;
+  BAND_LIST_NAME[LAYERS[bi].z] = LAYERS[bi].name;
 }
+/** 兼容旧名：`BAND_LIST` 是本表的历史叫法（元组时代的名字），只给家族与自检用 */
+var BAND_LIST = LAYERS;
 
 /** 具名层带。名字写错直接抛错（引擎里层名错是配置错误，不该静默画错层次） */
 Depth.band = function (name) {
@@ -59,11 +97,31 @@ Depth.band = function (name) {
   if (z === undefined) throw new Error('depth: 未知层带 ' + name);
   return z;
 };
-Depth.bandNames = function () { return BAND_LIST.map(function (b) { return b[0]; }); };
+Depth.bandNames = function () { return LAYERS.map(function (b) { return b.name; }); };
 Depth.bandNote = function (name) { return BAND_NOTE[name] || ''; };
-/** 层带表（调试叠层用） */
+/** 层带表（调试叠层、`describe`、逐项对照用）—— 含**变换域**与两个可选属性 */
 Depth.bandTable = function () {
-  return BAND_LIST.map(function (b) { return { name: b[0], z: b[1], note: b[2] }; });
+  return LAYERS.map(function (b) {
+    return {
+      name: b.name, z: b.z, domain: b.domain, note: b.note,
+      ySort: !!b.ySort, baked: !!b.baked
+    };
+  });
+};
+/** 这一层的**变换域**：`world` 吃相机变换，`screen` 不吃 */
+Depth.bandDomain = function (name) {
+  var d = BAND_DOMAIN[name] as DepthLayerDomain | undefined;
+  if (d === undefined) throw new Error('depth: 未知层带 ' + name);
+  return d;
+};
+/** 某个变换域里的层（按叠放顺序）—— 渲染层据此"每个域只设一次变换" */
+Depth.bandsOfDomain = function (domain) {
+  return LAYERS.filter(function (b) { return b.domain === domain; }).map(function (b) { return b.name; });
+};
+/** 某个变换域的**最靠下**的层名（渲染层在这里设一次变换，之后整域不必再设） */
+Depth.firstBandOfDomain = function (domain) {
+  for (var i = 0; i < LAYERS.length; i++) if (LAYERS[i].domain === domain) return LAYERS[i].name;
+  return null;
 };
 
 /* =========================================================
@@ -71,6 +129,10 @@ Depth.bandTable = function () {
    ========================================================= */
 var ACTORS: Record<string, DepthActor> = Object.create(null);
 var ACTOR_NAMES: string[] = [];
+/** 整层开关的运行时状态（只记"被显式改过"的层，见第 4b 节） */
+var LAYER_STATE: Record<string, { visible: boolean; alpha: number }> = Object.create(null);
+/** 因整层开关而被跳过的实体数（本帧） */
+var skipped = 0;
 
 /**
  * 注册一类可视实体。
@@ -134,7 +196,7 @@ var TRACE: ((name: string, ref: any, order: number) => void) | null = null;
 
 /** 开始一帧 */
 Depth.reset = function () {
-  used = 0; frameSeq = 0; pushes = 0;
+  used = 0; frameSeq = 0; pushes = 0; skipped = 0;
   for (var k in counts) counts[k] = 0;
   for (var b in bandCounts) bandCounts[b] = 0;
 };
@@ -162,6 +224,16 @@ Depth.count = function () { return used; };
 /**
  * 排序并依次绘制。
  * @param trace 可选：每次绘制回调 `(name, ref, order)`，调试叠层与测试用
+ *
+ * 两件在"层"语义下必须在这里做、而不能交给调用方的事：
+ *
+ *   1. **整层开关**（`visible` / `alpha`）—— 判据在**层**上，不在每个实体上。
+ *      隐藏的层直接跳过（连遍历都不做）；`alpha` 非 1 的层包一次
+ *      `save / globalAlpha *= / restore`。代价只在真的用到时才付。
+ *   2. **隐藏不传播**：把它声明清楚 —— 隐藏 A 层**只**影响 A，
+ *      不会连带隐藏别的层（Godot 的 `CanvasLayer.visible` 也是这个语义：
+ *      "只隐藏本层，不向下传播"）。反过来做（传播到子层）会让"临时关一层"
+ *      变成"关一片"，那是排查层次问题时最难查的一种。
  */
 Depth.flush = function (ctx, env) {
   live.length = used;
@@ -171,12 +243,54 @@ Depth.flush = function (ctx, env) {
     counts[s.kind] = (counts[s.kind] || 0) + 1;
     var bn = BAND_LIST_NAME[s.z] || '?';
     bandCounts[bn] = (bandCounts[bn] || 0) + 1;
+    var st = LAYER_STATE[bn];
+    if (st) {
+      if (!st.visible) { skipped++; continue; }
+      if (st.alpha !== 1) {
+        ctx.save();
+        ctx.globalAlpha = ctx.globalAlpha * st.alpha;
+        ACTORS[s.kind].draw(ctx, s.ref, env);
+        ctx.restore();
+        if (TRACE) TRACE(s.kind, s.ref, i);
+        continue;
+      }
+    }
     ACTORS[s.kind].draw(ctx, s.ref, env);
     if (TRACE) TRACE(s.kind, s.ref, i);
   }
 };
-var BAND_LIST_NAME: Record<number, string> = {};
-for (var bj = 0; bj < BAND_LIST.length; bj++) BAND_LIST_NAME[BAND_LIST[bj][1]] = BAND_LIST[bj][0];
+
+/* =========================================================
+   4b. 层的运行时状态（整层开关）
+   ---------------------------------------------------------
+   只有**被显式设置过**的层才在这里留下一行 —— 表里的默认值是
+   `visible = true` / `alpha = 1`，不预先物化每一层（省分配，
+   也让 `layerState()` 能回答"这一层被改过吗"）。
+   ========================================================= */
+Depth.setLayerVisible = function (name, on) {
+  Depth.band(name);                                   // 层名错即抛错
+  (LAYER_STATE[name] || (LAYER_STATE[name] = { visible: true, alpha: 1 })).visible = !!on;
+  return Depth.layerState(name);
+};
+Depth.setLayerAlpha = function (name, a) {
+  Depth.band(name);
+  var v = a < 0 ? 0 : (a > 1 ? 1 : a);
+  (LAYER_STATE[name] || (LAYER_STATE[name] = { visible: true, alpha: 1 })).alpha = v;
+  return Depth.layerState(name);
+};
+/** 这一层的当前状态（没被设置过就是表的默认值） */
+Depth.layerState = function (name) {
+  Depth.band(name);
+  var st = LAYER_STATE[name];
+  return { visible: st ? st.visible : true, alpha: st ? st.alpha : 1, overridden: !!st };
+};
+/** 清掉所有整层覆盖（回到表的默认值）—— 换场景 / 关调试叠层时用 */
+Depth.resetLayers = function () {
+  for (var k in LAYER_STATE) if (Object.prototype.hasOwnProperty.call(LAYER_STATE, k)) delete LAYER_STATE[k];
+  skipped = 0;
+};
+/** 被整层开关跳过的实体数（`stats` 报它 —— 否则"画面上少东西"没有读数可查） */
+Depth.skipped = function () { return skipped; };
 
 /** 调试钩子：设为函数后每次绘制都会回调（传 null 关闭） */
 Depth.trace = function (fn) { TRACE = typeof fn === 'function' ? fn : null; return !!TRACE; };
@@ -189,7 +303,7 @@ Depth.stats = function () {
   for (var k in counts) if (counts[k]) ac[k] = counts[k];
   var bc: Record<string, number> = {};
   for (var b in bandCounts) if (bandCounts[b]) bc[b] = bandCounts[b];
-  return { pushed: pushes, actors: ac, bands: bc, slots: pool.length, live: used };
+  return { pushed: pushes, actors: ac, bands: bc, slots: pool.length, live: used, skipped: skipped };
 };
 
 /** 人类可读的一帧深度报告（?z=1 叠层 / 测试失败信息都用它） */
@@ -198,12 +312,21 @@ Depth.describe = function () {
   var lines = ['深度队列 ' + st.pushed + ' 个实体（槽位池 ' + st.slots + '，复用 ' +
     (st.slots ? (st.slots - st.live) : 0) + ' 个空闲）'];
   var rows = Depth.bandTable();
+  var domain = '';
   for (var i = 0; i < rows.length; i++) {
+    /* 变换域换了就打一条分隔 —— 它回答"从哪一层起不再吃相机变换" */
+    if (rows[i].domain !== domain) {
+      domain = rows[i].domain;
+      lines.push('  ── ' + domain + ' 域' + (domain === 'screen' ? '（不随相机）' : '（吃相机变换）') + ' ──');
+    }
     var n = st.bands[rows[i].name] || 0;
     if (!n) continue;
+    var stt = Depth.layerState(rows[i].name);
+    var flags = (stt.visible ? '' : ' [隐藏]') + (stt.alpha !== 1 ? ' [alpha ' + stt.alpha + ']' : '');
     lines.push('  z=' + String(rows[i].z).padStart(4) + '  ' + rows[i].name.padEnd(11) +
-      ' ×' + n + '   ' + rows[i].note);
+      ' ×' + String(n).padEnd(4) + flags + '  ' + rows[i].note);
   }
+  if (st.skipped) lines.push('  （整层开关跳过了 ' + st.skipped + ' 个实体）');
   return lines.join('\n');
 };
 
@@ -237,9 +360,10 @@ Depth.audit = function () {
   var seenZ: Record<string, boolean> = Object.create(null);
   var prevZ = -Infinity;
   var i, name, z;
-  for (i = 0; i < BAND_LIST.length; i++) {
-    var row = BAND_LIST[i];
-    name = row[0]; z = row[1];
+  var screenCount = 0, lastDomain = '';
+  for (i = 0; i < LAYERS.length; i++) {
+    var row = LAYERS[i];
+    name = row.name; z = row.z;
     if (!name) problems.push('第 ' + i + ' 条层带没有名字');
     else if (seenName[name]) {
       problems.push('层带重名：' + name + '（BANDS 会被后一条覆盖，前一条的层号静默丢失）');
@@ -261,7 +385,35 @@ Depth.audit = function () {
     if (BAND_LIST_NAME[z] !== name) {
       problems.push('z→名字的映射与层带表不一致：z=' + z + ' 映射到 ' + BAND_LIST_NAME[z] + '，表里是 ' + name);
     }
+    /* ---- 变换域（本轮新增的判据，三条各对着一个真实的静默故障）---- */
+    if (row.domain !== 'world' && row.domain !== 'screen') {
+      problems.push('层带 ' + name + ' 的变换域不合法：' + row.domain +
+        '（只允许 world / screen。域写错的后果是"这一层吃不吃相机变换"变成未定义）');
+    }
+    if (row.domain === 'screen') screenCount++;
+    /* ⚠ 域必须**成块**出现，不能交错：渲染层是"每个域设一次变换，然后连着画完这个域"，
+       交错时第二个 world 层会带着 screen 域的变换画 —— 表现是"某些东西的位置偏了"，
+       而层表看起来完全正常。 */
+    if (lastDomain && row.domain !== lastDomain && row.domain === 'world') {
+      problems.push('变换域交错：' + name + ' 是 world，但它前面已经是 ' + lastDomain +
+        '（渲染层每个域只设一次变换，交错会让它带着上一个域的变换画）');
+    }
+    lastDomain = row.domain;
   }
+  /* 屏幕域恰好一层，且必须是**最高**层。
+     两层屏幕域没有意义（它们是同一个变换，区别只是谁先画）；不在最高层则
+     在它之后画的 world 层会被当成屏幕内容 —— 而"UI 之上还有世界"是错的。 */
+  if (screenCount === 0) {
+    problems.push('没有 screen 域的层：横幅 / 危险边框 / 调试叠层无处可放，只能塞进 world 域跟着相机跑');
+  } else if (screenCount > 1) {
+    problems.push('screen 域有 ' + screenCount + ' 层：它们变换相同，叠放顺序没有意义；' +
+      '同一域内要分层请用 world 域里的层号');
+  } else if (LAYERS.length && LAYERS[LAYERS.length - 1].domain !== 'screen') {
+    problems.push('screen 域不在最高层（最高层是 ' + LAYERS[LAYERS.length - 1].name +
+      '）：在它之后画的 world 层会被当成屏幕内容，而"UI 之上还有世界"是错的');
+  }
+  /* 已注册实体的域必须与层表一致 —— `Depth.actor` 注册时把 z 抄了一份，
+     所以域也在这里核（改域却没重新注册 = 实体永远画在旧域） */
   for (name in BANDS) {
     if (Object.prototype.hasOwnProperty.call(BANDS, name) && !seenName[name]) {
       problems.push('BANDS 里有层带表没有的层：' + name + '（它是死配置，永远取不到）');
@@ -287,8 +439,13 @@ Depth.audit = function () {
 
 /* 注册到扩展点总账：层带是家族；可视实体引用层带（render.ts 注册实体时用） */
 Registry.family('depthBand', {
-  note: 'Z 深度层带', owner: 'depth.ts',
-  values: function () { return BAND_LIST.map(function (b) { return b[0]; }); }
+  note: 'Z 深度层带（名字 + 层号 + **变换域** world/screen + 可选 ySort/baked）', owner: 'depth.ts',
+  values: function () { return LAYERS.map(function (b) { return b.name; }); }
+});
+Registry.family('depthDomain', {
+  note: '变换域：world 吃相机变换 / screen 不吃（行业通行模型 Window ⊃ Viewport ⊃ Layer ⊃ Item）',
+  owner: 'depth.ts',
+  values: function () { return ['world', 'screen']; }
 });
 Registry.family('actor', {
   note: '可视实体类型（层带 + 取 y + 画法）', owner: 'depth.ts',

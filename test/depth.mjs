@@ -242,6 +242,110 @@ console.log('\n[8] 层次分离');
     'depth.ts 里没有会话/存档之类的玩法概念');
 }
 
+/* =========================================================
+   [9] 层契约：变换域 + 整层开关（本轮新增）
+   ---------------------------------------------------------
+   调研六家引擎后确定：**层是一等实体**，行业通行模型是
+   `Window ⊃ Viewport ⊃ Layer ⊃ Item`，相机**属于 Viewport**并修改
+   它的 canvas 变换 —— **相机不是层**。所以"吃不吃相机变换"（变换域）
+   必须是**层的声明属性**，而不是靠代码顺序里某一次 `resetTransform`。
+
+   这一节守五件事：
+     ① 每一层都有合法的域，且 **screen 域恰好一层、在最高层**（成块）
+     ② 域的辅助查询（`bandsOfDomain` / `firstBandOfDomain`）说得对
+     ③ 整层开关真的**跳过绘制**（用探针 ctx 数真的画了几次）
+     ④ **隐藏不传播**：关掉一层只影响那一层
+     ⑤ 未知层名**抛错**（与 `Depth.band` 同一条纪律：静默兜底会把错字变成"层次有点怪"）
+   ========================================================= */
+console.log('\n[9] 层契约：变换域 + 整层开关（R54）');
+{
+  const rows = Depth.bandTable();
+  ok(rows.length === 13, '层表 13 条', rows.length);
+  ok(rows.every(r => r.domain === 'world' || r.domain === 'screen'),
+    '每条层带都声明了合法变换域（world / screen）', JSON.stringify(rows.map(r => r.domain)));
+  ok(Depth.audit().ok, '启动期自检认可这张层表', JSON.stringify(Depth.audit().problems));
+
+  const screenBands = Depth.bandsOfDomain('screen');
+  ok(screenBands.length === 1 && screenBands[0] === 'screen',
+    'screen 域恰好一层（横幅 / 危险边框 / 调试叠层都住它）', JSON.stringify(screenBands));
+  ok(rows[rows.length - 1].domain === 'screen',
+    'screen 域在**最高层**（在它之后不该再有 world —— "UI 之上还有世界"是错的）',
+    rows[rows.length - 1].name);
+  ok(Depth.bandsOfDomain('world').length === 12, 'world 域 12 层', Depth.bandsOfDomain('world').length);
+  ok(Depth.firstBandOfDomain('world') === 'ground' && Depth.firstBandOfDomain('screen') === 'screen',
+    '每个域的最下层报得对（渲染层在那里设一次变换就够）',
+    Depth.firstBandOfDomain('world') + ' / ' + Depth.firstBandOfDomain('screen'));
+  ok(Depth.bandDomain('ground') === 'world' && Depth.bandDomain('screen') === 'screen',
+    'bandDomain() 逐层报得对');
+  ok(throws(() => Depth.bandDomain('nope')) !== null, '未知名报域时抛错（不静默兜底）');
+
+  /* 层的 y 排序声明：只有 actor 开（俯视游戏"同层按 y 排"的通行做法） */
+  const ySorted = rows.filter(r => r.ySort).map(r => r.name);
+  ok(ySorted.length === 1 && ySorted[0] === 'actor', '只有 actor 层声明了同层按 y 排', JSON.stringify(ySorted));
+
+  /* ---- 整层开关：用探针 ctx 数"真的画了几次" ---- */
+  Depth.resetLayers();
+  ok(Depth.layerState('actor').overridden === false, '默认状态没有覆盖（表的默认值就是全部可见、alpha=1）');
+
+  /* 造一个最小实体：注册一个画一次就计数的 actor 类型 */
+  let drawn = 0;
+  Depth.actor('probeThing', {
+    band: 'actor', y: () => 10, id: () => 0,
+    draw: () => { drawn++; }
+  });
+  /* ⚠ `makeProbeCtx()` 默认**不记录**调用序列 —— 要把 `{ log: true }` 传进去
+     （`test/_ctx.mjs` 的 `note()` 里 `if (o.log) …`），否则 `probe.log` 永远是空的，
+     断言会变成恒假。这是本节的第一个坑，写在这里免得下次再踩。 */
+  const probe = makeProbeCtx({ w: R.cam.w, h: R.cam.h, log: true });
+
+  function flushOnce() {
+    drawn = 0;
+    Depth.reset();
+    Depth.push('probeThing', {});
+    Depth.flush(probe, {});
+    return drawn;
+  }
+  ok(flushOnce() === 1, '基线：这一层可见时画 1 次', drawn);
+
+  Depth.setLayerVisible('actor', false);
+  ok(flushOnce() === 0, '关掉 actor 层之后**一次都不画**（整层开关真的生效）', drawn);
+  ok(Depth.skipped() === 1, '`skipped()` 报出被跳过的实体数（否则"画面少东西"没有读数）', Depth.skipped());
+
+  /* **隐藏不传播**：关掉 actor 不该影响别的层 */
+  let other = 0;
+  Depth.actor('probeOther', { band: 'fx', y: () => 10, id: () => 0, draw: () => { other++; } });
+  Depth.reset(); Depth.push('probeThing', {}); Depth.push('probeOther', {}); Depth.flush(probe, {});
+  ok(other === 1 && drawn === 0,
+    '**隐藏不传播**：actor 被关掉，同一帧的 fx 层照画（关一层不会连带关一片）',
+    'fx=' + other + ' actor=' + drawn);
+  ok(Depth.layerState('fx').visible === true, 'fx 的可见性没被 actor 的开关动过');
+
+  /* alpha：非 1 时包一次 save/restore。
+     ⚠ 探针把**属性写入**记成 `set:<名>`（`test/_ctx.mjs` 的 setter 里 `note('set:' + k, [v])`），
+     第一版断言写的是 `globalAlpha`，于是**它永远匹配不上**（一个恒假的假断言）。
+     这里改成核到**具体数值**：0.5 而不是"写过就行"。 */
+  Depth.resetLayers();
+  Depth.setLayerAlpha('actor', 0.5);
+  probe.log.length = 0;
+  flushOnce();
+  const alphaWrites = probe.log.filter(l => l[0] === 'set:globalAlpha');
+  ok(alphaWrites.length >= 1 && Math.abs(alphaWrites[alphaWrites.length - 1][1] - 0.5) < 1e-9,
+    'alpha=0.5 时写到 ctx.globalAlpha 的是 **0.5**（整层透明度真的落到 ctx 上，不是"写过就算")',
+    JSON.stringify(alphaWrites));
+  ok(probe.log.some(l => l[0] === 'save') && probe.log.some(l => l[0] === 'restore'),
+    'alpha 那一段包了 save/restore（不把透明度漏给后面的层）',
+    JSON.stringify(probe.log.map(l => l[0])));
+  ok(Depth.setLayerAlpha('actor', 9).alpha === 1 && Depth.setLayerAlpha('actor', -3).alpha === 0,
+    'alpha 自动夹到 0..1');
+  ok(throws(() => Depth.setLayerVisible('nope', false)) !== null, '未知层名设开关时抛错');
+
+  Depth.resetLayers();
+  ok(Depth.layerState('actor').overridden === false, 'resetLayers() 清掉所有覆盖');
+
+  /* 清理注册（避免污染同进程里后面的断言） */
+  ok(Depth.hasActor('probeThing') && Depth.hasActor('probeOther'), '两个探针实体已注册（本节自用）');
+}
+
 console.log('\n=== 结果 ===');
 if (failures === 0) { console.log('\x1b[32m全部通过 ✔\x1b[0m'); process.exit(0); }
 console.log('\x1b[31m' + failures + ' 项失败 ✘\x1b[0m');

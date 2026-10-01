@@ -19,6 +19,77 @@ links: ["README.md", "docs/history/README.md"]
 
 ---
 
+## 未发布 · 图层契约：层是**一等实体**，"吃不吃相机变换"写进层表（R54）
+
+> 玩家看不到这一条里的任何东西（**行为指纹逐位未变**）。它的价值在**下一个人**：
+> 改造前"这一层随不随相机"是**代码顺序的隐含约定**，现在是**层自己的声明**。
+
+### 问题：不是"没有图层"，是**层的契约没声明**
+
+`src/depth.ts` 本来就有 13 个具名层带（对齐 Unity 的 `sortingLayer`+`sortingOrder`、
+Godot 的 `z_index`+`y_sort`、Bevy 的 `ZIndex`，且 tie-break `(band, y, id, seq)` 是显式的，
+比 Godot / Unity / GameMaker 都严）。**缺的是别的东西**：
+
+| 缺什么 | 改造前的样子 |
+| --- | --- |
+| **层的变换域不是声明** | "不随相机"靠 `render.ts` 的 `screenSetup()` **在画之前重置一次变换** —— 一句调用约定。任何人在那之前插一层绘制，它会**静默地**吃上相机变换；而"哪些层该吃变换"**在层表里读不出来** |
+| **没有整层开关** | 没有 `visible` / `alpha`，想临时关一层只能改调用点 |
+| **隐藏的传播语义没定义** | 关一层会不会连带关一片？没有答案 |
+
+### 依据：调研六家引擎后的行业通行模型
+
+`Godot CanvasLayer`（层自带 transform）· `Unity Screen Space Overlay vs World Space` ·
+`Phaser scrollFactor` · `libgdx`（HUD 用另一个 Viewport）· `GameMaker depth→layer` · `Pixi RenderLayer`
+—— 共同的模型是：
+
+    Window ⊃ Viewport ⊃ Layer ⊃ Item
+    相机**属于 Viewport**并修改 Viewport 的 canvas 变换 —— **相机不是层**
+
+所以**变换域是层的属性**（层绑定到哪个域），相机只是那个域的变换来源。
+
+### 改了什么
+
+`src/depth.ts` 的层表从三元组 `[名字, z, 说明]` 变成**声明对象**：
+
+```js
+{ name: 'actor', z: 500, domain: 'world', ySort: true, note: '站在地上的实体…' }
+```
+
+新增四条**启动期自检**（各证明过一次会红）：
+
+| 判据 | 不这么做会怎样 |
+| --- | --- |
+| 变换域必须合法（`world` / `screen`） | 域写错 → "这一层吃不吃相机变换"变成未定义 |
+| **域必须成块出现，不能交错** | 渲染层每个域只设一次变换；交错时第二个 world 层会带着 screen 域的变换画 —— **层表看起来完全正常**，只是"某些东西位置偏了" |
+| **screen 域恰好一层、且在最高层** | 两层 screen 域没有意义（同一变换）；不在最高层则其后画的 world 层被当成屏幕内容 —— 而"UI 之上还有世界"是错的 |
+| 没有 screen 域 | 横幅 / 危险边框 / 调试叠层无处可放，只能塞进 world 域跟着相机跑 |
+
+新增 API：`bandDomain` · `bandsOfDomain` · `firstBandOfDomain` ·
+`setLayerVisible` / `setLayerAlpha` / `layerState` / `resetLayers` · `skipped()`。
+
+**整层开关的语义**（写清了，不靠猜）：隐藏的层**直接跳过**（连遍历都不做）；
+`alpha ≠ 1` 包一次 `save / restore`；**隐藏不传播** —— 关 A 只影响 A，
+不连带关别的层（Godot 的 `CanvasLayer.visible` 也是这个语义）。
+
+`render.ts` 里那个 `screenSetup()` 改名 `resetToBase()`：它做的是**基准变换**
+（1 单位 = 1 CSS 像素 × DPR，帧的起点），**不等于 `screen` 域** ——
+战斗画面在设相机变换之前也要先回到基准。旧名字把两件事混成了一件。
+
+### 玩家可感知的变化
+
+**没有。** 指纹 `622d6ebf` / `a9c2902b` / `354cc83c` 逐位不变。
+唯一会出现在界面上的是诊断面板（`?diag=1` / `?z=1`）里的层报告多了**变换域分隔行**。
+
+### 证据
+
+`test/depth.mjs` 新增第 9 节 **28 条断言**（域合法性 / 成块 / screen 恰一层且在最高层 /
+整层开关真的跳过绘制 / **隐藏不传播** / alpha 真的落到 ctx 且包了 save-restore /
+未知层名抛错）。四条新自检各用注入的坏数据证明过一次会红。
+`pnpm verify` **20/20 门** · 64 套测试 · 指纹未变。
+门 `doc-num` 当场抓到家族数 140 → **141**（新增 `depthDomain` 家族）。
+
+---
+
 ## 未发布 · 工程规范：行尾统一成 LF + 文档 front matter + 两道新门
 
 > 玩家看不到这一条里的任何东西（**行为指纹逐位未变**）—— 它是一次**工程卫生**的清理。

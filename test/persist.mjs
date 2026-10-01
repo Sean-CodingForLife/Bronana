@@ -95,7 +95,12 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'render.ts': ['w', 'h', '_skin', '_pose', '_parts', '_seat', '_flashOpt', 'pf', '_atlasWarm',
       // 横幅（"第 N 间 · 房型"）的文本与倒计时：**纯表现**，所以它住在渲染层而不是会话上
       'banner'],
-    'depth.ts': ['pool', 'live', 'used', 'frameSeq', 'counts', 'bandCounts', 'pushes', 'TRACE'],
+    /* `skipped` 与 `LAYER_STATE`：**整层开关**的运行时状态（R54-图层契约）。
+       `LAYER_STATE` 是 `Object.create(null)` 的表（`isMutable` 按 `var x = …` 认，
+       对象字面量不算），所以这里只登记 `skipped` 那个计数器。
+       两者都是**纯表现**：不进存档、不影响任何玩法数值 ——
+       它们只回答"这一帧有几层被关掉了"。 */
+    'depth.ts': ['pool', 'live', 'used', 'frameSeq', 'counts', 'bandCounts', 'pushes', 'TRACE', 'skipped'],
     /* music.ts 的播放状态：**纯表现**（不进存档、不该进会话）。
        它同时暴露了这份盘点的一个盲点：`topLevelVars` 只认 `var x = …`，
        而挂在导出对象上的字段（`Music.current = ''`）**不是** `var` ——

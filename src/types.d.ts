@@ -1610,7 +1610,34 @@ interface RegistryApi {
 }
 
 /* ---------------- Z 深度（depth.ts） ----------------
-   层带 + 层内 y 排序 + 确定性 tie-break；sim 层不参与，实体由渲染层注册。 */
+   层带 + 层内 y 排序 + 确定性 tie-break；sim 层不参与，实体由渲染层注册。
+
+   ⚠ **层是一等实体，不是"画法的先后"**。行业通行的模型是
+     `Window ⊃ Viewport ⊃ Layer ⊃ Item`，相机**属于 Viewport**并修改
+     Viewport 的 canvas 变换 —— **相机不是层**。所以"吃不吃相机变换"
+    （`domain`）是**层的属性**，不是靠代码顺序里某一次 `resetTransform`。
+   两个域必须成块出现：渲染层每个域只设一次变换（启动期自检守这条）。 */
+/** 变换域：`world` 吃相机变换 / `screen` 不吃（横幅、危险边框、调试叠层） */
+type DepthLayerDomain = 'world' | 'screen';
+interface DepthLayerDef {
+  name: string;
+  /** 稀疏整数（0/100/200…）：新增一层不用重排已有的层号 */
+  z: number;
+  /** 变换域（**必填**：写错即启动期自检报红） */
+  domain: DepthLayerDomain;
+  note: string;
+  /** 同层内按 y 排（2D 俯视的通行做法；目前只有 `actor` 开） */
+  ySort?: boolean;
+  /** 这一层烘焙成离屏位图（每帧一次 blit） */
+  baked?: boolean;
+}
+/** 某一层的运行时整层开关（没被设置过就是表的默认值） */
+interface DepthLayerState {
+  visible: boolean;
+  alpha: number;
+  /** 这一层被显式改过吗（没改过 = 表里的默认值） */
+  overridden: boolean;
+}
 interface DepthActor {
   name: string;
   band: string;
@@ -1629,13 +1656,30 @@ interface DepthStats {
   bands: Record<string, number>;
   slots: number;
   live: number;
+  /** 因整层开关（`visible: false`）被跳过的实体数 —— 否则"画面上少东西"没有读数 */
+  skipped: number;
 }
 interface DepthApi {
   /** 具名层带的 z 值（名字错即抛错） */
   band(name: string): number;
+  /** 这一层的**变换域**（名字错即抛错） */
+  bandDomain(name: string): DepthLayerDomain;
+  /** 某个变换域里的层名，按叠放顺序 */
+  bandsOfDomain(domain: DepthLayerDomain): string[];
+  /** 某个变换域**最靠下**的层名（渲染层在这里设一次变换） */
+  firstBandOfDomain(domain: DepthLayerDomain): string | null;
   bandNames(): string[];
   bandNote(name: string): string;
-  bandTable(): { name: string; z: number; note: string }[];
+  bandTable(): DepthLayerDef[];
+  /** 整层开关；名字错即抛错 */
+  setLayerVisible(name: string, on: boolean): DepthLayerState;
+  /** 整层透明度（自动夹到 0..1） */
+  setLayerAlpha(name: string, a: number): DepthLayerState;
+  layerState(name: string): DepthLayerState;
+  /** 清掉所有整层覆盖（回到表的默认值） */
+  resetLayers(): void;
+  /** 本帧被整层开关跳过的实体数 */
+  skipped(): number;
   actor(name: string, def: { band: string; y: (ref: any) => number; id?: (ref: any) => number; seq?: (ref: any) => number; cull?: number | ((ref: any) => number); draw: (ctx: any, ref: any, env: any) => void }): DepthActor;
   cullRadius(name: string, ref: any): number;
   hasActor(name: string): boolean;
