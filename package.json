@@ -75,6 +75,8 @@
     "eol:audit": "node tools/eol-audit.mjs",
     "env": "node tools/env.mjs",
     "doc:num": "node tools/doc-num-audit.mjs",
+    "doc:front": "node tools/doc-front-matter.mjs",
+    "engine:boundary": "node tools/engine-boundary.mjs",
     "hardcode": "node tools/hardcode-audit.cjs",
     "audio:census": "node tools/audio-census.mjs",
     "draw": "node tools/draw-census.mjs",

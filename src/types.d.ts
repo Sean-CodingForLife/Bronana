@@ -374,8 +374,18 @@ interface CrashApi {
   count: number;
   /** 最后一次的错误摘要 */
   last: string;
-  /** 组装提示语（**纯函数**，测试不必碰 DOM） */
-  describe(err: any, from: string): string;
+  /**
+   * 由**应用层**注入的上下文提供者（R55 引擎/内容边界）。
+   * ⚠ 是**函数**不是字符串：崩溃可能发生在任何时候，快照会过时
+   * （boot 时写"波次 1"，第 9 波崩了卡片会报错波次 —— 那比没有卡片更坏）。
+   * 引擎不认识波次/角色/层；谁拥有游戏状态，谁负责描述它。
+   */
+  whereProvider: (() => string) | null;
+  /** 取当前上下文串（没有提供者 / 提供者抛了 → 用兜底文案） */
+  where(): string;
+  /** 组装提示语（**纯函数**，测试不必碰 DOM）
+   *  @param where 可选：直接给上下文串（测试用；不传就向 `whereProvider` 要） */
+  describe(err: any, from: string, where?: string): string;
   /** 报一次运行时错误；返回是否**新**弹了一张卡 */
   report(err: any, from: string): boolean;
   /** 接上 `error` 与 `unhandledrejection`；只接一次；无窗口时什么都不做 */

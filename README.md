@@ -865,11 +865,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 94 个 · 43973 行（另有 `types.d.ts` 5280 行） |
+| 模块 | 94 个 · 44177 行（另有 `types.d.ts` 5334 行） |
 | 依赖环 | **0** |
 | 扇入最高的模块 | `registry.ts` 65 · `selfcheck.ts` 61 · `utils.ts` 31 |
 | 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 5364 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1694 · `sprites.ts` 1687 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
+| 超过 700 行的模块 | `game.ts` 5364 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1710 · `sprites.ts` 1687 · `main.ts` 1029 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -1701,7 +1701,12 @@ R.addTrauma(0.5);      // 或由模拟层发事件：Game.events.emit('shake', 0
 **三个候选的最终结论**：贴花烘焙层不做（透明度的"排名"语义让整层永远处于刚失效状态，
 每次击杀都要整层重烤，只快 3 倍还多一块 9.0MB 画布，而现有两层已占 18.0MB）；纯填充批处理不做（省不了调用次数）；
 豆豆斑点能做但只值 2%，为它引入一个有状态的批处理 API、外加"忘了 `end` 就静默画错"的陷阱，
-不划算。**批处理这条线到此为止**，除非哪天换成 WebGL/离屏合成重写渲染层。
+不划算。**批处理这条线到此为止**，除非换成 WebGL/离屏合成重写渲染层。
+（⚠ **换成 WebGL 已经是决定，不是"哪天"** —— 用户拍板："shader 是一定要的……
+canvas 不适合再承载我未来的游戏引擎的开发工作了"。七阶段施工见
+[`docs/techstack-upgrade-decision.md`](docs/techstack-upgrade-decision.md)。
+上面这句原文保留，是因为它记录的**批处理那条线的结论**仍然成立：
+在接口做出来之前，合并路径并不减少调用数。）
 
 ## 实现要点
 
@@ -1760,7 +1765,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **20 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **22 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **64 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | 93 个 · 43k 行（另有 `types.d.ts` 5.2k 行） |

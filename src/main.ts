@@ -512,6 +512,18 @@ function boot() {
   var canvas = document.getElementById('game') as HTMLCanvasElement;
   /* 兜底先接上：`boot` 之后任何一处抛都不该让玩家看到一块卡住的画面 */
   Crash.hook();
+  /* **崩溃卡的上下文由应用层注入**（R55 引擎/内容边界）：
+     `crash.ts` 以前自己 `import { Game }` 去读"波次/状态/角色/层"才拼得出那句话 ——
+     那让一个通用机制认识了游戏状态，于是它"换个游戏就不能原样用"。
+     现在引擎只留"出了意外 + 触发点 + 栈"，**谁拥有游戏状态谁负责描述它**。
+     收一个**函数**而不是字符串：崩溃可能发生在任何时候，快照会过时
+     （boot 时写一次"波次 1"，第 9 波崩了卡片会报错波次 —— 那比没有卡片更坏）。
+     读不到不该影响兜底本身，所以取值那一步在 crash.ts 里包了 try。 */
+  Crash.whereProvider = function () {
+    var s = Game.getSession();
+    return '波次 ' + Game.wave + ' · 状态 ' + Game.state +
+      (s ? ' · 角色 ' + s.charDef.id + ' · 层 ' + s.floor : ' · 还没有开局');
+  };
   /* **技能树按真实角色表建一次**（`skills.ts` 自己不认识角色表 ——
      那一行 import 会让 `profile.ts`（meta 层）依赖它变成一条向上的边）。
      必须在 `SelfCheck.run()` **之前**：`Skills.audit()` 有一条判据是

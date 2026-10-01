@@ -15,7 +15,7 @@ pnpm i                 # 装依赖（只有 4 个 devDependencies，没有运行
 pnpm dev               # 起开发服务器 → http://127.0.0.1:5180
 
 # —— 提交前跑这一条就够（它就是下面那些门的总和）——
-pnpm verify            # 全部 20 道门，约 90 秒
+pnpm verify            # 全部 22 道门，约 90 秒
 pnpm verify --quick    # 迭代用的快档，约 20 秒（跳过测试套件，并明说跳了什么）
 pnpm verify --list     # 只是列出有哪些门、每道门在挡什么
 

@@ -330,13 +330,35 @@ console.log('\n[3] 运行时错误兜底');
   ok(typeof Crash.report === 'function' && typeof Crash.hook === 'function',
     '兜底模块装上了（report / hook）');
 
-  /* 提示语是纯函数：不碰 DOM 也能验 */
+  /* 提示语是纯函数：不碰 DOM 也能验。
+     ⚠ 这一条的语义**改过一次**（R55 引擎/内容边界），写清为什么：
+     原来断言的是"提示语里自动有会话摘要（波次/角色/层）" —— 那是
+     `crash.ts` **自己 import `Game`** 读出来的。而"一个通用兜底机制认识游戏状态"
+     正是"引擎被内容绑死"的定义（换游戏就不能原样用）。
+     现在上下文由**应用层注入**，所以断言改成两条：
+       ① 注入之后，注入的内容**出现在**提示语里（注入真的生效）
+       ② 没有提供者时，用**兜底文案**而不是崩掉（兜底本身绝不受影响） */
   const text = Crash.describe(new Error('测试用的假错误'), 'window.error');
   ok(/Bronana 出了点意外/.test(text), '提示语说清了"出了意外"');
   ok(/触发点：window\.error/.test(text), '提示语里有触发点');
   ok(/测试用的假错误/.test(text), '提示语里有原始的错信息');
-  ok(/波次|还没有开局/.test(text), '提示语里有**会话摘要**（"我在干什么"比栈更常被需要）');
   ok(/刷新页面/.test(text), '提示语给了可行动的一步');
+
+  /* ① 应用层注入上下文 → 出现在提示语里 */
+  const keepProvider = Crash.whereProvider;
+  Crash.whereProvider = () => '波次 7 · 状态 playing · 角色 ranger · 层 2';
+  const injected = Crash.describe(new Error('X'), 'test');
+  ok(/波次 7 · 状态 playing/.test(injected),
+    '应用层注入的上下文**出现在**提示语里（引擎不再自己读游戏状态）', injected.split('\n')[2]);
+  /* ② 没有提供者 → 兜底文案，不抛 */
+  Crash.whereProvider = null;
+  ok(/位置不明/.test(Crash.describe(new Error('X'), 'test')),
+    '没有提供者时用**兜底文案**（兜底本身绝不受影响）');
+  /* ③ 提供者自己抛了 → 也不许影响兜底（读状态失败不该让崩溃卡也崩） */
+  Crash.whereProvider = () => { throw new Error('读状态失败'); };
+  ok(/读上下文时又抛了一次/.test(Crash.describe(new Error('X'), 'test')),
+    '提供者抛了也不影响兜底（提示语里说明"读上下文时又抛了一次"）');
+  Crash.whereProvider = keepProvider;
 
   /* **只报一次**：连环抛（每帧一次）不许刷屏 */
   Crash.reset();

@@ -14,9 +14,18 @@
 
    它住在表现层（`view`）：只读会话状态用来写提示语，不改任何东西。
    无 DOM 环境（无头测试 / CLI）下自动降级成"只记 console"。
-   ========================================================= */
-import { Game } from './game.ts';
 
+   ## 引擎/内容边界（R55）：它**不再 import `game.ts`**
+
+   这里原来 `import { Game }`，只为在崩溃卡上写"波次 N · 状态 X · 角色 Y" ——
+   那是**游戏状态**，属于应用层。于是这个模块"换个游戏就不能原样用"，
+   按判据（能否原样发货给另一个游戏）它一开始被划进了"引擎候选"。
+
+   切法：**把那段文本变成注入参数**。`describe(err, from, where)` 收一个
+   已经拼好的上下文串；谁拥有游戏状态，谁负责拼。
+   于是这个模块回到纯机制：它只会说"出了意外 + 这是触发点 + 这是栈 + 刷新即可"，
+   **不知道什么叫波次**。
+   ========================================================= */
 var Crash = {} as CrashApi;
 
 Crash.shown = false;
@@ -24,19 +33,29 @@ Crash.shown = false;
 Crash.hooked = false;
 Crash.count = 0;
 Crash.last = '';
+/** 由**应用层**注入的"当前在哪一局"的上下文提供者（引擎不认识波次/角色/层）。
+ *  ⚠ 收一个**函数**而不是字符串：崩溃可能发生在任何时候，而字符串快照会**过时**
+ *  （在 boot 时写一次"波次 1"，等到第 9 波崩了，卡片上会报错的波次 ——
+ *  一张报错位置的卡片比没有卡片更坏）。 */
+Crash.whereProvider = null;
 
-/** 组装提示语（**纯函数**：测试直接比字符串，不必碰 DOM） */
-Crash.describe = function (err, from) {
+/** 取当前的上下文串（没有提供者 / 提供者抛了 → 用兜底文案，绝不让它影响兜底本身） */
+Crash.where = function () {
+  if (typeof Crash.whereProvider !== 'function') return '（位置不明：应用层还没有提供上下文）';
+  try {
+    var s = Crash.whereProvider();
+    return s ? String(s) : '（位置不明：应用层没给出上下文）';
+  } catch (e) { return '（读上下文时又抛了一次：' + String(e && e.message || e) + '）'; }
+};
+
+/** 组装提示语（**纯函数**：测试直接比字符串，不必碰 DOM）
+ *  @param where 可选：直接给上下文串（测试用；不传就向 `whereProvider` 要） */
+Crash.describe = function (err, from, where) {
   var msg = String((err && (err.stack || err.message)) || err || '（没有错误信息）');
   if (msg.length > 1200) msg = msg.slice(0, 1200) + '…';
-  var where = '（会话不可读）';
-  try {
-    var sess = Game.getSession();
-    where = '波次 ' + Game.wave + ' · 状态 ' + Game.state +
-      (sess ? ' · 角色 ' + sess.charDef.id + ' · 层 ' + sess.floor : ' · 还没有开局');
-  } catch (e) { /* 连状态都读不到：保留上面那句兜底 */ }
+  var ctx = where === undefined ? Crash.where() : where;
   return 'Bronana 出了点意外（这一局可能已经不可靠了）。\n\n' +
-    where + '\n触发点：' + from + '\n\n' + msg +
+    ctx + '\n触发点：' + from + '\n\n' + msg +
     '\n\n刷新页面即可继续（存档里的一局会从最近一个商店恢复）。' +
     '\n如果反复出现，请把上面这段信息报上来 —— 它比"游戏崩了"有用得多。';
 };

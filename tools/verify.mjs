@@ -177,6 +177,28 @@ const GATES = [
     why: '文档里**手写**的统计数字一定会漂，而漂了没人知道（`readme` 门只管 README 的存量表）。'
       + '实测飘过至少三次（AGENTS.md 92/62 vs 93/63、README 91 个模块 vs 92、最新一次 93 vs 94）。'
       + '这条把四个数（模块 / 套件 / 门 / 家族）与清单对账；docs/history/** 与各批交付小结豁免'
+  },
+  {
+    id: 'engine-boundary',
+    name: '引擎 / 内容边界（R55）',
+    cmd: ['node', ['tools/engine-boundary.mjs']],
+    why: '用户的设想是"**先有一套自研引擎，再在它上面做游戏内容**"。而"哪些模块是引擎"**不能靠感觉分** —— '
+      + '调研 Unity（Assets/Packages + asmdef）/ Godot（源码树分层）/ Bevy（crate 分层）/ Unreal（Engine vs Game）'
+      + '之后，判据压成一句：**先看边，再看词，最后看可替换性**，而"边"是唯一有机器可验证性的那条。'
+      + '这条门只判边：**引擎不许 import 内容或游戏数据表**（允许的边只有 content → engine），'
+      + '外加"分类表不许自相矛盾、不许有幽灵条目"。'
+      + '⚠ 引擎候选（混合模块）只报提示级，但**必须写明差哪一刀** —— 债要可见，不是偷偷放宽'
+  },
+  {
+    id: 'doc-front',
+    name: '文档 front matter（齐全 · 分类合法）',
+    cmd: ['node', ['tools/doc-front-matter.mjs']],
+    why: '用户要求「**所有文档也要注意规范化，比如加上 front matter**」。'
+      + '一次性给 24 个 .md 注入 front matter **不是规范**，是**一次性动作** —— '
+      + '下一篇文档加进来时没人守，"规范化"几周内就退化成"一部分有一部没有"。'
+      + '这与本项目反复栽的同一个坑一模一样（写死统计数字 / 加门忘了抄 CI）：**靠人记住的规范都会漂**。'
+      + '这条门钉三件事：每个 .md 有 front matter · 五个字段（title/category/scope/source/links）齐全 · '
+      + '分类必须在声明的 11 档里（分类 = 这份文档**写给谁看**）'
   }
 ];
 
