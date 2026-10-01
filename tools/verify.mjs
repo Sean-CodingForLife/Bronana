@@ -167,14 +167,14 @@ const GATES = [
     cmd: ['node', ['tools/eol-audit.mjs']],
     why: '.gitattributes 的 eol **只作用在签出过滤上**，不会重写已存在的 blob —— '
       + '所以存量 blob 里 CRLF / LF 并存，git checkout 治不好，只能 git add --renormalize。'
-      + '实测代价：egistry-drift.mjs 只加 25 行，diff 却有 **1616 行**，那一笔改动没法被审。'
+      + '实测代价：`registry-drift.mjs` 只加 25 行，diff 却有 **1616 行**，那一笔改动没法被审。'
       + '⚠ 判据必须是 git cat-file blob 的原始字节 —— git ls-files --eol 报的是归一化视图，会骗人'
   },
   {
     id: 'doc-num',
     name: '文档数字与清单一致（模块 / 套件 / 门 / 家族）',
     cmd: ['node', ['tools/doc-num-audit.mjs']],
-    why: '文档里**手写**的统计数字一定会漂，而漂了没人知道（eadme 门只管 README 的存量表）。'
+    why: '文档里**手写**的统计数字一定会漂，而漂了没人知道（`readme` 门只管 README 的存量表）。'
       + '实测飘过至少三次（AGENTS.md 92/62 vs 93/63、README 91 个模块 vs 92、最新一次 93 vs 94）。'
       + '这条把四个数（模块 / 套件 / 门 / 家族）与清单对账；docs/history/** 与各批交付小结豁免'
   }
