@@ -270,6 +270,22 @@ var PAL_COLORS: Record<string, string> = {
   // 豆豆本体
   SKIN: '#f2e3bd', SKIN_HI: '#fbf3d8', SKIN_SH: '#d3bd8c', SKIN_DP: '#a98f60',
   BRONANA_DOT: '#8c7040',
+  /* ⚠ 这六个键是**颜色门（A07）逼出来的**，每个都对应一处"同一个值写了第二遍"。
+     它们不是新颜色、也**不改一个像素**（初值就是原来那处字面量）——
+     加键的意义是让那个值**只有一个出处**：以后改 `PAL` 时它会跟着变。
+       · `SKIN_HI_BRIGHT`：`render.ts` 的三处 `#fffdf2`。它与 `SKIN_HI`（`#fbf3d8`）
+         是**两个值**，A11 已定"各起一个名字"（合并会改像素，要用户点头才做）。
+       · `BRONANA_DEEP`：豆豆躯干那块暗色（`sprites.ts` 与 `render.ts` 各写了一遍）。
+       · `TROUGH`：血条底槽（同上）。
+       · `GATE_COMBAT` / `GATE_MANAGE` / `GATE_GROW`：三扇模块门的主色。
+         出处本该是 `sprites.ts` 的 `STATION_TINT`，而 `render.ts` 又照抄了一遍 ——
+         照抄的后果是"改门色要改两个文件"，漏一个就**两处不一致**。 */
+  SKIN_HI_BRIGHT: '#fffdf2',
+  BRONANA_DEEP: '#2b2622',
+  TROUGH: '#3a2f26',
+  GATE_COMBAT: '#c47a5c',
+  GATE_MANAGE: '#b8a45c',
+  GATE_GROW: '#8fc47a',
 
   // 通用实体色
   WHITE: '#f6efdd', BONE: '#e2d6b8', GREY: '#9c9384', DARK: '#4a423b',

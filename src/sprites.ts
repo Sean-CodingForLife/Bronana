@@ -458,9 +458,9 @@ var STATION_TINT: Record<string, string[]> = {
   door: ['#c98a6a', '#8a5a3c'],
   /* 大厅（站）的四张 —— 三个模块的门各画各的样子（见 stationPortrait 末尾四个 case）。
      三扇门长得一样的话，"选去哪块"这件事在画面上就不成立。 */
-  'gate-combat': ['#c47a5c', '#8a4434'],
-  'gate-manage': ['#b8a45c', '#7a6a2c'],
-  'gate-grow': ['#8fc47a', '#557f45'],
+  'gate-combat': [PAL.GATE_COMBAT, '#8a4434'],
+  'gate-manage': [PAL.GATE_MANAGE, '#7a6a2c'],
+  'gate-grow': [PAL.GATE_GROW, '#557f45'],
   board: ['#d9c48a', '#9a8452']
 };
 
@@ -496,7 +496,7 @@ S.stationPortrait = function (id, size) {
       case 'picker':      // 拾荒者：兜帽 + 一只露出来的眼
         D.poly(x, [[-r * 0.8, r * 0.9], [-r * 0.6, -r * 0.2], [0, -r * 0.95],
           [r * 0.6, -r * 0.2], [r * 0.8, r * 0.9]], c, D.O.ink3);
-        D.rect(x, -r * 0.42, -r * 0.24, r * 0.84, r * 0.5, '#2b2622', D.O.ink2);
+        D.rect(x, -r * 0.42, -r * 0.24, r * 0.84, r * 0.5, PAL.BRONANA_DEEP, D.O.ink2);
         D.circle(x, -r * 0.18, 0, r * 0.11, PAL.GOLD, D.O.none);
         D.rect(x, -r * 0.5, r * 0.42, r, r * 0.3, sh, D.O.ink2);
         break;
@@ -1494,7 +1494,7 @@ S.drawTurret = function (x, t, time) {
   // 血条
   if (t.hp < t.maxHp) {
     var w = 34, k = t.hp / t.maxHp;
-    D.rect(x, t.x - w / 2, t.y - 34, w, 6, '#3a2f26', D.O.ink2);
+    D.rect(x, t.x - w / 2, t.y - 34, w, 6, PAL.TROUGH, D.O.ink2);
     D.rect(x, t.x - w / 2, t.y - 34, w * k, 6, PAL.E2, D.O.none);
   }
 };

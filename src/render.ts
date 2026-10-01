@@ -625,9 +625,9 @@ var HALL_HINT = { outline: PAL.INK, outlineWidth: 5, weight: 700 };
 var HALL_GATE_A = { alpha: 0.85, outline: PAL.INK, outlineWidth: 2.5 };
 
 function hallGateColor(module) {
-  if (module === 'combat') return '#c47a5c';
-  if (module === 'manage') return '#b8a45c';
-  if (module === 'grow') return '#8fc47a';
+  if (module === 'combat') return PAL.GATE_COMBAT;
+  if (module === 'manage') return PAL.GATE_MANAGE;
+  if (module === 'grow') return PAL.GATE_GROW;
   return PAL.STEEL;
 }
 
@@ -1036,7 +1036,7 @@ function drawDoors(x, sess, dt) {
     var k2 = U.clamp(w.hp / w.maxHp, 0, 1);
     if (k2 < 1) {
       var barW = 46, barH = 5;
-      x.fillStyle = '#2b2622';
+      x.fillStyle = PAL.BRONANA_DEEP;
       x.fillRect(-barW / 2, (w.dir === 0 ? -34 : 34), barW, barH);
       x.fillStyle = PAL.E4;
       x.fillRect(-barW / 2 + 1, (w.dir === 0 ? -33 : 35), (barW - 2) * k2, barH - 2);
@@ -1104,7 +1104,7 @@ R.playerAnim = function (p) {
 
 /* 角色绘制的复用对象：皮肤 / 骨架姿态参数 / 部件参数 / 挂点坐标。
    每帧新建这些对象就是每帧几次分配，改成模块级复用（同步用完即弃）。 */
-var _skin = { base: PAL.SKIN, hi: '#fffdf2', sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT };
+var _skin = { base: PAL.SKIN, hi: PAL.SKIN_HI_BRIGHT, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT };
 var _pose = { x: 0, y: 0, rx: 0, ry: 0, bob: 0, armSwing: 0 };
 var _atlasWarm = '';   // 已经预热过的「职业 + 色板 + 脸型 + 半径」指纹（换人换色就要重烘）
 var _parts = {
@@ -1126,12 +1126,12 @@ function drawPlayer(x, p, sess) {
     _skin.sh = p.look.skin.sh || p.look.skin.base;
     /* 高光也跟色板走：`wheat`（缺省档）的 `hi` 就是白色，
        于是"没捏人"与"捏了缺省色"是同一件事。 */
-    _skin.hi = p.look.skin.hi || '#fffdf2';
+    _skin.hi = p.look.skin.hi || PAL.SKIN_HI_BRIGHT;
     _skin.dp = p.look.skin.dp || _skin.sh;
   } else {
     _skin.base = (p.charDef.tint && p.charDef.tint[0]) || PAL.SKIN;
     _skin.sh = (p.charDef.tint && p.charDef.tint[1]) || PAL.SKIN_SH;
-    _skin.hi = '#fffdf2';
+    _skin.hi = PAL.SKIN_HI_BRIGHT;
     _skin.dp = PAL.SKIN_DP;
   }
 
@@ -1226,7 +1226,7 @@ function drawPlayer(x, p, sess) {
     x.save();
     x.globalAlpha = Math.min(0.45, p.hurtFlash * 1.5);
     _flashOpt.seed = seed;
-    D.bronana(x, ppx, ppy + an.bob, rx, ry, '#e2564f', _flashOpt);
+    D.bronana(x, ppx, ppy + an.bob, rx, ry, PAL.LASER, _flashOpt);
     x.restore();
   }
 
@@ -1305,7 +1305,7 @@ function drawOneEnemy(x, e) {
   // 血条（仅受伤后显示）
   if (e.hp < e.maxHp && !e.def.boss) {
     var w = Math.max(20, e.r * 1.9), k = U.clamp(e.hp / e.maxHp, 0, 1);
-    D.rect(x, ex - w / 2, ey - e.r * 1.65, w, 5, '#3a2f26', D.O.ink16);
+    D.rect(x, ex - w / 2, ey - e.r * 1.65, w, 5, PAL.TROUGH, D.O.ink16);
     D.rect(x, ex - w / 2, ey - e.r * 1.65, w * k, 5, k > 0.5 ? PAL.E2 : PAL.E3, D.O.none);
   }
   /* 燃烧环：**直接读剩余时长**（不走 `Status` 的门面）—— status-field-ok
@@ -1476,7 +1476,7 @@ function drawDangerFrame(x, sess) {
   var vk = U.clamp((k - 0.55) / 0.45, 0, 1);
   if (vk > 0) {
     ArtShaders.paint(x, 'vignette', R.cam.w, R.cam.h,
-      { color: '#100d0c', alpha: 0.10 + vk * 0.22, border: Math.round(R.cam.h * 0.16) });
+      { color: PAL.INK, alpha: 0.10 + vk * 0.22, border: Math.round(R.cam.h * 0.16) });
   }
 
   x.save();
@@ -1530,7 +1530,7 @@ var pf = Perf;
     var dy = by + lh * lines.length + 20;
     D.roundRect(x, bx, dy, w + 120, lh * dl.length + 12, 8, 'rgba(16,13,12,0.80)', D.O.ink2);
     for (var k = 0; k < dl.length; k++) {
-      D.text(x, dl[k], bx + 11, dy + 17 + k * lh, 11, k === 0 ? '#e8b23c' : '#f2e6c8',
+      D.text(x, dl[k], bx + 11, dy + 17 + k * lh, 11, k === 0 ? PAL.GOLD : PAL.SPARK,
         { align: 'left', outlineWidth: 0, weight: 400 });
     }
   }

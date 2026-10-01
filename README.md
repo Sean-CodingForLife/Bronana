@@ -865,7 +865,7 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 94 个 · 44177 行（另有 `types.d.ts` 5334 行） |
+| 模块 | 94 个 · 44193 行（另有 `types.d.ts` 5334 行） |
 | 依赖环 | **0** |
 | 扇入最高的模块 | `registry.ts` 65 · `selfcheck.ts` 61 · `utils.ts` 31 |
 | 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 30 |
@@ -1765,7 +1765,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **22 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **23 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **64 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | 93 个 · 43k 行（另有 `types.d.ts` 5.2k 行） |
