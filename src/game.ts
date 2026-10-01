@@ -709,8 +709,11 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
     combineCount: 0,
     stats_total: { kills: 0, scrap: 0, dmg: 0, taken: 0, healed: 0, waves: 0 },
     /* 空间网格的格边长走世界系统的网格表（`spatial`）——
-       这一格以前写死 68，而"还有别的网格吗、各自多大"没有一处能回答。 */
-    grid: { cell: World.grid('spatial'), map: Object.create(null) },
+       这一格以前写死 68，而"还有别的网格吗、各自多大"没有一处能回答。
+       ⚠ 这里**不再**存 `map`：网格内部改成整数键 + 扁平 `Int32Array`
+       （R57 第 1 步，实测快 4.64×），缓冲区由 `grid.ts` 自己按需增长。
+       会话里只留"格边长"这一个**数据**字段。 */
+    grid: { cell: World.grid('spatial') },
     nextId: 1
   };
 
@@ -1776,7 +1779,10 @@ function startWave(n) {
   S.pickups.length = 0;
   Emit.clear();          // 粒子回收到自由链表，而不是直接丢数组
   S.turrets.length = 0;
-  S.grid.map = Object.create(null);
+  /* ⚠ 网格缓冲区**不在这里清**：`grid.ts` 按**会话对象身份**判断换局并整体重建
+     （见那里的 `lastSession`）。在这里清一个字段只会造出"清了却没重建"的假象 ——
+     第一版我加过一个 `S.grid.rebuilt = false` 就是这个错：**没有任何东西读它**，
+     而真正的 bug（换局后仍用上一局的前缀和）照样在。 */
 
   var p = S.player;
   p.x = Arena.W / 2; p.y = Arena.H / 2;
@@ -5291,6 +5297,16 @@ Game._internals = {
   startWave: startWave,
   /** 直接翻到某一层（测试/实验台用：层的深度回报与主题倍率都在它里面算） */
   enterFloor: enterFloor,
+  /**
+   * **空间网格**（只给测试 / 实验台读账目）。
+   *
+   * 为什么需要这个口：网格的成员表现在是模块私有的 `Int32Array`
+   * （R57 第 1 步：整数键 + 扁平数组，实测快 4.64×），测试看不到它；
+   * 而"同屏怪物数量受控"这条判据问的是"**网格里摊了多少格**"——
+   * 那是网格自己的账目，不该让测试去猜。
+   * ⚠ 只暴露**读**：改网格状态的唯一入口仍是 `rebuild()`。
+   */
+  grid: Grid,
   /**
    * **把人放在屋里某个位置**（只给测试）。
    *

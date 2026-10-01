@@ -2331,7 +2331,7 @@ interface SessionEnts {
   hitStop: number;
   turrets: Turret[];
   /** 空间网格（每帧重建；只用于查询，不进存档） */
-  grid: { cell: number; map: Record<string, Enemy[]> };
+  grid: { cell: number };
   /** 实体 id 计数器（子弹/飘字/贴花都用它取号；只增不减） */
   nextId: number;
 }
@@ -4529,6 +4529,12 @@ interface GridApi {
   rebuild(): void;
   /** `以 (x,y) 为心、r 为半径`圈内的活敌人。`out` 会被**先清空**（复用缓冲） */
   queryCircle(x: number, y: number, r: number, out?: Enemy[]): Enemy[];
+  /** 每格几个（`{ 'cx,cy': n }` 的**惰性视图**，给测试与调试用；主路径不碰它）。
+   *  ⚠ 改造前 `S.grid.map` 存在会话里，现在从这里现算 —— 因为主路径已经改成
+   *  整数键 + 扁平 `Int32Array`（实测快 4.64×，见 `grid.ts` 头注释与 R57）。 */
+  cellCounts(): Record<string, number>;
+  /** 网格账目（诊断 / 测试）：覆盖多少格、用了多少格、单格最多几只 */
+  stats(): { cx: number; cy: number; cells: number; used: number; maxPerCell: number; cell: number; zone: string };
 }
 
 /* =========================================================
@@ -5132,6 +5138,11 @@ interface GameApi {
     startWave(n: number): void;
     /** 直接翻到某一层（测试/实验台用：层的深度回报与主题倍率都在它里面算） */
     enterFloor(f: number, opt?: { silent?: boolean }): void;
+    /** **空间网格**（只给测试/实验台读账目）。
+     *  成员表是模块私有的扁平 `Int32Array`（R57 第 1 步），测试看不到它 ——
+     *  而"同屏怪物数量受控"问的是"网格里摊了多少格"，那是网格自己的账目。
+     *  ⚠ 只暴露**读**：改网格状态的唯一入口仍是 `rebuild()`。 */
+    grid: GridApi;
     endWave(): void;
     openShop(bonus: number): void;
     checkLevelUp(): void;

@@ -204,7 +204,9 @@ ok(stats.frames > 600, '模拟运行了足够帧数', stats.frames);
 ok(stats.kills > 20, '击杀数正常（伤害/死亡链路通）', stats.kills);
 ok(stats.shops > 0, '波次结算并进入商店', stats.shops);
 ok(Game.wave >= 2, '推进到第 2 波以上', Game.wave);
-ok(Object.keys(s.grid.map).length >= 0 && s.enemies.length < 500, '同屏怪物数量受控', stats.maxEnemies);
+ok(Object.keys(Game._internals.grid.cellCounts()).length >= 0 && s.enemies.length < 500,
+    '同屏怪物数量受控（网格账目读得出来 + 敌人上限生效）',
+    stats.maxEnemies + ' 只 · 用了 ' + Game._internals.grid.stats().used + '/' + Game._internals.grid.stats().cells + ' 格');
 
 /* 升级链路：**不靠"机器人恰好捡够材料"**。
    材料掉落要靠角色走过去捡（拾取半径），而这个机器人是"直线远离最近的怪"——
