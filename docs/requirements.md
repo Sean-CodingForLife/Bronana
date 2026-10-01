@@ -1336,7 +1336,7 @@ v3 §8-3 要求养成模块建"角色/羁绊系统"，含两样：**共享关系
 | **R55** | **游戏引擎与游戏内容分离**（用户："我认为是不是要考虑将游戏引擎部分和游戏内容部分分离呢……**现有引擎再有内容**……**有关系但不能耦合**"） | ✅ **已交付**（门 `engine-boundary`，第 21 道）。判据来自 Unity / Godot / Bevy / Unreal 四家调研，压成一句「**先看边，再看词，最后看可替换性**」——而"边"是唯一有机器可验证性的。分类：**引擎 22 · 混合 1 · 显式内容 2 · 数据表 31 · 未认领 38**。**门自己抓到我三次分类错**（幽灵模块 `signals.ts` / 自相矛盾 / `record.ts` 判错）。详见 §十 R55 |
 | **R56** | **图层与窗口、图层与视口的关系**（用户："还有图层和窗口的关系也不对，和视口的关系也不对"） | ✅ **已交付**（`src/viewport.ts`）。**先纠正**：不是"没有"，是三件事压缩在一个 `R.cam` 里 —— `w`/`h` 既是窗口 CSS 尺寸、又是相机取景尺寸。按 `Window ⊃ Viewport ⊃ Layer ⊃ Item`（相机**属于 Viewport**）拆成三个对象；**两条互逆的变换放在一起**；缩放策略**声明出来**（四档 + 每档的"看到多少/代价"，当前 `fit-1x` 保持行为不变）。详见 §十 R56 |
 | **R57** | **引擎核心 WASM 模块**（用户："既然是游戏引擎，而且我还是全自研的 TS，由于 **JS 的种种限制**，我建议你考虑设计一个引擎核心，也就是 **WASM 模块**，专门用来处理游戏引擎的**性能热点问题**和 **JS 难以处理的问题**，你先调研，调查清楚了，再给出报告"） | ✅ **调研完成，结论：现在不做（见 §十 R57）**。**关键实测**：CPU profiler 显示模拟层 **56.8% 的时间在 `grid.ts`**（`queryCircle` 43.4% + `rebuild` 13.4%），根因是**字符串键**（`'3,4'`）—— 那是**数据结构问题，不是语言算力问题**；原型 A/B 实测"整数键 + 扁平 `Int32Array`"快 **4.64×**（纯 TS 就能拿到）。已按那一节的执行顺序**做完第 1 步**（300 怪中位 **1.289 → 0.700ms**，指纹逐位未变），并**重测了 T1 三条判据**：只有"该函数是纯数值循环"成立，P99 纹丝不动（5.31ms）⇒ **不触发，不做 WASM** |
-| **R58** | **引擎多线程模块**（用户："你有没有考虑给游戏引擎加入多线程模块，我的想法是把他给加上，让游戏引擎支持多线程"；并给出 10 条应用场景与"资源加载 → 物理 → AI/寻路 → 粒子/动画 → OffscreenCanvas 渲染线程"的优先级） | ✅ **已调研 + 已实测定位真目标（见 §十 R58）**。**结论：加，但只加"作业系统"这一层，且第一个作业是"换波静态地面层烘焙"** —— 那是本项目唯一同时满足用户定义的"耗时 ✓ 可并行 ✓ 不影响主循环 ✓"的任务（实测它是**整个游戏最重的单帧**：56,359 次绘制调用，其中 ground **53,333 次**）。用户清单里的**资源加载 / 物理 / 寻路 / 骨骼动画**在本作**不成立**（零素材 · 模拟层中位 0.700ms · 寻路已"刻意不做" · 纯 2D 无骨骼）。⚠ 关键约束：**抖动带之上还有半透明色斑**，所以"只并行抖动"会改像素 ⇒ 正确形状是**整个静态层在 Worker 里用 `OffscreenCanvas('2d')` 烘成 `ImageBitmap`**、每波一次 transfer |
+| **R58** | **引擎多线程模块**（用户："你有没有考虑给游戏引擎加入多线程模块，我的想法是把他给加上，让游戏引擎支持多线程"；并给出 10 条应用场景与"资源加载 → 物理 → AI/寻路 → 粒子/动画 → OffscreenCanvas 渲染线程"的优先级） | ✅ **调研完成，结论：现在不做（见 §十 R58）**。**用户 10 条里 7 条在本作没有对象**（零素材 ⇒ 无解码层 · 模拟层中位 0.700ms ⇒ 物理不值得 · 寻路已"刻意不做" · 纯 2D 无骨骼 · 粒子成本在绘制调用侧 · 无联网 · 无编辑器）。**真问题被定位为"一次 5 万次调用的尖峰"**（换波静态地面层烘焙：实测 45,136 次 `fillRect`，那一帧共 56,359 次绘制调用），而**调研证明"搬线程"不是它的解法**：① `OffscreenCanvas` 只解决"脚本在哪跑"、不减少调用次数，且转移后**主线程失去整块画布**（规范原文）；② **Worker 内 2D 光栅化与主线程是否逐像素一致 —— 无权威来源**，只能实测；③ Safari 的 `ImageBitmap` 跨线程成本**未结案**（[WebKit #280601](https://bugs.webkit.org/show_bug.cgi?id=280601) 里数字互相冲突 0.008–50ms）。⇒ **正确方向是"少画"而不是"搬线程"**（三条替代形状写在节里，第一条 `ImageData` 直接写像素**把那个无法验证的假设整个删掉**）。触发条件 M1–M4 与 R57 的 T1–T4 **合成一张表**。⚠ **本节推翻了我自己在同一轮里的初判**（"加，只加作业系统"），推翻的理由留在节里 |
 
 #### R52 · 外部游戏机制档案：20 款，逐字段带出处
 
@@ -2487,9 +2487,171 @@ D.ditherBand = function (x, x0, x1, y, h, cA, cB, seedStr, density) {
 | **Safari / iOS Safari** | **16.2–16.6 部分支持** · **17.0+ 完整** | 同上 |
 | 而"部分支持"缺什么 | [WebKit #253431](https://www2.webkit.org/show_bug.cgi?id=253431)：**worker 里缺 WebGL** —— 那正是 **R49 正在做的 WebGL2 后端**的坑 | 同上 |
 
-#### 五、调研结论（接口形状 / 成本 / 降级）
+#### 五、调研结论：**现在不做，而且真目标不是"搬线程"而是"少画"**
 
-<!-- R58-RESEARCH -->
+> 取证纪律：每条附来源与强度（**高**=官方规范 / 厂商文档 / 官方仓库；**中**=官方博客 / 工程博客 / 论文；**低**=论坛）。
+> 抓取限制（诚实交代）：`raw.githubusercontent.com` 本机 DNS 失败 ⇒ 改用镜像与 GitHub API；
+> `developer.chrome.com` / `web.dev` 原站不可达 ⇒ 用 Google 官方镜像；
+> 这造成一条关键「未取得」（WASM 官方 Nondeterminism 正文 —— 本仓库 R57 已引同一条，标为"仓库既有取证"）。
+
+> 🔴 **本节的结论推翻了我自己在同一轮里的初判。** 我最初的判断是
+> "加，只加作业系统这一层，第一个作业是换波地面烘焙"。两份取证把它否掉了，
+> 理由在 5.4 —— **我把"调用次数多"当成了"必须并行"，而真正的解法是"少画"**。
+> 原文保留在这里（家法：推翻结论要把"原来错在哪"写进去）。
+
+##### 5.1 三条决定性的硬事实
+
+**① `OffscreenCanvas` 只解决了"绘制脚本在哪跑"，没解决"画多少次"。**（〔高〕[HTML 规范 canvas 章](https://html.spec.whatwg.org/multipage/canvas.html#dom-canvas-getcontext) ·〔高〕[MDN OffscreenCanvasRenderingContext2D](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvasRenderingContext2D)）
+
+- Worker 里**能**拿 `'2d'` 上下文（规范单列一节；Chrome 69+ / Firefox 105+ / **Safari 16.4+**）。
+  与主线程的差异只有一条：**不支持 `drawFocusIfNeeded()`** —— `fillRect` + `fillStyle` 路径**零缺失**。
+- 但 `transferControlToOffscreen()` 之后**主线程再也不能画那块画布**（规范原文："it cannot have a rendering context"，
+  `getContext` 在 placeholder 态对**所有** contextId **抛 `InvalidStateError`**），
+  而且**没有转回的 API**（只能 `transferToImageBitmap()` / `convertToBlob()`）。
+- ⇒ **这不是"多一个线程"，是"把一整块画布的归属权交出去"** —— 与本项目 R49 的
+  `Target` 一等对象模型（一帧内 GL 目标 + Canvas2D 辅助 canvas 并存）**正面冲突**。
+
+**② `ImageBitmap` 的跨线程代价在 Safari 上可能不是白送的，而且未结案。**（〔中〕[WebKit bug 280601](https://bugs.webkit.org/show_bug.cgi?id=280601)，状态仍为 **NEW**）
+
+同一个 bug 里，报告人与 Apple 工程师的复现数字**互相冲突**：
+- 报告人：`postMessage(..., [imageBitmap])` 在 Chrome 是 **0.001ms**，Safari **50ms**
+- Apple 工程师（1087×1280，10,000 次）：Safari **~0.008ms/次**，反问"我认为 Chrome 更慢（130–140ms）"
+- 换 **Intel Mac**：报告人 Safari **>5s/10000**；工程师复测 Safari **6.5s（≈0.325ms/次）**
+- 同 bug 另一条：`createImageBitmap(canvas)` 在 Chrome **0.01ms**、**macOS/iOS Safari 15–65ms**，
+  且"**iPad Pro M1 最慢**"，"似乎是在等 canvas 画完"
+
+⇒ **"每波一次 transfer"在 Safari 上可能恰好把省下的时间又还回去** —— 而换波那一帧正是现在最重的那一帧。
+
+**③ 不用 `SharedArrayBuffer` 就**不需要** COOP/COEP —— 这条成立，是本方案唯一干净的地方。**（〔高〕[MDN crossOriginIsolated](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated)）
+
+MDN 把"跨源隔离解锁的 API"**穷举为三项**：`SharedArrayBuffer`、高精度 `Performance.now()`、
+`measureUserAgentSpecificMemory()`。**`OffscreenCanvas` / `ImageBitmap` / transferable 都不在列表里**
+⇒ 三种形态都**不用动响应头**。（副作用只有一个：非隔离页面的 `Performance.now()` 精度被粗化，只影响自测。）
+> 而 SAB 本身的历史也要记：它在 Safari 10.1–11 可用，**因 Spectre 与其它浏览器一道被禁用**
+> （〔高〕[WebKit: Safari 15.2](https://webkit.org/blog/12140/new-webkit-features-in-safari-15-2/)；〔高〕[MDN SAB](https://developer.mozilla.org/en-US/docs/Web/API/SharedArrayBuffer)）。
+
+##### 5.2 平台可用性（已实测 + 已取证）
+
+| 形态 | `OffscreenCanvas` | 结论 |
+| --- | --- | --- |
+| **web** | Chrome 69+ / Edge 79+ / Firefox 105+ / **Safari & iOS 16.4+**（3.1–16.3 完全没有） | 要**能力检测**而非"`OffscreenCanvas` 存在吗"—— 这正是 [WebKit #253431](https://bugs.webkit.org/show_bug.cgi?id=253431) 的教训：Construct 3 用 `typeof OffscreenCanvas !== 'undefined'` 判断，在 Safari 16.4 上过检然后崩 |
+| **cli（Node 无头）** | **不存在**（本机 Node 24.17.0 实测 `typeof OffscreenCanvas === 'undefined'`，`ImageBitmap` / `createImageBitmap` / `Worker` 同） | **必须降级，没有回旋余地**。而 `render.ts:403` 已有现成模式 `if (typeof document === 'undefined') return null` |
+| **desktop（Electron）** | 能用（渲染进程 = Chromium） | ⚠ **不能用 web 的测试结果外推**：[electron#47705](https://github.com/electron/electron/issues/47705) 显示 Electron 的 transferable 有边界瑕疵（跨 OOP iframe 传 `OffscreenCanvas` 会失败） |
+
+> ⚠ 一处要纠正的前置：**本项目的 desktop 不是 `file://`** —— Electron 外壳加载的是内置 HTTP 服务器
+> （`README.md` 明写）。所以"`file://` 下没法设响应头"这条对本项目**不适用**。
+
+**Safari 的"部分支持"到底是什么**（这是本轮最有价值的兼容性发现）：〔高〕[WebKit bug 263010](https://bugs.webkit.org/show_bug.cgi?id=263010)
+> "Safari 16.4 shipped only the 2D context for OffscreenCanvas… **Safari 17 has now shipped with WebGL support**"
+
+⇒ **对本方案（只用 2D）Safari 16.4+ 就够**；但如果将来想把 **WebGL2 主渲染**也搬进 Worker，
+**Safari 17 / iOS 17 是硬门槛** —— 那会把平台下限抬高一年。
+
+##### 5.3 ⚠ 一个**必须实测**的未知，与一个**可以绕开**的未知
+
+| 未知 | 能不能绕开 |
+| --- | --- |
+| **Worker 里的 2D 光栅化与主线程是否逐像素一致** | **无权威来源**（规范只让两者共用同一套 2D mixin，**不承诺实现内的像素路径相同**）。间接证据都指向"曾是两条实现路径"：[WebKit #202793](https://bugs.webkit.org/show_bug.cgi?id=202793)（worker 里文字渲染是后来补的，评审里出现 `fontCascadeCache()` 跨线程 UAF） | ❌ **绕不开**，只能实测（主线程烘一次、Worker 烘一次、各自 `getImageData` 取同一位哈希比较） |
+| **`ImageBitmap` 在 Safari 的真实成本** | 见 5.1② | ❌ 绕不开，只能实测 |
+
+**⇒ 而替代形状 5.4 把这两个未知**一起删掉**了** —— 这是它比"搬线程"更值得做的根本原因。
+
+##### 5.4 真正的解法：**不是把 53,333 次调用搬走，是把它们变少**
+
+`D.ditherBand` 的循环在 **4×4 的格子上按密度随机填 2×2 的块**。本机实测这段循环的**算术量级**：
+
+    现在的形状：133,875 次 RNG + 45,136 次 fillRect（5 条带）
+    RNG 与循环本身耗时：6.9ms（**纯 JS 算术，与画布无关**）
+
+三个替代形状（按推荐顺序），**每一个都比"搬线程"少一个无法验证的假设**：
+
+| # | 形状 | 为什么更好 |
+| --- | --- | --- |
+| **① 直接写像素 + `putImageData`**（**推荐先估这个**） | 在 `Uint32Array` 上按同一套 RNG / 同一套命中判据写 4×4 的块，再 `createImageData` / `putImageData` 一次落屏。**53,333 次 `fillRect` 变成约 72 万次纯整数内存写**（实测数字） | **`ImageData` 是纯像素缓冲 ⇒ `putImageData` 在主线程与 Worker 里语义完全相同** ⇒ 5.3 那两个未知**直接消失**。而且它绕开了 2D API 的调用装配开销、抗锯齿、路径状态机。⚠ 代价：`putImageData` 无视 `globalAlpha` / 合成 / transform —— 而本作是"**不透明硬边色块 + 有序抖动**"，**恰好没有影响** |
+| **② 减少 `fillRect` 次数**（同一形状的更保守版） | 把同色相邻格子合并成更大的 `fillRect`；或用 `createPattern` 铺一块 4×4 的 tile 再 `fillRect` 一次 | **零新 API、零平台差异、零降级分支**，直接打在现在最痛的那一帧上 |
+| **③ 主线程分帧烘** | 把 5 条带切成 N 块，每帧用剩余预算烘一块（`requestIdleCallback` 或帧内 budget 计） | **三种形态行为一致、指纹稳**。代价是换波瞬间地面有几帧是"半成品"（可用"上一波地面淡出 / 新地面逐条扫入"掩盖） |
+| ~~④ 搬进 Worker~~ | （本节的初判） | ❌ 见 5.1 / 5.3：多一个无法验证的像素一致性假设 + Safari 成本未知 + 交出整块画布归属权 |
+
+> 📌 **为什么"少画"才是对的方向**：R57 那份取证已经把真正的宿主侧限制定位在
+> **`D.*` 的提交侧**（1900 个调用点、稳态 290 / 最密 3000 次/帧），
+> 而**提交必须发生在持有 context 的那个线程上**。搬线程不减少提交次数，只是换了提交的地方。
+> **减少调用次数是唯一同时降低两种成本的改法。**
+
+##### 5.5 与 R57（WASM）的关系：**合表，不重复投入**
+
+- **不是一回事**：R57 问"要不要引入第二个语言/执行引擎"，R58 问"要不要引入第二个执行线程"。
+- **但撞同一面墙**：R57 的 **T4「真多线程」**判据原文就写着"接受此后行为指纹可能不再逐位可复现"。
+- **两个都做会叠加出**"WASM 内核 + worker + COOP/COEP + 两份内核定义 + 两条构建产物"，
+  而它们**依赖同一条不确定判据** ⇒ **两者共用一个触发条件表**，任一条不成立就都不做。
+- **若将来要动，先动多线程（M2/M3）而不是 WASM**：多线程（尤其不用 SAB 的消息传递型）
+  **不需要新语言、不需要构建步、不需要第二份内核定义**。只有 M3 成立且瓶颈是**数值吞吐**（SIMD，R57 T3）时才轮到 WASM。
+
+##### 5.6 触发条件（必须实测，不许估计）—— 与 R57 的 T1–T4 **合成一张表**
+
+| # | 触发条件 | 为什么是这条 |
+| --- | --- | --- |
+| **M1 · 渲染线程** | **R49 阶段 2 与阶段 5 完成之后**，实测主线程每帧 **P99 ≥ 8.0ms**（48% 帧预算），**且** profiler 证明其中 **≥ 40%** 在"绘制命令生成/光栅"而非模拟层，**且** 接受 Safari < 17 没有 WebGL-in-Worker | 现在两样都没量过；**"生成 vs 提交"必须分开量**，否则会把 R57 已定位的提交开销误记到生成头上 |
+| **M2 · 离线/一次性任务** | 出现一个**实测 ≥ 50ms** 的主线程长任务，且在帧循环之外（烘焙、普查、序列化、批量生成） | 唯一"零风险"目标：不进指纹链路、不需要 SAB、不需要每帧往返。**换波烘焙正属于这一类** ⇒ 但先走 5.4 的①②③，那些更便宜 |
+| **M3 · 每帧并行** | 某个**纯数值循环**实测单帧 **≥ 8.0ms**、可切 ≥ 4 个互不依赖分片，**且**并行结果能与串行结果**逐位对照通过** | 与 R57 T1 同形，加上"逐位可对照"这条硬判据 |
+| **M4 · 共享内存** | 只有 M3 成立、**且**实测证明 transfer 拷贝成为新瓶颈（单帧搬运 ≥ 4MB）时才引入 SAB + COOP/COEP | SAB 是**唯一会把"非确定"引进门**的开关（见 R57 的官方非确定清单） |
+
+**四条都不成立 ⇒ 结论是"不做"，而不是"等等看"。**
+
+##### 5.7 如果将来做：形态与验收判据
+
+- **只做 M2 类离线任务**，且**不做通用 Job System**（不做调度器 / 优先级 / group task）。
+  形态是**一个常驻 worker**（**不是池**）：会话级复用，`transferToImageBitmap()` 会把源 canvas 换成空白图，
+  所以同一个 `OffscreenCanvas` 可以反复重画；主线程侧**每波必须显式 `.close()` 掉上一张 `ImageBitmap`**
+  ——〔高〕[MDN transferToImageBitmap](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas/transferToImageBitmap) 明写
+  "potentially large graphics resource … **avoid allocating too many** … **Don't simply drop the JavaScript reference**"。
+- **根因警告**：Godot / Node / Piscina 三处官方都写着"**任务不够重，用线程反而更慢**"
+  （〔高〕[Godot WorkerThreadPool](https://docs.godotengine.org/en/stable/classes/class_workerthreadpool.html) ·
+  〔高〕[Node worker_threads](https://nodejs.org/api/worker_threads.html) ·
+  〔中〕[Piscina Performance Notes](https://piscinajs.dev/advanced-topics/Performance%20Notes/)）。
+- **验收判据（缺一不可）**：
+  ① **行为指纹逐位不变**；② **并行与串行的输出逐位对照**，且**注入坏分区必须变红**（家法：不会失败的审计等于装饰）；
+  ③ **64 套无头测试在"没有 Worker 的环境"下也全过**（串行降级分支必须真的被走到）；
+  ④ 23 门全绿 + 新概念四步齐全 + 登记进 `GATES` 与 `ci.yml`；
+  ⑤ **gzip 记账**（余量 11.1kB JS / 10kB 全站）；⑥ **不需要 COOP/COEP**（5.1③ 已证）。
+- **三形态**：**web** 能力检测 + 降级（**不要**用"`OffscreenCanvas` 存在吗"当判据）；
+  **cli 不做并行**（没 `Worker`，且受限沙箱下多线程只会让失败形态更隐蔽）；
+  **desktop 单独验**（不能外推 web 结果）。
+
+##### 5.8 刻意不做（写下来，免得下一轮照着清单再做一遍）
+
+| 刻意不做 | 理由（一句话） |
+| --- | --- |
+| **资源加载 / 解码 Worker 池** | 本作**零素材**，没有可解码的东西 |
+| **物理 / 碰撞 Worker** | 模拟层中位 0.700ms（预算 4%），而跨帧同步会撞行为指纹 |
+| **寻路 Worker 池** | 本作**没有寻路**（已"刻意不做"） |
+| **骨骼 / IK / 混合树 Worker** | 纯 2D，没有骨骼 |
+| **每帧把粒子丢给 Worker** | 成本在绘制调用侧；每帧 postMessage 往返是**新增**成本 |
+| **`SharedArrayBuffer` 依赖** | 它要 **COOP/COEP 两个响应头**，会波及三种形态；而消息传递型方案**不需要它** |
+| **把 `pnpm verify` 的 23 道门并行化** | 那是 **CI 的题目**（`verify.mjs` 串行约 210s），不是**运行时**多线程。混在一起会让两件事都说不清 |
+| **把 WebGL2 主渲染搬进 Worker** | Safari 17+ 才支持（5.2）⇒ 平台下限抬一年，而收益从未被实测 |
+
+##### 5.9 本轮明确的「未取得」与「需实测才能定」
+
+**未取得**：浏览器端 **Worker 创建/销毁的毫秒数字**（只有 Node `worker_threads` 的本地实测可参考）·
+**每帧 `postMessage` 往返延迟**的权威数字（只有 2011 年 Chrome 官方博客的 32MB 克隆 302ms vs transfer 6.6ms；
+本次本地实测 Node `worker_threads` 空消息往返 **≈12.4µs**，只能当机制下限）·
+**"任务多大才值得 offload"的权威阈值**（替代证据是三处官方警告）·
+**Worker 内 2D 光栅化与主线程逐像素一致**（**本方案最大的未知**）·
+**`ImageBitmap` transfer 是否真零拷贝**（规范只保证 transferable，WebKit #280601 反而显示有可测成本）·
+**"OffscreenCanvas 在某些引擎上其实没真正并行"**（只找到 Chromium issue 40688175 的**标题**，正文抓取失败）·
+**公开的 OffscreenCanvas 渲染线程收益数字**。
+
+**需实测才能定**：主线程每帧时间分布（生成 vs 提交 vs 光栅）；四浏览器里"主线程烘 vs Worker 烘"的像素哈希是否相等；
+Safari（尤其 Intel Mac）的 `ImageBitmap` transfer + 消费成本；引入 worker 后 23 门 / 64 套的稳定性。
+
+> **成本最低的那个实测**（约 60 行、一个自包含 HTML、不碰仓库、**不需要 COOP/COEP**）：
+> 主线程烘一次、Worker 烘一次，各自 `getImageData` 取同一个哈希，**直接判定 `PIXEL-IDENTICAL: YES/NO`**；
+> 同时量 `transferToImageBitmap()` / `transferFromImageBitmap()` 耗时、2000 次空 `postMessage` 往返均值、
+> worker 启动到首条消息的耗时。**判定标准先写死**（免得看到数字再找理由）：
+> 哈希不等 ⇒ 方案作废；worker 烘焙 < 主线程的 1.5 倍 ⇒ 收益成立；
+> `transferFromImageBitmap` > 当前主线程烘焙耗时的 30% ⇒ Safari 上收益被吃掉、要按浏览器分流；
+> 空往返 > 1ms ⇒ 只准"每波一次"，绝不要"每帧一次"。
+> **本轮结论：在数字出来之前，"不做"就是结论；而且先估 5.4 的①②③，它们更便宜。**
 
 #### 六、与 R57（WASM）的关系（**不是一回事，也不该混着做**）
 
