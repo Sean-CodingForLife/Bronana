@@ -63,9 +63,38 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 
 > **原生模块与插件走同一套注册机制。** 唯一的差别是**来源目录**（`src/modules` vs `plugins`）
 > 与**随引擎发行与否**。用户那句"模块是原生、插件是自定义"因此**不是两套系统**，
-> 而是**同一套系统的两个来源** —— 这也正是 Bevy（`Plugin` trait 两边都用）与
-> Unreal（`.uplugin` 的 `LoadingPhase` 两边都吃）的做法。
-> ⚠ 好处：**插件能做的事与原生能做的事完全一样**，没有"二等公民"的 API 面。
+> 而是**同一套系统的两个来源**。
+
+### ⚠ 这条写法经过一次**联网核证**（2026-10-01），结论没变但理由更硬
+
+调研对照了 **11 家**引擎的官方文档，逐条核证如下：
+
+| 机制 | 内置也走它吗 | 官方原文 |
+| --- | --- | --- |
+| **Bevy `Plugin`** | ✅ **全部**（含 renderer） | 「**All Bevy engine features are implemented as plugins**… This includes internal features like the renderer, but games themselves are also implemented as plugins!」 |
+| **PixiJS `extensions`** | ✅ **全部** | 「PixiJS is built as a set of **swappable parts called extensions**. Renderers, asset loaders, event systems, and application plugins are all extensions.」 |
+| **Unreal `Plugin`** | ✅ 部分（Epic 自家功能就装在 `Engine/Plugins/`） | 「The Plugins category contains **built-in plugin modules**」 |
+| **Phaser `Plugin`** | ✅ 内置由 `DefaultPlugins` 注册表安装 | `CoreScene` / `DefaultScene` 两张表 |
+| **Defold native extension** | ✅ 自家 AdMob / Spine 同称 extension | 手册标题即 *Native extensions* |
+| **VS Code extension** | ✅ | 「many core features of VS Code are **built as extensions**」 |
+
+**⇒ 业界主流是"一套机制 + 一个来源字段"。** 所以 Teapot 采用**三名制**：
+
+| 词 | 定义 | 一句话 |
+| --- | --- | --- |
+| **模块** | 引擎**唯一可装载单元** = 清单（id/依赖/阶段/配置/来源）+ 生命周期 | 引擎自带的一切**也是模块** |
+| **插件** | **`origin !== 'core'` 的模块** | **插件不是第二种机制**，它只是来源不同 |
+| **扩展** | 对宿主**某一个能力点**的可替换实现（渲染后端 / 资源加载器 / 输入后端） | 注册进**有类型、有优先级**的表（与 PixiJS `ExtensionType` 同构） |
+| **包** | **分发单位**（有清单、有版本、能被 pnpm 解析） | 一个包可含 0..n 个模块 |
+
+> 🔴 **调研推翻了一条我本来会写错的判断**：**Unreal 的 Module vs Plugin 不是"官方 vs 第三方"** ——
+> 它的轴是「**编译单位 vs 分发单位**」，与谁写的无关（Epic 自家 Enhanced Input / GAS 就装在
+> `Engine/Plugins/` 下）。**能抄的是 libGDX 的"同一机制 + 归属标签"法**（官方支持 / 非官方维护者），
+> **不能抄 Godot 的"两套机制"法**（C++ module 要重编引擎 vs addon 不用 —— 代价是两套 API、两套构建、两套文档）。
+>
+> ⚠ **还有一条要你拍板**（调研列为"最该先定的一条"）：**"模块"这个词在引擎侧与 Bronana 侧会撞名** ——
+> 家法里现在的定义是"**模块** = 用户定义玩法的方式（战斗/经营/养成）"，而引擎侧的**模块**是装配单元。
+> **同一个词在同一个仓库里指两个东西，而门 `name` 抓不到语义冲突。**
 
 ---
 
