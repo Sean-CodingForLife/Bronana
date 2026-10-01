@@ -1,3 +1,10 @@
+---
+title: "两款 Roguelike 的敌人数值曲线：外部基准"
+category: 外部参考
+scope: "以撒的结合 / 挺进地牢的**逐项数字**（查不到即写「未取得」）"
+source: "逐项标注来源；未取得的不填"
+links: ["scaling-benchmarks.md", "external-benchmarks.md"]
+---
 # 两款 Roguelike 的敌人数值曲线：外部基准（查不到即写「未取得」）
 
 ## 一、The Binding of Isaac: Rebirth / Afterbirth / Repentance

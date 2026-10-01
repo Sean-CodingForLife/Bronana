@@ -1,3 +1,10 @@
+---
+title: "文档索引"
+category: 门面
+scope: "仓库全部文档**按读者分类**的索引 + 三条硬约定"
+source: "盘上的 `*.md`（漏登记的文档由评审与这里对账）"
+links: ["../README.md", "../AGENTS.md", "requirements.md"]
+---
 # 文档索引
 
 本仓库的文档按**读者**分类。想找什么，先看这张表。

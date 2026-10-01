@@ -1,3 +1,10 @@
+---
+title: "三款 roguelike 难度与成长曲线外部基准"
+category: 外部参考
+scope: "雨中冒险 2 / 吸血鬼幸存者 / 杀戮尖塔的**逐项数字**"
+source: "逐项标注来源；未取得的不填"
+links: ["scaling-benchmarks.md", "external-benchmarks.md"]
+---
 # 三款 roguelike 难度与成长曲线外部基准
 
 本文标注的数字均来自公开来源；「未取得」= 未找到可信数字。RoR2 的 HPx/DMGx 是我依 wiki 公式的推导值（公式本身有来源）。

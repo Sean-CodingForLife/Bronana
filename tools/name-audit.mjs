@@ -262,7 +262,7 @@ for (const f of srcFiles) {
      · `stats`    → `Stats.KEYS`（属性名由 `stats.ts` 的界面映射负责）
    ========================================================= */
 const sourceProblems = [];
-if (Terms) {
+if (TermsRef) {
   const { Ledger, Economy, Stats } = globalThis;
   const rowsOf = (route) => {
     if (route === 'ledger') {
@@ -274,7 +274,7 @@ if (Terms) {
     if (route === 'stats') return (Stats && Stats.KEYS) ? Stats.KEYS.map(k => ({ id: k, name: k })) : null;
     return null;
   };
-  for (const c of Terms.CURRENCY) {
+  for (const c of TermsRef.CURRENCY) {
     const rows = rowsOf(c.owner);
     if (!rows) { sourceProblems.push(c.id + ' 的出处路由 ' + c.owner + ' 取不到表'); continue; }
     const hit = rows.find(x => x && x.id === c.id);
@@ -288,7 +288,7 @@ if (Terms) {
   /* 反向：路由里有、而 `terms.ts` 没登记的 —— 那才是"漏了一笔钱" */
   const ledgerRows = rowsOf('ledger') || [];
   for (const row of ledgerRows) {
-    if (!Terms.CURRENCY.some(c => c.id === row.id)) {
+    if (!TermsRef.CURRENCY.some(c => c.id === row.id)) {
       sourceProblems.push('账本里有 ' + row.id + '（' + row.name + '）而 terms.ts 没登记它');
     }
   }
@@ -347,7 +347,7 @@ if (sourceProblems.length) {
   console.log('    ✗ 出处对不上（terms.ts 的断言 vs 真实表）：');
   for (const p of sourceProblems) console.log('      ' + p);
 } else {
-  console.log('    ✔ ' + (Terms ? Terms.CURRENCY.length : 0) + ' 笔钱的权威名与它们的出处处处一致');
+  console.log('    ✔ ' + (TermsRef ? TermsRef.CURRENCY.length : 0) + ' 笔钱的权威名与它们的出处处处一致');
 }
 
 if (UPDATE) {

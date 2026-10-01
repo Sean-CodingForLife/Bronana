@@ -243,7 +243,7 @@ function initPersistence() {
   // 标题页的"继续上一局"按钮：启动时按存档有无决定显不显示
   if (UI.refreshContinueButton) UI.refreshContinueButton();
   console.log('[storage] ' + Storage.adapterName() + ' · 设置来源 ' + Settings.loadedFrom() +
-    ' · 账号档案 ' + Profile.loadedFrom() + '（孢子 ' + Profile.growth() + '）' +
+    ' · 账号档案 ' + Profile.loadedFrom() + '（成长点 ' + Profile.growth() + '）' +
     ' · ' + (Save.hasRun() ? '有可继续的存档' : '无存档'));
 }
 
@@ -343,11 +343,11 @@ function runInput(summary): ProfileRunInput {
 /** 把并入结果讲给玩家听（否则"解锁了什么"是看不见的） */
 function announceRun(report) {
   if (!report) return;
-  if (report.spores > 0) UI.toast('获得 ' + report.spores + ' 孢子', 'good');
+  if (report.spores > 0) UI.toast('获得 ' + report.spores + ' 成长点', 'good');
   /* 合金单独说一句：它是**合成**那条链的产出，
      不点出来玩家不会把"局内合成"与"局外图纸"连起来（那样这条腿就白做了）。 */
   if (report.alloy > 0) {
-    UI.toast('获得 ' + report.alloy + ' 合金' +
+    UI.toast('获得 ' + report.alloy + ' 成长点' +
       (Game.growthEarned() > 0 ? '（本局合成贡献 ' + Game.growthEarned() + '）' : '') +
       ' —— 到据点解锁图纸', 'good');
   }
@@ -559,7 +559,7 @@ function boot() {
   // 离线产出：开机结算一次。**结算即前进**，所以反复刷新不会多拿
   var off = Profile.settleOffline();
   if (off.growth > 0) {
-    UI.toast('离线产出 +' + off.growth + ' 孢子（' + Math.floor(off.minutesCounted) + ' 分钟' +
+    UI.toast('离线产出 +' + off.growth + ' 成长点（' + Math.floor(off.minutesCounted) + ' 分钟' +
       (off.capped ? '，已按上限计' : '') + '）', 'good');
   }
   // 切后台 / 关页面时也记一次"见面"（离线产出按它与下次开机的间隔结算）

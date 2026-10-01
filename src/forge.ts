@@ -48,13 +48,13 @@ Forge.MOD_KEYS = {
     kind: 'add', text: function (v) { return '回收多返还 ' + U.pct(v) + '%'; }
   },
   alloyPerSalvage: {
-    kind: 'add', text: function (v) { return '每次回收 +' + v + ' 合金'; }
+    kind: 'add', text: function (v) { return '每次回收 +' + v + ' 成长点'; }
   },
   fuseDiff: {
     kind: 'max', text: function (v) { return v ? '异档熔接：同名不同档也能合' : ''; }
   },
   alloyMul: {
-    kind: 'add', text: function (v) { return '结算合金 +' + U.pct(v) + '%'; }
+    kind: 'add', text: function (v) { return '结算成长点 +' + U.pct(v) + '%'; }
   }
 };
 
@@ -88,7 +88,7 @@ Forge.LIST = [
   },
   {
     id: 'extract', tier: 1, cost: 5, req: [], mod: 'alloyPerSalvage', value: 1,
-    name: '合金萃取', note: '每次回收都产合金：拆得越多，图纸来得越快'
+    name: '成长点萃取', note: '每次回收都产成长点：拆得越多，图纸来得越快'
   },
 
   /* ---- T2：工艺 ---- */
@@ -116,7 +116,7 @@ Forge.LIST = [
   },
   {
     id: 'furnace', tier: 3, cost: 30, req: ['quench'], mod: 'alloyMul', value: 0.25,
-    name: '熔炉', note: '结算合金 +25%：想快点走完整棵树就走这条'
+    name: '熔炉', note: '结算成长点 +25%：想快点走完整棵树就走这条'
   },
 
   /* ---- T4：神话（顶档。它买的不是数值，是"造得出来"）----
@@ -227,7 +227,7 @@ Forge.canUnlock = function (owned, id, growth, core, relic) {
   }
   var have = Math.max(0, Number(growth) || 0);
   var needCore = coreOf(d);
-  if (have < d.cost) return { ok: false, reason: '合金不够（需要 ' + d.cost + '）', cost: d.cost, core: needCore, locked: false };
+  if (have < d.cost) return { ok: false, reason: '成长点不够（需要 ' + d.cost + '）', cost: d.cost, core: needCore, locked: false };
   /* 核心材料单独报缺哪一样：两种资源都不够时说"资源不够"，
      玩家不知道该去打 Boss 还是去多拆几件装备 —— 那是两种完全不同的行动。 */
   if (needCore > 0 && Math.max(0, Number(core) || 0) < needCore) {

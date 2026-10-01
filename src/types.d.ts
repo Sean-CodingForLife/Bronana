@@ -3557,6 +3557,62 @@ interface TradeApi {
   audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
 
+/* ---------------- 用词总账（terms.ts，R53-B） ----------------
+   一个概念**只有一个名字**。权威名的唯一出处是四本账（`eco_*.ts` 的 `id` / `name`，
+   经 `ledger.ts` 的 `Ledger.all()` 聚合）与 `Economy.LINKS`（核心素材）。
+   ⚠ 本模块**只声明**"权威名是什么、住在哪"，**不复制那些名字的值** ——
+     它与 `eco_*.ts` **同层**，启动期谁先加载不确定，读它们会拿到空表
+     （`trade.ts` 的加载期自检栽过这一次）。"出处真有那个名字"由门
+     `tools/name-audit.mjs` 在全部模块加载之后核。 */
+interface TermCurrencyDef {
+  id: string;
+  /** **玩家可见的那个词** —— 界面与文案都该用它 */
+  name: string;
+  /** **出处路由**（`ledger` / `coreLink` / `stats`）—— 门按路由取表核对 */
+  owner: string;
+  /** 作用域（这一局的钱 / 带出局的钱 / 核心素材） */
+  scope: string;
+  note: string;
+}
+interface TermStatDef { id: string; name: string; }
+interface TermRetiredDef {
+  word: string;
+  /** 该换成什么（下一个 AGENT 据此写对） */
+  instead: string;
+  why: string;
+  /** 逐文件豁免（只在"这个文件必须提到它"时用） */
+  allowFiles: string[];
+  /** 合法的**复合专有名词**：出现在这些词里时不算货币名（如「孢子神龛」） */
+  allowWords?: string[];
+}
+interface TermAliasDef {
+  word: string;
+  /** 指向的权威名；`(设施名)` 这类写成括号形式 = 显式声明"它不是货币" */
+  canonical: string;
+  /** 允许出现在哪些域 */
+  domain: string;
+  why: string;
+}
+interface TermSourceDef { owner: string; fields: string[]; readsBy: string[]; }
+/** **别名域**：这个文件里允许出现哪些世界观别名。豁免**只对列出的词生效** */
+interface TermAliasDomainDef { file: string; words: string[]; why: string; }
+interface TermsApi {
+  CURRENCY: TermCurrencyDef[];
+  STAT: TermStatDef[];
+  RETIRED: TermRetiredDef[];
+  ALIAS: TermAliasDef[];
+  SOURCE: TermSourceDef[];
+  ALIAS_DOMAIN: TermAliasDomainDef[];
+  CURRENCY_BY_ID: Record<string, TermCurrencyDef>;
+  RETIRED_BY_WORD: Record<string, TermRetiredDef>;
+  /** 这笔钱的权威名（认不出的回显 id） */
+  currencyName(id: string): string;
+  /** 这个弃用词的登记（不是弃用词就是 null） */
+  retiredOf(word: string): TermRetiredDef | null;
+  /** 这个别名指向哪个权威名（不是别名就是 null） */
+  canonicalOf(word: string): string | null;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
 /* ---------------- 状态系统（status.ts，R50 第 10 条） ----------------
    可叠层、有秒数的 debuff / buff。与契约（层间一次选择）和角色机制
    （`rage` / `invuln`）的分工写在 `status.ts` 的头注释里 —— 那一节就是

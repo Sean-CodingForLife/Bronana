@@ -1,0 +1,63 @@
+{
+  "name": "以撒的结合：重生 / The Binding of Isaac: Rebirth",
+  "identity": "俯视角双摇杆射击的地牢 roguelike（房间网格 + 实时弹幕），单人，可本地合作。开发与发行：Edmund McMillen 与 Nicalis（本轮未从正文抓到发布日与平台列表，故不填写具体日期与平台）。可确认的版本分层来自 wiki 模板标记：基础版与 DLC 缩写 nr / a / a+ / r（Afterbirth / Afterbirth+ / Repentance），玩法差异在条目中逐条标注（例如 {{dlc|r}} 表示仅 Repentance 生效）。这份 identity 只写抓到的东西：类型、视角、版本分层；发布日期、发行商细节与平台清单均为「未取得（没找到）」。",
+  "oneLine": "以撒把「一层楼就是一张房间网格」做成核心骨架：清空房间才开门、死路尽头放特殊房、Boss 房给道具并开下一层的活板门，地图的形状本身就在提示哪里藏着密室与书房。玩家成长靠道具以乘法叠加，而同一属性要先过一遍平方根公式，于是「多拿一件」也有重量、越堆越需要权衡。整层的探索路线与这层的钥匙炸弹分配几乎同时被决定。换句话说，地图本身就是一道关于资源投向的题：先往哪边走、哪条死路值得用炸弹试、这个宝箱值不值得掏钥匙，全部要在同一层内一次性答完，而 Bomb 与 key 的数量就是这道题的预算上限，超支就只能放下一个目标。",
+  "coreLoop": "一个完整循环：进入一层 → 探索房间网格、清空有敌人的房间换掉落 → 找到 Boss 房并击败 Boss → 拿到 Boss 道具池的一件道具与通往下层的活板门 → 进下一层并重复。wiki 原文对关门规则写得很直白：「Isaac cannot leave a Room with enemies until they are all killed or until a door is opened with an explosion.」清房还会给主动道具充能：「completing a Room with enemies will add one charge」，四倍大房或 L 形房「will add two charges」。奖励不是必给的：清房掉落有掉率累积机制，所以循环里同时跑着「找房、清房、赌掉落」三条线。",
+  "sessionShape": "一「局」是从 Basement 1 一路向下打到结局的连续流程，没有回合或时间上限的硬性总分。结束方式有三种（都能从正文验证）：① 击败当层 Boss 走活板门下到更深一层，直到最终章；② 主动进入需要钥匙/炸弹/血量开启的支线出口（如「A Strange Door」房间里的活板门）；③ 角色死亡，本局终止。局内有两条被明确写出的时间门槛：击败 Mom 的时间「under 20 minutes」会在 Boss 房墙上裂开 Boss Rush 入口，超时后仍可用 Mama Mega! 等道具强行打开；击败 Mom's Heart 或 It Lives!「in under 30 minutes」会裂开通往 ??? 层的活板门。",
+  "minuteToMinute": "手上在做的事：用方向键移动、用射击键持续输出、按主动道具键、用炸弹开路与炸碎岩石/乞丐/店主。每进一个有敌人的房间，门会锁死，玩家必须在房间内边跑位边清怪，清完才恢复通行；进 Shop 或 Treasure Room 则要先掏钥匙开门。非战斗时间花在「筛图」上：判断哪条死路可能是 Treasure Room、Shop、Library、Vault 或 Dice Room，决定这层还剩的钥匙与炸弹投给谁。wiki 也写清了门锁的例外：不可触及敌人时门会自动打开防卡死，但「This will not occur if Isaac has flight or if there is a boss or miniboss in the Room.」",
+  "runStructure": "一局按楼层（Floor）→ 章（Chapter）→ 结局层分段。每层是一张程序生成的房间网格，按权重随机塞入若干「Special Rooms」，正文逐一列出的类型有二十余种（Boss Room、Treasure Room、Planetarium、Shop、Arcade、Challenge Room、Curse Room、Sacrifice Room、Secret Room、Devil Room、Angel Room、Vault、Dice Room、Crawl Space、Boss Rush 等）。特殊房不是均匀乱撒：Boss Room 取离起点最远，Secret Room 邻 3~4 间，Super Secret Room 只邻 1 间非特殊房且靠近 Boss 房。",
+  "controls": "键盘/手柄的移动 + 射击双输入（射击可用方向键独立瞄准），另有主动道具键与炸弹键；地面可有水/血/岩浆的水淹房并与部分道具产生特殊互动。操作层面的关键设计点在于「门」是一个输入约束而不是纯数值：炸弹可以当作开门工具（「until a door is opened with an explosion」），因此爆炸物同时是输出、资源采集与通行手段。移动能力会改变危险交互——例如 Curse Room 门刺「Isaac doesn't take damage upon entering the room if he has flight (still takes damage upon exiting)」。",
+  "inRunGrowth": "局内成长不是等级而是道具累积：房间、Boss、商店与 Devil/Angel 房都能拿到被动道具并立刻生效，频率约等于「每清几间房 + 每层一个 Boss 道具」。关键是**同一属性用非线性公式叠加**，所以「多拿一件 +1 伤害」的边际收益递减。Damage 条目的公式原文：EffectiveDamage = (CharBaseDmg × √(TotalDmgUps × 1.2 + 1) + FlatDmgUps) × Multipliers。条目给的算例：第一个 Pentagram 让以撒伤害变 3.5 × (1 × 1.2 + 1)^0.5 = 5.19，第二个只加到 6.45，即「a 1.26 increase instead of a 1.69 increase」。",
+  "itemization": "槽位与代价：被动无上限累积；主动占一槽并用清房充能。稀有度用「道具池」区分来源（Treasure Room pool、Boss pool、Devil Room pool、Angel Room pool、Curse Room pool、Planetarium pool、Library 等），同一件道具在不同来源概率不同。代价最鲜明的是 Devil Deal：以红心上限购买，「All items normally cost either 1 or 2 Red Heart Containers, and their prices roughly correspond to their power.」，没有红心时改收 3 个魂心。合成不是同名合成而是**乘算叠加**：多个倍率相乘（Proptosis × Eve's Mascara = ×4），但三个 1.5× 来源不叠加，只取其一。",
+  "metaProgression": "局外成长走「解锁」而不是「数值喂养」：达成条件会解锁新角色、新道具进入道具池、新结局与成就。Hard mode 条目给了一整张「Unlocks for Hard Mode」表，把每个角色在 Hard 下击败 Mom's Heart 解锁一个 co-op baby（Lost Baby、Cute Baby、Glass Baby…），集齐全部 completion marks 再解锁第二个（Buddy Baby、Colorful Baby…）；The Lost 的 all-marks 奖励是 Godhead，全部非 Tainted 角色是 Mega Mush，全部角色（含 Tainted）是 Death Certificate。这些都是可验证的「解锁内容」而非纯数值加成清单。货币层面的局外系统本轮未取得正文，故不写具体数字。",
+  "difficultyMechanics": "难度分两套。① Hard mode 是开局选择的模式，HUD 上会出现「a small red pentagram」。差异逐条列出：「2-3 more rooms generate each floor」、难度为 1 的普通房被排除或降权、敌人「have a base 20% chance to become Champions instead of only 5%」、Champion 只有 33% 而非 100% 给掉落、清房掉心被砍 66%（Repentance 为 34%）、「Floors are more likely to have curses」、Slot Machine 出奖率减半、Beggar 至少 6 次捐赠才给东西、Repentance 下商店有 50% 概率降级。② 另一维是层数与章：越深越难，特殊房类型会在特定章之后停止出现。",
+  "enemiesAndBosses": "敌人分普通怪、Champion（精英）与 Boss/Mini-Boss。Champion 的判定与奖励写在 Hard mode 条目：普通模式 5% 变 Champion，Hard 下 20%，且 Champion 只有 33% 概率给掉落。Mini-Boss Room 固定是七宗罪之一，且进门即被封死，「unable to be escaped or opened, even by explosions」。Boss 房每层一个、按离起点最远生成，胜利给 Boss 道具池一件 + 按难度给心 + 活板门；Krampus、Mega Satan Arena、Mother Arena、Boss Rush（2/4/8 个底座二选一并摧毁其余）是额外 Boss 内容。",
+  "deathConsequence": "死亡即本局结束：局内累积的道具、被动加成、地图探索、未使用的钥匙与炸弹全部作废，游戏不保留本局的属性。跨局保留的是解锁与成就（Hard mode 解锁表、成就类解锁如 Azazel / Krampus），属于账号级进度而非角色属性。另有一条被明确写出并成为 Devil Deal 核心风险的规则：花光所有红心上限不会立刻致死，只要还有魂心/黑心/骨心——「Spending all of his Heart Containers will not kill Isaac as long as he has Soul Hearts, Black Hearts, or Bone Hearts remaining.」反之，拿 Deal 时把血量清到零、还能靠持有的主动道具或 Dagaz 当场补心，也能活下来。",
+  "tensionSource": "紧张主要来自三处。① 门锁：进房即被锁在与敌人的封闭空间里，小 Boss 房连爆炸都炸不开。② 清房掉落是**可变比率**奖励：起始掉率仅 (1+[coolness]-[curse])%，每间空手清房约 +9%，上限 85%（首层）或 80%（其他层），一拿到奖励就重置回起点，让「再清一间」持续有拉力。③ 恶魔房的代价与掉率惩罚联动，且「Once a Devil Room door closes for the floor, it cannot be re-opened without picking up Goat Head or Eucharist.」",
+  "decisionTension": "最核心的取舍是**地图资源投给谁**的三选一，都可点数且不可回退：钥匙 → Treasure Room / Shop / Library / Vault / Dice Room；炸弹 → Secret Room / Super Secret Room / Bedroom（需两颗炸弹）/ 岩石与店主乞丐；红心上限 → Devil Deal 的 1~2 颗心，代价是放弃后续所有 Angel Rooms（「Angel Rooms will not spawn for the remainder of the run」）。所以玩家实际是在「Devil Deal 的即时强道具」与「保留 Angel Room 资格 + 留住红心」之间选。次一级取舍是隐藏房位置：炸弹数量决定这层能验证几个假设。",
+  "uniqueMechanic": "**「死路即特殊房」的房间图生成规则与它的反向利用**：玩家靠房间拓扑反推隐藏内容的位置。正文的硬约束：Secret Room「usually surrounded by 3 or 4 Rooms」；Super Secret Room「only located next to one other non-special Room」且「tend to spawn closer to the Boss Room」；Boss Room「typically spawn in the room that's as far from the starting room as possible」。Red Room 还有边界：只能在以中心房为准 13x13 的范围内生成。这些规则让地图本身成为可推理的信息面板，而不只是一张随机图。",
+  "whatPlayersLove": "本轮从抓到的正文里能确认的「被明确称赞/被设计者强调为正价值」的点是**非线性叠加的手感与视觉反馈**：Damage 条目评述「This formula makes most damage upgrades less potent the more that Isaac has.」，即刻意让堆叠递减；同时条目解释了道具尺寸的视觉冗余设计——「As damage increases, the size of the tears increases as well. However, tear size is not always a direct indication of how much damage tears will do」，因此尺寸不等于伤害。玩家口碑类称赞原文（Steam 评测 / 媒体评语）本轮**未取得（没找到）**——wiki 正文不含这类内容，故不引用、不代写。",
+  "knownCriticism": "本轮从正文里能确认的批评只有**游戏自身承认的设计缺陷与异常**，都是有出处的技术条目：① Damage 条目承认伤害缩放使多数伤害提升「less potent the more that Isaac has」，算例显示第二次 Pentagram 只从 5.19 加到 6.45（+1.26 而非 +1.69）。② Devil Room 条目自陈一个 Repentance bug：底座一旦 roll 到带 devilsacrifice 标签的道具，后续 roll 都被限制在该标签内，并破坏 Tainted Lost 的道具排除机制。③ Rooms 条目承认需要防卡死补丁：不可触及敌人时门会自动打开。媒体/玩家批评原文本轮**未取得（没找到）**。",
+  "lessonsForBronana": [
+    "判据：特殊房用拓扑约束而不是纯权重来放——Secret Room 必须邻 3~4 间、Super Secret Room 只邻 1 间非特殊房且靠近 Boss 房、Boss 房取离起点最远，全部是有出处的硬条件。对应 Bronana 的**战斗**模块：把这三条写成生成期的硬断言而不是软权重，玩家就能靠地图形状反推隐藏内容存在的位置，随机地牢才会被读懂而不是被忍受，探索从「碰运气」变成有推理收益的动作，玩家会因为看懂地图而获得正反馈而不是靠反复试错，随机地牢的「随机」才不至于变成噪音，玩家对生成器的信任也会因此建立起来。",
+    "判据：给清房掉落加一条会累积、命中即重置的概率轨道——以 (1+coolness-curse)% 起步，每间空手清房约 +9%，上限 85%（首层）与 80%（其他层），一旦掉出奖励就回到起点。对应 Bronana 的**战斗**模块：这样连续几次空手不会让玩家判定系统坏了，反而推动他「再清一间」，清间行为就有了持续拉力而不是一次性结算，也顺带解释了为什么玩家愿意多绕路，而不会因为连续空手就放弃这一局。对应实现上只需一条计数器与一个命中时的重置点，成本极低但行为引导非常明显，适合放进掉落逻辑里。",
+    "判据：把一次性代价与永久资格绑在同一次选择上——拿 Devil Deal 会立刻变强，但本局 Angel Room 的出现资格永久消失（原文：Angel Rooms will not spawn for the remainder of the run）。对应 Bronana 的**经营**模块：用不可逆的资格损失做取舍，比单纯扣数值更能制造决策重量，局内营地与跨局据点的资源分配才会有记忆点，玩家事后也能复盘自己当时为什么这样选，从而在下一次分配资源时形成自己的判断标准，而不是每次都靠运气重新开始。"
+  ],
+  "sources": [
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Rooms&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "coreLoop / runStructure / minuteToMinute / uniqueMechanic / tensionSource / enemiesAndBosses：特殊房清单、死路与密室相邻约束、Boss 房位置、清房才开门、防卡死补丁、Boss Rush 的 20 分钟门槛"
+    },
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Devil_Room&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "itemization / decisionTension / deathConsequence / knownCriticism：Devil Deal 以红心上限定价、无红心转 3 魂心、天使房永久关闭条件、恶魔房出现概率表与 x0.25/x0.5 惩罚、devilsacrifice 标签 bug"
+    },
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Damage&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "inRunGrowth / itemization / knownCriticism / whatPlayersLove：伤害平方根衰减公式、Pentagram 逐次收益算例、倍率相乘与 1.5× 不叠加例外、眼泪尺寸不等于伤害的说明"
+    },
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Hard_mode&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "difficultyMechanics / metaProgression / enemiesAndBosses：Hard mode 逐条差异、Champion 5%→20% 与 33% 掉落、解锁表（co-op babies / Godhead / Mega Mush / Death Certificate）"
+    },
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Champions&prop=wikitext&format=json&formatversion=2",
+      "strength": "未取得",
+      "supports": "enemiesAndBosses：原计划用该页补充冠军怪的种类与词条，本轮未抓取，故该字段只写 Hard mode 条目里可确证的 5%/20% 与 33% 掉落"
+    },
+    {
+      "url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Greed_Mode&prop=wikitext&format=json&formatversion=2",
+      "strength": "未取得",
+      "supports": "difficultyMechanics / sessionShape：Greed Mode 的波次结构本轮未取得正文；正文仅在 Rooms 与 Devil_Room 条目侧面提到其 10/11 波后开出口、Devil Room 保证出现、Golden/Silver Treasure Room 规则"
+    },
+    {
+      "url": "https://store.steampowered.com/api/appdetails?appids=250900&l=english",
+      "strength": "未取得",
+      "supports": "identity：发布日期、开发发行与平台清单未取得正文，故 identity 中相关项标注为未取得（本轮未成功取回该接口）"
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "name": "挺进地牢 / Enter the Gungeon",
+  "identity": "俯视角双摇杆射击的地牢 roguelike（弹幕 + 房间网格），支持单人与本地双人 co-op。开发：Dodge Roll（Lead Designer Dave Crooks、Lead Programmer Brent Sodman 与 David Rubel、Lead Artist Joe Harty）。发行方与发布日期、平台清单本轮**未取得（没找到）**——wiki 的 Dodge Roll 条目只列出作品年份（Enter the Gungeon 2016、Exit the Gungeon 2019、House of the Gundead 2020），未给具体发售日与平台，故不填写。可确证的版本分层来自条目内的更新名：Supply Drop、AG&D（Advanced Gungeons & Draguns）、A Farewell to Arms、Payday Update。",
+  "oneLine": "把「子弹地狱」和「塞尔达式地牢」焊在一起：几乎所有威胁都是能被翻滚穿过的弹幕，于是玩家的核心技能不是数值而是判断。具体到操作，一次 dodge roll 约 0.7 秒，前半段完全免疫伤害，后半段继续移动但会照常吃子弹，且出手后不能改变方向。所以「什么时候不该滚」比「怎么滚」更重要，一次判断失误会在同一秒内被满屏弹幕兑现成掉血，因为敌人用不同弹道覆盖空间，而翻滚的落点就是下一次受击点。与此同时钥匙与炸弹还要在地图上分给宝箱、密室或商店，玩家的注意力被同时拉向闪避与资源两条线，Boss 房的逐层 DPS 上限则保证这场消耗战不会被一件强枪提前终结。",
+  "coreLoop": "一个完整循环：进入一层 Chamber → 在房间网格里战斗、开箱、用钥匙与炸弹换资源 → 找到该层 Boss 并击败它（Boss 必定给武器或道具、Hegemony Credits 与 1~3 个心/弹药/钥匙）→ 通过 Boss 后的通道下到更深一层并重复。世界的叙事目标写在 The Gungeon 条目里：探险者来找的是「a Gun That Can Kill The Past」，即用来改写自己过去的一次机会。循环里另一条并行线是「清房 → 掉宝」：清房给的奖励概率会被 Curse 拉低。",
+  "sessionShape": "一「局」是从 Chamber 1 杀到 Chamber 5（Forge）并面对 High Dragun 的连续流程，中间可以拐进隐藏层（Oubliette、Abbey of the True Gun、Resourceful Rat's Lair、R&G Dept.），或直达 Chamber 6 Bullet Hell 找 Lich。结束方式：击败 Boss 后若持有 Gun That Can Kill The Past 可以进入自己角色的「Past」打最终一场（即「过去结局」），或继续下潜直到死亡。隐藏层入口的具体触发条件本轮**未取得（没找到）**逐条正文，因此不写数字。",
+  "minuteToMinute": "手上在做的事：一边走位一边持续射击，用右键（键盘鼠标）或 LB（手柄）做 dodge roll 穿弹，翻桌把桌子当掩体、换枪、用 Blank 清屏、开箱与捡资源。操作层面的硬事实：一次翻滚「lasts about 0.7 seconds」，且「the player cannot change their movement direction after committing to a roll」；键鼠「can only dodge roll in the 8 cardinal directions」，手柄则有 360° 方向控制。翻滚撞敌造成 3 点伤害（The Robot 为 4），清弹用但不是主要输出手段。",
+  "runStructure": "一局按 Chamber 分段，每层是一个房间网格加一个 Boss 房，另有一层起就存在的支线门。正文列出的完整结构：The Breach（非 Chamber 的安全前厅）→ Halls of Knowledge（Chamber 0，教程）→ Keep of the Lead Lord（Chamber 1）→ Oubliette → Gungeon Proper（Chamber 2）→ Abbey of the True Gun → Black Powder Mine（Chamber 3）→ Resourceful Rat's Lair → Hollow（Chamber 4）→ R&G Dept. → Forge（Chamber 5）→ Bullet Hell（Chamber 6）。每层布局会重排，而 Breach 与 R&G Dept. 被明确写成不重排。",
+  "controls": "键盘鼠标或手柄；移动与射击方向分离（双摇杆式）。dodge roll 默认绑定键盘鼠标的「Right Click」与手柄的「LB」。设计上被点名的细节：翻滚前半段「the player is invulnerable to all damage and will not connect with enemy projectiles」，后半段「continues moving but becomes vulnerable to gunfire」，即无敌帧只覆盖半程，条目原话是「a valuable but inherently risky method of avoiding damage」。翻滚还能灭火并免疫尖刺、goop 与坑等地面危险，机制命名参考 Stop, Drop, and Roll。",
+  "inRunGrowth": "局内成长以「拿到武器与被动道具」为主，拾取即生效，没有经验等级。频率较高：Boss 必给一件随机品质的武器或道具，宝箱在 Reward 房与清房掉落中提供更多，商店与 NPC 用金币或钥匙换装备。成长带明确的**弹药与携带约束**：每把枪有独立弹药，道具与主动道具占各自槽位。玩家需要在「多带一把枪」与「带一件保命道具」之间反复权衡，而弹药告急时换枪的时机也成为可练习的操作。一批道具直接把翻滚变成输出或资源通道：Easy Reload Bullets 让翻滚上膛一发、Roll Bomb 让翻滚掉炸弹、Rolling Eye 让翻滚把敌人子弹反弹回去。",
+  "itemization": "稀有度用箱子颜色表达，顺序可从正文实取：Brown (D)、Blue (C)、Green (B)、Red (A)、Black (S)。品质频率随层迁移：正文明确「chances for higher quality chests increasing on later floors」，并可切换到两套 loot table（Gungeons and Draguns 与 Classic）。正负代价来自三条：诅咒（带诅咒的枪与道具提升 Curse）；打破箱子换劣质掉落，权重表为 Junk 0.6、半颗心 0.2、爆炸 0.1、随机道具或枪 0.1；引信箱不快点开就炸成空。合成是协同（Synergy），Synergy Chest 约 5% 出现在 Reward 房。",
+  "metaProgression": "局外成长集中在 The Breach，货币是 Hegemony Credits（HC，Boss 掉落，无伤通过给双倍）。解锁的是功能与内容而非纯数值：Acquisitions Department 的 Ox and Cadence 用 HC 卖大量物品解锁；Sorceress's Room 花 6 HC 进 Blessed Mode、6 HC 进 Challenge Mode（尝试 30 次后降到 1 HC）、免费进 Turbo 与 Rainbow Mode；Professor Goopton 与 Trorc 各开一家主题商店。Elevator Room 由 Tailor 修电梯，修好可直通前四层，四部全修好后免费开放 Boss Rush——「This is the only way to enter Boss Rush.」",
+  "difficultyMechanics": "难度分两层叠加，不靠单一开局档位。① 层数本身：Chamber 越深，敌人血量与伤害按各层 health scaling 倍率缩放（Curse 条目引用了 Cult of the Gundead 的 Health Scaling 倍率）。② 诅咒是玩家自选的难度旋钮：越高出现越多 Jammed 敌人，10 点诅咒会召出打不死的 Lord of the Jammed 持续追击。③ 可购买的挑战模式放在 Sorceress's Room：Blessed、Challenge、Turbo、Rainbow 四种，且 Challenge Mode 有代价——「this room will become boarded up, preventing the player from using shortcuts.」",
+  "enemiesAndBosses": "Boss 每层末尾一只，五层各三选一（Keep: Bullet King / Gatling Gull / Trigger Twins；Proper: Ammoconda / Beholster / Gorgun；Mine: Cannonbalrog / Mine Flayer / Treadnaught；Hollow: High Priest / Kill Pillars / Wallmonger；Forge: High Dragun），另有隐藏 Boss（Blockner、Door Lord、Blobulord、Old King、Resourceful Rat、Agunim、Lich）与 Past 专属 Boss。所有 Boss 都有逐层递增的 DPS 上限以阻止秒杀，上限在 Boss Rush 中取消。普通敌人有 Veteran 变体，其精英化形式即 Jammed。",
+  "deathConsequence": "死亡结束本局：局内的枪、道具、弹药、钥匙、金币与本层地图进度全部作废，回到 The Breach 重新出发。跨局保留的是 Hegemony Credits、已解锁的 NPC/商店/模式/捷径与成就进度——即解锁是永久的，属性不是。有一条重要的保留规则写在 Bosses 条目里：进入自己的 Past 时（Pilot 除外）「they will lose their items and guns, but will keep blanks and armor」，The Robot 的 Past 里护甲固定重置为 6，少数道具例外地会带进 Past。",
+  "tensionSource": "紧张来自三处。① 翻滚是**半程无敌**：前半段完全免疫弹幕，后半段只免疫接触伤害且照常吃子弹，出手后还不能改方向，所以压力不是「有没有翻滚」而是「这一滚会不会把自己送进更糟的位置」。② 诅咒是滚雪球式自我加压：清房奖励概率从 (1+[coolness]-[curse])% 起算，而诅咒来源里有偷店（+1）与祈祷 Ammo Shrine（+3.5）这类主动选择；到 10 点，Lord of the Jammed 出现且「It cannot be killed, and continually chases the player.」③ 宝箱带引信，逼玩家在战斗中做资源决策。",
+  "decisionTension": "最核心的取舍是**钥匙与炸弹在「确定收益」和「未知但可能更强」之间的分配**：宝箱分 D/C/B/A/S 五色，越往后越强，而「On every floor, one treasure room chest will contain a gun while the other will contain an item」——玩家知道自己至少需要一把枪，但哪个箱子是枪是随机的。第二层取舍是打箱子还是开箱子：开枪打破立刻拿东西，但权重表显示 Junk 占 0.6；正常开启才拿到该品质的东西。第三层取舍由诅咒量化：+2 诅咒的 Casey 或 +5 的 Finished Gun 同时买下更高的 Jammed 概率与更低的清房掉率。",
+  "uniqueMechanic": "**dodge roll 的「半程无敌帧」**——同一个动作里约 0.7 秒的前一半完全免疫弹幕，后一半只免疫接触伤害且照常吃子弹，并且出手后不可转向。它把弹幕回避从纯反应问题改造成承诺问题：条目把掌握它的定义写成否定式——「effective mastery of the dodge roll includes knowing when not to use it」。另一条独有设计是诅咒的双向账本：Curse 同时提高敌人强度、Jammed 概率、Mimic 与引信箱概率，以及清房给弹药的倍率（x1.05 起、逐点升到 x1.50）。",
+  "whatPlayersLove": "正文里能确认的「被称赞」只有**开发者自陈的设计理由**。dodge roll 是继射击后第二个加入的机制，Dave Crooks：「The dodge roll is the first mechanic other than shooting that went into the game. When we discussed merging a bullet hell game with a dungeon crawler, we immediately started talking about hot to ‘pull an Ikaruga’ - or otherwise give the player a way to deal with the massive amount of bullets, that wasn’t just weaving through them.」",
+  "knownCriticism": "本轮从正文里能确认的批评只有**开发者自陈的取舍与已修的问题**，逐字可查。dodge roll 的无敌帧来自移植——「The entire team counts Dark Souls among their favorite games, and including the i-frame laden dodge roll from the Souls series was an early suggestion.」另一条是对随机性的自我修正：Rusted Key 在 Anniversary 更新前的稀有度算法「used a formula similar to the lottery tickets analogy」，之后被改成固定产出大箱等值。玩家口碑与媒体批评类原文本轮**未取得（没找到）**，故不引用，也不代写。",
+  "lessonsForBronana": [
+    "判据：把回避动作拆成有代价的承诺而不是免费按钮——翻滚总长约 0.7 秒，前一半完全无敌、后一半可被打中，且出手后不能改变方向，翻错就要吃满伤害。对应 Bronana 的**战斗**模块：用「半程无敌帧 + 不可转向」制造决策重量，比单纯延长无敌时间更能让走位变成技术而不是运气，玩家也能清楚知道自己为什么掉血，从而在下一次翻滚前主动调整站位。对应实现上只需把翻滚时长、无敌窗口与落地硬直做成三个可调数值，而不是一个笼统的「闪避」按钮，这样调数值时能直接看出是哪一段窗口在影响手感，也便于把反馈精确归因到某一段无敌帧。",
+    "判据：让同一根负面状态条同时带正收益——Curse 提高敌人强度与 Mimic、引信箱概率，却把清房给弹药的倍率从 x1.05 抬到 x1.50，10 点还会召出打不死的 Lord of the Jammed 持续追击。对应 Bronana 的**养成**模块：设计诅咒类词条时用「风险条换资源产出」的双向账本，比纯减益更能驱动玩家主动加码而不是一律回避，词条因此有正反两面可以权衡。对应实现上要让风险条有可观的正面出口——清房掉弹药、金币加成或词条解锁——否则玩家只会把它当成纯惩罚并一律回避，双向账本也就失效了。",
+    "判据：把难度做成可用代币购买的多种模式而不是一条线性档位——Blessed 与 Challenge 各 6 HC、Challenge 尝试 30 次后降到 1 HC、Turbo 与 Rainbow 免费，且 Challenge 会封掉捷径作为代价。对应 Bronana 的**经营**模块：让跨局据点卖「玩法变体」而不是数值加成，玩家花的代币换来的是新一轮规则而不是更大的数字，长期目标不容易被数值通胀抹平，据点商店每次刷新都值得看一眼，而不是开完一次就把界面当成装饰，玩家每次回到据点都会先看一眼有什么新东西。"
+  ],
+  "sources": [
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Curse&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "enemiesAndBosses / tensionSource / decisionTension / uniqueMechanic：Jammed 敌人与 Jammed Boss 的完整公式、诅咒对清房掉率与弹药倍率的影响表、10 点诅咒召出 Lord of the Jammed、加减诅咒来源清单"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=The_Gungeon&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "coreLoop / runStructure / identity：Chamber 0-6 与隐藏层的完整分层、每层主题与 Boss 归属、Gun That Can Kill The Past 的叙事目标"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Chests&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "itemization / decisionTension / tensionSource：箱子颜色到 D/C/B/A/S 的映射、品质频率随层迁移、打破箱子的权重表、引信与浇灭、Synergy Chest 约 5%"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Bosses&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "enemiesAndBosses / deathConsequence：逐层 Boss 清单、Boss 掉落与 Master Round、无伤给双倍 HC、逐层 DPS 上限数值表、进入 Past 时保留 blanks 与 armor"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Dodge_Roll_(Move)&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "controls / minuteToMinute / tensionSource / uniqueMechanic / whatPlayersLove：0.7 秒翻滚与半程无敌、不可转向、键鼠 8 向与手柄 360°、滚动伤害、灭火与免疫地面危险、开发者关于 Ikaruga 与命名由来的原话"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=The_Breach&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "metaProgression / difficultyMechanics：Hegemony Credits 商店、四种挑战模式的解锁与定价、Tailor 电梯捷径与 Boss Rush 入口、Challenge Mode 封捷径"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Dodge_Roll&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "identity / knownCriticism：开发团队 Dodge Roll 的核心成员与角色分工、作品年份、Dave Crooks 关于 Dark Souls 无敌帧与 Rusted Key 改动的访谈原话；翻滚机制正文实取自 Dodge_Roll_(Move)"
+    },
+    {
+      "url": "https://enterthegungeon.wiki.gg/api.php?action=parse&page=Chambers&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "runStructure：该页为重定向（#REDIRECT The_Gungeon），分层信息以 The Gungeon 页为准"
+    },
+    {
+      "url": "https://enterthegungeon.fandom.com/api.php?action=parse&page=Bosses&prop=wikitext&format=json&formatversion=2",
+      "strength": "未取得",
+      "supports": "全字段：Fandom 域名本轮不可达（fetch failed），改用 enterthegungeon.wiki.gg 的同一 MediaWiki API 取同一批条目"
+    },
+    {
+      "url": "https://store.steampowered.com/api/appdetails?appids=311690&l=english",
+      "strength": "未取得",
+      "supports": "identity：发布日期、发行商与平台清单未取得正文，故 identity 中不填写"
+    }
+  ]
+}

@@ -675,7 +675,7 @@ function renderCodex() {
   var unlockedChars = 0;
   for (i = 0; i < Chars.LIST.length; i++) if (isCharAvailable(Chars.LIST[i])) unlockedChars++;
 
-  var s = setRow('孢子', Game.growth());
+  var s = setRow('成长点', Game.growth());
   s += setRow('挑战完成', snap.done.length + ' / ' + Challenges.LIST.length);
   s += setRow('角色解锁', unlockedChars + ' / ' + Chars.LIST.length);
   s += setRow('解锁的武器 / 道具', Profile.unlockedIds('weapon').length + ' / ' + Profile.unlockedIds('item').length);
@@ -816,7 +816,7 @@ function profileStatusHtml() {
   });
   var rows: { k: string; v: string; warn?: boolean }[] = [
     { k: '材料', v: Game.material() + '（据点用）' },
-    { k: '合金', v: Game.growth() + '（图纸工坊用：只由合成产出）' },
+    { k: '成长点', v: Game.growth() + '（图纸工坊用：只由合成产出）' },
     { k: '记录碎片', v: s.fragments + ' / ' + Story.FRAGMENTS.length },
     { k: '打倒过的器官', v: s.bosses + ' / ' + Enemies.BOSSES.length },
     { k: '发现过的密室', v: String(s.secrets) },
@@ -826,7 +826,7 @@ function profileStatusHtml() {
   /* 这里只留"现在该去哪儿"这一类**可行动**的提醒（账目归账目）。
      "有人想说新话"不在这条线上：站点卡上的角标已经在说同一件事，
      重复一遍只会把状态带挤成两行 —— 而它在一屏宽里必须是一行。 */
-  if (freePoints > 0) rows.push({ k: '天赋点', v: freePoints + ' 点没用（去镜面）', warn: true });
+  if (freePoints > 0) rows.push({ k: '成长点', v: freePoints + ' 点没用（去镜面）', warn: true });
   var html = '';
   rows.forEach(function (r) {
     html += '<span class="acct-item' + (r.warn ? ' warn' : '') + '"><b>' + r.k + '</b> ' + r.v + '</span>';
@@ -1402,7 +1402,7 @@ function renderKeep() {
   // 界面只负责把折叠出来的修正翻成人话。新增一个键不需要动这个文件。
   var eff = Keep.effectLines(Game.keepMods());
   head += setRow('当前效果', eff.length ? eff.join(' · ') : '（无）');
-  head += setRow('两条循环', '据点解锁能力（产线 / 目录 / 离线）→ 出击收集、工坊制造 → 打得更深 → 更多孢子 → 据点更强');
+  head += setRow('两条循环', '据点解锁能力（产线 / 目录 / 离线）→ 出击收集、工坊制造 → 打得更深 → 更多成长点 → 据点更强');
   head += setRow('前置链', '有些设施要先有别的（例如档案馆要钟楼）—— 【顺序本身也是决策】');
   el.keepHead.innerHTML = head;
 
@@ -1469,14 +1469,14 @@ function renderForge() {
   var alloy = Game.growth();
   var owned = Game.forgeOwned();
   var mods = Game.forgeMods();
-  var head = setRow('合金', String(alloy) + '（只由「回收」产出：拆掉不要的装备 + 每次结算的基础产出）');
+  var head = setRow('成长点', String(alloy) + '（只由「回收」产出：拆掉不要的装备 + 每次结算的基础产出）');
   /* 核心材料在两条局外线上是**同一笔**钱（据点与图纸都花它）：
      两处都显示它，玩家才看得出"这两个 2 是同一笔预算"。 */
   head += setRow('核心材料', String(Profile.core()) + '（只有关底 Boss 掉；据点与图纸共用这一笔）');
-  head += setRow('已解锁', owned.length + ' / ' + Forge.LIST.length + ' 张（点满全部 ' + Forge.totalCost() + ' 合金）');
+  head += setRow('已解锁', owned.length + ' / ' + Forge.LIST.length + ' 张（点满全部 ' + Forge.totalCost() + ' 成长点）');
   var eff = Forge.effectLines(mods);
   head += setRow('当前效果', eff.length ? eff.join(' · ') : '（无）');
-  head += setRow('与据点 / 天赋的分工', '据点（孢子）= 改这一局的规则与容量 · 天赋（点数）= 改开局属性 · 图纸（合金）= 改「能造什么」');
+  head += setRow('与据点 / 天赋的分工', '据点（成长点）= 改这一局的规则与容量 · 天赋（点数）= 改开局属性 · 图纸（成长点）= 改「能造什么」');
   el.forgeHead.innerHTML = head;
 
   var html = '';
@@ -1488,7 +1488,7 @@ function renderForge() {
     else if (chk.ok) btn = '<button class="btn tiny" data-act="forge-buy" data-forge="' + d.id + '">解锁 ' + chk.cost + '</button>';
     else if (chk.locked) btn = '<button class="btn tiny" disabled title="' + chk.reason + '">锁着</button>';
     else btn = '<button class="btn tiny" disabled title="' + chk.reason + '">' +
-      (chk.core > 0 ? chk.cost + ' 合金 + ' + chk.core + ' 核心' : chk.cost + ' 合金') + '</button>';
+      (chk.core > 0 ? chk.cost + ' 成长点 + ' + chk.core + ' 核心' : chk.cost + ' 成长点') + '</button>';
     var reqTxt = (d.req && d.req.length)
       ? '<br><span class="camp-combo">前置：' + d.req.map(function (r) {
         return (Forge.BY_ID[r] ? Forge.BY_ID[r].name : r) + (Profile.isForged(r) ? ' ✔' : '');
@@ -1564,7 +1564,7 @@ function renderCamp() {
   var effTxt = Camp.effectLines(fx);
   head += setRow('制造效果', effTxt.length ? effTxt.join(' · ') : '（无）');
   head += setRow('设施是「跨局」的', '盖好就一直有；换一局不用重盖（这也是它和商店最大的区别）');
-  head += setRow('和商店的分工', '造 = 便宜但要图纸 + 占一条产线的一波；货架 = 应急成品（贵）与回收（回收产合金）');
+  head += setRow('和商店的分工', '造 = 便宜但要图纸 + 占一条产线的一波；货架 = 应急成品（贵）与回收（回收产成长点）');
   el.campHead.innerHTML = head;
   renderDoors(el.campDoors, sess);   // 工坊也能直接挑门走
 
@@ -1860,7 +1860,7 @@ function renderTalents() {
   var home = Talent.AFFINITY[charId] || '';
 
   if (el.talentPoints) {
-    el.talentPoints.textContent = '天赋点 ' + free + ' 可用 / 已用 ' + spent + ' / 累计 ' + earned +
+    el.talentPoints.textContent = '成长点 ' + free + ' 可用 / 已用 ' + spent + ' / 累计 ' + earned +
       (home ? '（本命扇区：' + Talent.SECTORS[home].name + '，跨扇区 +1 费）' : '（无本命扇区：所有扇区同价）');
   }
 
@@ -1920,7 +1920,7 @@ function renderTalents() {
       } else if (chk.ok) {
         btn = '<button class="btn tiny" data-act="talent-take" data-talent="' + d.id + '">花 ' + cost + ' 点</button>';
       } else {
-        btn = '<button class="btn tiny" disabled title="' + chk.reason + '">' + (chk.reason === '天赋点不够' ? cost + ' 点' : '不可点') + '</button>';
+        btn = '<button class="btn tiny" disabled title="' + chk.reason + '">' + (chk.reason === '成长点不够' ? cost + ' 点' : '不可点') + '</button>';
       }
       html += '<div class="set-row"><span class="set-label">' +
         '[' + typeDef.label + '] <b>' + d.name + '</b> —— ' + d.desc +
@@ -1965,7 +1965,7 @@ function renderDailyBlock() {
   // 离线产出：要买了菌床才有（等级读**折叠值**，与结算那条路同一个来源）
   var bedLv = Game.keepMods().offlineLevel;
   html += setRow('离线产出', bedLv > 0
-    ? '菌床 Lv.' + bedLv + ' → ' + Offline.rateAt(bedLv) + ' 孢子/分（单次最多 ' + Offline.MAX_HOURS + ' 小时）'
+    ? '菌床 Lv.' + bedLv + ' → ' + Offline.rateAt(bedLv) + ' 成长点/分（单次最多 ' + Offline.MAX_HOURS + ' 小时）'
     : '还没买「菌床」—— 它是离线产出的开关');
   // 最近一局的成绩码：短，可整行复制给别人复算
   var last = UI.dailyResult ? UI.dailyResult() : null;
@@ -2572,7 +2572,7 @@ var ACT_TALENTS: ActMap = {
   'talent-respec': function () {
     var res = Game.respecTalents(UI.talentChar);
     if (res.ok) {
-      UI.toast(res.cost > 0 ? '已洗点（花了 ' + res.cost + ' 孢子）' : '已洗点（免费次数内）', '');
+      UI.toast(res.cost > 0 ? '已洗点（花了 ' + res.cost + ' 成长点）' : '已洗点（免费次数内）', '');
     } else UI.toast(res.reason, 'warn');
     renderTalents();
   },
@@ -2615,7 +2615,7 @@ var ACT_KEEP: ActMap = {
     if (kr.ok) {
       var kd = Keep.BY_ID[kid];
       UI.toast('据点建成：' + (kd ? kd.name : kid) + ' Lv.' + kr.toLevel +
-        '（花了 ' + kr.cost + ' 孢子）', 'good');
+        '（花了 ' + kr.cost + ' 成长点）', 'good');
     } else UI.toast(kr.reason, 'warn');
     renderKeep();
   },
@@ -2627,7 +2627,7 @@ var ACT_KEEP: ActMap = {
     if (zr.ok) {
       var zd = Forge.BY_ID[zid];
       UI.toast('图纸解锁：' + (zd ? zd.name : zid) + ' —— ' +
-        (zd ? Forge.nodeText(zd) : '') + '（花了 ' + zr.cost + ' 合金）', 'good');
+        (zd ? Forge.nodeText(zd) : '') + '（花了 ' + zr.cost + ' 成长点）', 'good');
     } else UI.toast(zr.reason, 'warn');
     renderKeep();
   },
@@ -2916,7 +2916,7 @@ function wireEvents() {
      而这句提示是玩家唯一能看到"我拆了它就离图纸更近一步"的地方。 */
   G.on('sell', function (d) {
     UI.toast('回收 ' + d.name + ' +' + d.refund + ' 废料' +
-      (d.alloy ? ' +' + d.alloy + ' 合金' : ''), '');
+      (d.alloy ? ' +' + d.alloy + ' 成长点' : ''), '');
   });
   /* 制造：结果档位与"走运"（锻台 / 淬火）都在事件里 —— 不播出来，
      玩家就永远不知道那 25% 发生过（这两条加成就是白做的）。 */
@@ -3634,7 +3634,7 @@ function renderShop() {
       bs.dataset.i = String(idx);
       bs.title = '低价卖回：+' + Game.salvageOf(w) + ' 废料（返还 ' +
         Number(U.pct((Game.getSession() && Game.getSession().salvageRate) || Weapons.salvageRate)) +
-        '% 的当前价值，含品级）—— 同时产出**合金**，那是图纸树唯一的稳定来源';
+        '% 的当前价值，含品级）—— 同时产出**成长点**，那是图纸树唯一的稳定来源';
       acts.appendChild(bs);
     }
     b.appendChild(acts);
@@ -4120,7 +4120,7 @@ function renderEnd(sum) {
      而合成是唯一通向局外图纸的动作，必须在这里露一次脸。 */
   var sess = Game.getSession();
   if (sess && sess.combineCount) {
-    rows += '<div>合成 <span class="big-num">' + sess.combineCount + '</span> 次 · 合金 +' +
+    rows += '<div>合成 <span class="big-num">' + sess.combineCount + '</span> 次 · 成长点 +' +
       (sess.growth || 0) + '（到据点解锁图纸）</div>';
   }
   // 与历史最佳对比：这一局的成绩要放在坐标里才有意义

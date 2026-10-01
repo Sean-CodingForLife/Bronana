@@ -64,6 +64,8 @@ export const MODULES = {
   dialogue:   '../src/dialogue.ts',
   /* 状态系统（R50 第 10 条）：一张声明表 + 收口，不认识 DOM / 不认识会话 */
   status:     '../src/status.ts',
+  /* 用词总账（R53-B）：权威名的声明与出处，只认 registry / selfcheck */
+  terms:      '../src/terms.ts',
   /* NPC 交易（R41）：规则表 + 纯函数，只 import bonds / ledger / registry / selfcheck */
   trade:      '../src/trade.ts',
   tiers:   '../src/data_tiers.ts',
@@ -131,6 +133,9 @@ export const SIM_MODULES = [
   'dialogue',
   /* 状态系统（R50 第 10 条）：只依赖 registry / selfcheck —— 同一批 */
   'status',
+  /* 用词总账（R53-B）：只依赖 registry / selfcheck —— 它刻意**不读** eco_*.ts
+     （同层，启动期谁先加载不确定），"出处真有那个名字"由 tools/name-audit.mjs 核 */
+  'terms',
   /* NPC 交易（R41）：读 `bonds`（关系阶段门槛）与 `ledger`（收的钱是不是真代币）*/
   'trade',
   'tiers', 'elems', 'curves',

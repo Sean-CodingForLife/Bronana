@@ -1,3 +1,10 @@
+---
+title: "Bronana"
+category: 门面
+scope: "玩法 / 操作 / 引擎与架构参考 / 性能 / 已知取舍 —— **只讲现在是什么样、为什么是这样**"
+source: "与代码同步（存量表由 `pnpm run readme:check` 对账）"
+links: ["CONTRIBUTING.md", "docs/README.md", "CHANGELOG.md"]
+---
 # Bronana
 
 一个用 **TypeScript + 原生 ES 模块 + HTML5 Canvas** 写成的独立肉鸽游戏（Bronana）。
@@ -858,9 +865,9 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 93 个 · 43603 行（另有 `types.d.ts` 5224 行） |
+| 模块 | 94 个 · 43973 行（另有 `types.d.ts` 5280 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 64 · `selfcheck.ts` 60 · `utils.ts` 31 |
+| 扇入最高的模块 | `registry.ts` 65 · `selfcheck.ts` 61 · `utils.ts` 31 |
 | 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 30 |
 | 超过 700 行的模块 | `game.ts` 5364 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1694 · `sprites.ts` 1687 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
@@ -1753,8 +1760,8 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **63 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
+| 门 | **20 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 测试套件 | **64 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | 93 个 · 43k 行（另有 `types.d.ts` 5.2k 行） |
 | 依赖环 | **0** |

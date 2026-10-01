@@ -1,3 +1,10 @@
+---
+title: "更新日志"
+category: 变更史
+scope: "**玩家可感知**的变化（每一条都回答\"玩家能看出什么不同\"）"
+source: "与 `pnpm verify` 的输出同步；行为变化必须同时更新 `test/smoke.mjs` 的 `CASES`"
+links: ["README.md", "docs/history/README.md"]
+---
 # 更新日志
 
 这个文件记录**玩家可感知的变化**与**工程决策**。

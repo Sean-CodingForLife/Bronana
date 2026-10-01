@@ -1,3 +1,10 @@
+---
+title: "Bronana 需求清单"
+category: 需求账本
+scope: "用户提的每一条需求 + 现状 + 证据；**讨论在这里留痕**。未结条目看 §6.0 的四象限"
+source: "状态与证据都必须是**能被机器复现**的（测试名 / 门名 / 文件路径 / 提交）"
+links: ["../AGENTS.md", "README.md", "history/README.md"]
+---
 # Bronana 需求清单
 
 > **这个文件是干什么的**：用户与 AGENT 之间的**唯一一本账**。用户提的每一条需求都进这里，
@@ -2201,7 +2208,7 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 | 验证 | 结果 |
 | --- | --- |
 | `pnpm typecheck` | ✅ 0 错误（tsc ×2） |
-| 全套测试 | ✅ **63 套**（新增 `test/status.mjs`：70 条断言 / 7 节） |
+| 全套测试 | ✅ **64 套**（新增 `test/status.mjs`：70 条断言 / 7 节） |
 | `node tools/verify.mjs` | ✅ **17 / 17 门** |
 | 行为指纹 | ✅ 三个值**逐位未变**（⚠ 但它在这里证明的是"没碰别处"，不是"改对了" —— 那三个技能在指纹用例里没被触发） |
 | `npx vite build` | ✅ gzip 273.8 kB（预算 280 → **285**，第三次写明理由的放宽） |
@@ -2519,13 +2526,13 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 
 | 维度 | 实测值 |
 | --- | --- |
-| 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `audio` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **63 套**（清单在 `test/suites.mjs`，**数量由清单算出来**） |
+| 门 | **20 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `audio` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 测试套件 | **64 套**（清单在 `test/suites.mjs`，**数量由清单算出来**） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
-| 模块 | **93 个 · 43599 行**（另有 `types.d.ts` 5224 行；`hall.ts` 724 行） |
+| 模块 | **94 个 · 43973 行**（另有 `types.d.ts` 5224 行；`hall.ts` 724 行） |
 | 依赖环 | **0** |
 | 向上的边 | **2 条**，都已逐条登记理由 |
-| 家族（扩展点总账） | **137 个**，0 个没人守（`Registry.family` 各有一条 `SelfCheck` 或跨表引用） |
+| 家族（扩展点总账） | **140 个**，0 个没人守（`Registry.family` 各有一条 `SelfCheck` 或跨表引用） |
 | 内容规模 | 9 角色 · 24 武器（10 近战 + 14 远程）· 13 怪物 · 20 技能 / 15 符文 / 9 树 · 两种战斗模式 · **8 色板 × 3 脸型 × 5 配件**（外观）· **3 × 3 档入门三选** · **34 条台词（含 2 条带分支）· 9 条战斗短句** · **12 档 NPC 交易报价 × 3 位商人** · **3 种状态 × 5 种 kind** |
 | 运行时依赖 | **0** |
 | 构建产物 | JS **744.68 kB**（gzip **275.63**）· CSS 28.2 kB（gzip 6.2）· HTML 33.5 kB（gzip 9.9）· **全站 gzip 290.0 kB**（默认不发 sourcemap）；预算与判据在 `test/modes.mjs` [9]（JS ≤ **285** · 全站 ≤ 300 —— 未压缩上限 720 → **750**，**三次**放宽的账在 R41 第二/三批与 R50 第四批） |
@@ -2566,7 +2573,7 @@ CI 运行：<https://github.com/Sean-CodingForLife/Bronana/actions/runs/36740864
 pnpm verify          # 17 道门，约 60~200 秒
 pnpm verify --quick  # 迭代用的快档，约 20 秒
 pnpm verify --list   # 列出每道门在验什么 + 与 CI 对账
-pnpm test            # 63 套测试
+pnpm test            # 64 套测试
 ```
 
 **归档会话的读取（复现用）**：

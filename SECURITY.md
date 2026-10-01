@@ -1,3 +1,10 @@
+---
+title: "安全策略"
+category: 安全
+scope: "威胁模型与漏洞报告方式"
+source: "设计约束来自 `AGENTS.md` 第一节（零依赖 / 零素材 / 纯单机）"
+links: ["README.md", "CODE_OF_CONDUCT.md"]
+---
 # 安全策略
 
 ## 先说清楚威胁模型：**这个项目几乎没有攻击面，但不是零**

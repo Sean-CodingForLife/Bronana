@@ -65,7 +65,7 @@ var MOD_KEYS: Record<string, KeepModKeyDef> = {
   freeRespecs: kd('每个角色多几次免费洗点（profile.ts 的免费次数）',
     function (v) { return ['免费洗点 +' + v + ' 次']; }),
   capacityBonus: kd('每波的**产能产出**额外 +N（Craft.capacityYield —— 建造 → 经营，**同模块内**）',
-    function (v) { return ['每局天赋点 +' + v]; }),
+    function (v) { return ['每局成长点 +' + v]; }),
   /* ---- 下面三个是"**结构性解锁**"（不是加数值）----
      参照 Loop Hero 的营地：Gymnasium **解锁特性**、Crypt **解锁职业**、
      Smelter 给的是 **Arsenal 卡（每个职业多一个道具槽）**，Intel Center 给的是
@@ -167,7 +167,7 @@ var LIST: KeepFacilityDef[] = [
        为什么 L3 才是"给点"：直接按点数送会让"通关才给点"的稀缺性消失
        （DD 的 Guild 也是先降成本、再抬上限，从不直接送等级）。 */
     id: 'archive', name: '档案馆',
-    note: '【据点 → 天赋】免费洗点更多 → 再多 → 每局多给一点天赋点',
+    note: '【据点 → 天赋】免费洗点更多 → 再多 → 每局多给一点成长点',
     levels: [
       lv(70, { freeRespecs: 1 }),
       lv(160, { freeRespecs: 2 }),

@@ -1,3 +1,10 @@
+---
+title: "行业判据自检清单（skill 体检）"
+category: 自检
+scope: "按行业判据逐条体检本作，附\"影响 ÷ 代价\"排序"
+source: "判据清单 + 本作实测；产物是\"该补什么\"的排序，不是门"
+links: ["requirements.md", "external-game-mechanics.md"]
+---
 # 行业判据自检清单（skill 体检）
 
 > 这份文档把**引擎无关**的游戏开发判据逐条对着本项目检查，输出"达标 / 部分达标 / 未达标"。

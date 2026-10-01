@@ -1657,7 +1657,7 @@ var ROOM_FX: Record<string, RoomFxDef> = {
     /* 密室 = **合金的收集点**（合金是图纸树唯一的稳定来源；平时只能靠回收装备换）。
        它已经在"进门要付点东西"那一档里（先找到裂纹、花时间砸开墙），
        所以给它独占产出是合理的：这是全游戏唯一一处"代价换独占"的地方。 */
-    note: '密室：藏起来的东西 —— 要先打穿那道有裂纹的墙；里面是合金与一笔废料',
+    note: '密室：藏起来的东西 —— 要先打穿那道有裂纹的墙；里面是成长点与一笔废料',
     enter: function () {
       var m = 60 + Game.wave * 10;
       S.player.scrap += m; S.stats_total.scrap += m; S.waveScrap += m;
@@ -1668,7 +1668,7 @@ var ROOM_FX: Record<string, RoomFxDef> = {
       S.secretsFound = (S.secretsFound || 0) + 1;
       Game.events.emit('secretFound', { room: S.roomId, floor: S.floor, count: S.secretsFound, alloy: alloy });
       bark('secret');
-      return '密室：+' + m + ' 废料 · +' + mat + ' 材料 · 合金 +' + alloy;
+      return '密室：+' + m + ' 废料 · +' + mat + ' 材料 · 成长点 +' + alloy;
     }
   }
 };
@@ -4727,7 +4727,7 @@ Game.forgeNode = function (id) {
   var chk = Forge.canUnlock(S.forge, key, growth(), Profile.core(), relic());
   if (!chk.ok) return chk;
   if (chk.cost > 0 && !spendGrowth(chk.cost)) {
-    return { ok: false, reason: '合金不够（需要 ' + chk.cost + '）', cost: chk.cost, core: chk.core || 0 };
+    return { ok: false, reason: '成长点不够（需要 ' + chk.cost + '）', cost: chk.cost, core: chk.core || 0 };
   }
   /* **遗物在这里扣**（M4）：它是**经营 → 养成**那条边的钱 ——
      `core` 是战斗 → 经营那一环，图纸直接花它等于**跳过经营**。 */

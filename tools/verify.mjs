@@ -151,6 +151,32 @@ const GATES = [
     cmd: ['node', ['tools/solid-audit.cjs', '--strict']],
     why: 'SOLID 是最容易被当口号念的五条 —— 念完不会有东西变红。这条把它们各自' +
       '翻译成能当场量出来的形状（接口大小 × 依赖数 / 扩展成本 / 假接口成员 / 存储适配器）'
+  },
+  {
+    id: 'name',
+    name: '用词规范（权威名 · 弃用词 · 同名两物）',
+    cmd: ['node', ['tools/name-audit.mjs']],
+    why: '一个概念**只有一个名字**。四笔钱的权威名早就存在，而改造前**异形词比权威名还多**'
+      + '（成长点 43 处 vs 孢子 / 合金 165 处；材料 381 vs 建材 26）—— 后果不是"不好看"，'
+      + '是**界面在说谎**：同一屏页头写「材料」、按钮写「废料不够」，而扣费走的是材料。'
+      + '这条扫三样：跨表中文名唯一 / 弃用词不许进玩家可见字符串 / 权威名的出处必须解析得到'
+  },
+  {
+    id: 'eol',
+    name: '行尾（索引与工作区都是 LF）',
+    cmd: ['node', ['tools/eol-audit.mjs']],
+    why: '.gitattributes 的 eol **只作用在签出过滤上**，不会重写已存在的 blob —— '
+      + '所以存量 blob 里 CRLF / LF 并存，git checkout 治不好，只能 git add --renormalize。'
+      + '实测代价：egistry-drift.mjs 只加 25 行，diff 却有 **1616 行**，那一笔改动没法被审。'
+      + '⚠ 判据必须是 git cat-file blob 的原始字节 —— git ls-files --eol 报的是归一化视图，会骗人'
+  },
+  {
+    id: 'doc-num',
+    name: '文档数字与清单一致（模块 / 套件 / 门 / 家族）',
+    cmd: ['node', ['tools/doc-num-audit.mjs']],
+    why: '文档里**手写**的统计数字一定会漂，而漂了没人知道（eadme 门只管 README 的存量表）。'
+      + '实测飘过至少三次（AGENTS.md 92/62 vs 93/63、README 91 个模块 vs 92、最新一次 93 vs 94）。'
+      + '这条把四个数（模块 / 套件 / 门 / 家族）与清单对账；docs/history/** 与各批交付小结豁免'
   }
 ];
 

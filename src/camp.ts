@@ -189,7 +189,7 @@ Camp.canBuy = function (state, id, points, opts) {
   }
   var cost = Math.max(1, Math.round(d.levels[cur].cost * (1 - disc)));
   if (Math.max(0, Number(points) || 0) < cost) {
-    return { ok: false, reason: '建材不够（需要 ' + cost + '，出击每波带回 +' + POINTS_PER_WAVE + '）', cost: cost, toLevel: next };
+    return { ok: false, reason: '材料不够（需要 ' + cost + '，出击每波带回 +' + POINTS_PER_WAVE + '）', cost: cost, toLevel: next };
   }
   return { ok: true, reason: '', cost: cost, toLevel: next };
 };
@@ -359,7 +359,7 @@ SelfCheck.register('Camp', Camp.audit);
    6. 登记进扩展点总账
    ========================================================= */
 Registry.family('campFacility', {
-  note: '局内工坊设施（每条产线一座，花建材，结算清零）', owner: 'camp.ts',
+  note: '局内工坊设施（每条产线一座，花材料，结算清零）', owner: 'camp.ts',
   entries: function () {
     return LIST.map(function (d) {
       var refs = [{ field: 'levels', value: String(d.levels.length), family: 'campLevelCount' }];

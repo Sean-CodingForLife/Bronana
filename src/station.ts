@@ -64,7 +64,7 @@ var SITES: StationSiteDef[] = [
     id: 'gate-combat', name: '出击门', to: 'combat', kind: 'portal',
     screen: 'playing',
     cost: 0, req: [],
-    note: '通向地牢 —— 这一局的材料、核心材料、孢子全靠它',
+    note: '通向地牢 —— 这一局的材料、核心材料、成长点全靠它',
     why: '它是最要紧的一条路："一条路走到黑"必须从第一秒就通'
   },
   {

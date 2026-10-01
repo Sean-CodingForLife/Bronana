@@ -182,7 +182,7 @@ var LINES: StoryLineDef[] = [
   L('keeper', 'k3', '想让它更难？你自己去选。我不会替你选。', { runs: 3 }),
   L('keeper', 'k4', '有个东西在深井底下敲钟。敲得和我一个节奏。', { floor: 3 }),
   L('keeper', 'k5', '通关不是结束。是钟又响了一次。', { wins: 1 }),
-  L('keeper', 'k6', '你把钟塔修好过。你知道时间是可以买的。', { flag: 'keepClocktower' }),
+  L('keeper', 'k6', '你把钟楼修好过。你知道时间是可以买的。', { flag: 'keepClocktower' }),
   L('keeper', 'k7', '你说你"赢"了。……一根长出来的东西，赢了是什么意思？', { flag: 'firstWin' }),
 
   /* ---- 记录官：碎片与图鉴的看门人 ---- */

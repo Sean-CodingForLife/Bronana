@@ -81,9 +81,9 @@ Offline.settle = function (elapsedMs, sporebedLevel) {
 
 /** 一行行给人看（界面与调试） */
 Offline.describe = function () {
-  var lines = ['离线产出：菌床等级 1 → ' + Offline.rateAt(1) + ' 孢子/分；等级 2 → ' + Offline.rateAt(2) + ' 孢子/分'];
+  var lines = ['离线产出：菌床等级 1 → ' + Offline.rateAt(1) + ' 成长点/分；等级 2 → ' + Offline.rateAt(2) + ' 成长点/分'];
   lines.push('  单次封顶 ' + Offline.MAX_HOURS + ' 小时（满级满额 = ' +
-    Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(2)) + ' 孢子，一局通关约 70）');
+    Math.floor(Offline.MAX_HOURS * 60 * Offline.rateAt(2)) + ' 成长点，一局通关约 70）');
   lines.push('  低于 ' + Offline.MIN_MINUTES + ' 分钟不结算；结算后立即把"上次见面"推到现在');
   return lines.join('\n');
 };

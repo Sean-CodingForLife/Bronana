@@ -1,3 +1,10 @@
+---
+title: "参与开发"
+category: 协作
+scope: "**家法正本**：声明 · 注册 · 自检 · 测试 · 行为指纹 · 分层纪律 · 怎么加门"
+source: "门与套件数从 `tools/verify.mjs` 的 `GATES` / `test/suites.mjs` 算"
+links: ["AGENTS.md", "docs/requirements.md"]
+---
 # 参与开发
 
 先把最要紧的一件事说清楚：**这个项目"改对了"的定义不是"看起来能跑"，
@@ -8,13 +15,13 @@ pnpm i                 # 装依赖（只有 4 个 devDependencies，没有运行
 pnpm dev               # 起开发服务器 → http://127.0.0.1:5180
 
 # —— 提交前跑这一条就够（它就是下面那些门的总和）——
-pnpm verify            # 全部 17 道门，约 90 秒
+pnpm verify            # 全部 20 道门，约 90 秒
 pnpm verify --quick    # 迭代用的快档，约 20 秒（跳过测试套件，并明说跳了什么）
 pnpm verify --list     # 只是列出有哪些门、每道门在挡什么
 
 # —— 也可以单独跑某一道 ——
 pnpm typecheck         # tsc ×2（src + node 两套配置），必须 0 错
-pnpm test              # 63 套测试，必须全绿
+pnpm test              # 64 套测试，必须全绿
 pnpm fingerprint       # 行为指纹，必须逐位不变（除非你是有意改行为，见下）
 pnpm run audit         # 分层 / 环 / 死代码 / 未读字段
 pnpm run guards        # 家族与模块守卫

@@ -104,7 +104,7 @@ var TABLE: Record<string, SceneDef> = {
   },
   codex: {
     overlay: 'codex', sim: false, world: true, hud: false, strip: false, keys: 'back',
-    note: '图鉴与挑战：账号档案的可见面（解锁进度 / 三态图鉴 / 孢子）'
+    note: '图鉴与挑战：账号档案的可见面（解锁进度 / 三态图鉴 / 成长点）'
   },
   talents: {
     overlay: 'talents', sim: false, world: true, hud: false, strip: false, keys: 'back',
@@ -116,7 +116,7 @@ var TABLE: Record<string, SceneDef> = {
   },
   keep: {
     overlay: 'keep', sim: false, world: true, hud: false, strip: false, keys: 'back',
-    note: '据点：跨局经营（花孢子解锁功能，永久）'
+    note: '据点：跨局经营（花成长点解锁功能，永久）'
   },
   hub: {
     /* ⚠ 与大厅同一档（`sim:true` / `keys:'hall'`）：枢纽也是**一间能走的房**

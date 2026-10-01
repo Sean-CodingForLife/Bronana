@@ -1,0 +1,83 @@
+{
+  "name": "雨中冒险 2 / Risk of Rain 2",
+  "identity": "3D 第三人称射击的 roguelite；玩家操控 Survivor 在开放环境里跑图，单人可玩，也支持多人合作，且多人会改变难度与掉落（正文明确写入了 playerCount 对难度系数与传送器充能的影响）。开发与发行、发布日期、平台清单本轮**未取得（没找到）**——wiki 正文不含这些字段，故不填写。可确证的版本与资料片分层来自条目内的缩写标记：SotV（Survivors of the Void）、SotS（Seekers of the Storm）、AC（Alloyed Collective）。",
+  "oneLine": "把「时间」本身做成难度条：难度系数随时间线性上涨、每完成一个环境再乘 1.15，敌人按等级套 30% 生命与 20% 伤害，于是玩家的真正对手是「跑得够不够快」而不是某一只 Boss。成长手段则是同名道具无限叠加，且叠加分线性、双曲、倒数、指数四种形状，玩家可以刻意堆指数型道具把一次爆发拉成整轮高潮，代价往往是血量等另一侧被同样复利地削掉。所以整局都在时间与强度之间找平衡点，而「该不该再多刷一间房、再多开一个箱子」这个问题会在每一段反复出现，答案取决于当前难度条的位置，也取决于队伍还有多少人能继续跑图。",
+  "coreLoop": "一个完整循环：进入一个 Environment → 打怪攒金币、找箱子与神殿（花金币换道具）→ 找到并激活 Teleporter 开始 Teleporter Event → 在红圈内清掉 Teleporter Boss 并把传送器充能到 100% → 领一份 Uncommon 道具、传送去下一个环境并重复。每完成一个环境，难度系数就永久乘一次 1.15，所以循环每转一圈不只是变强，同时也在把之后每一圈的敌人推高。最终目标由 Primordial Teleporter 决定：与月球对齐去 Commencement 打最终 Boss，或与星球对齐开始 Looping。",
+  "sessionShape": "一「局」没有回合上限，长度由玩家自己决定（可以一直 Looping），结束点是死亡、通关 Mithrix，或因难度失控而死。单圈的时长被传送器硬性框住：所有存活玩家全程待在圈内时，传送器「charges in a minimum of 90 seconds」。充能速度按圈内人数比例计算——「If all players are in the radius, it charges at 100% speed. If 2 out of 4 players are in the radius, it charges at 50% speed.」充能到 99% 时该环境停止自然刷怪，且不要求先打死 Boss。",
+  "minuteToMinute": "手上在做的事：边跑图边清怪、边找箱子与神殿，随时盯着右上角难度条与计时器，决定何时按上传送器。玩家的移动与生存是 3D 空间里的跳跃、冲刺与走位，技能由 Survivor 决定。有一条被明确写出的探索摩擦与它的补丁：传送器「always attempts to spawn far away from the player's spawn location」，且有些位置难找，为此它会「emits slow-moving glowing orange particles that can be seen from a distance」，更新记录还专门把粒子半径从 38 提到 60。",
+  "runStructure": "一局按 Environment（Stage）分段，每段一张开放地图加一个传送器，段与段之间通过传送器串联。段落有叙事终点：Sky Meadow 与 Helminth Hatchery 放的是 **Primordial Teleporter**，需用外圈环对齐月球（去 Commencement）或对齐星球（Loop 回第一段）。除主线外还有 Orbs & Portals 支线：Blue Orb（Newt Altar）→ Bazaar Between Time；Golden Orb（Altar of Gold）→ Gilded Coast；Celestial Orb（首圈后的第三段固定出现）→ A Moment, Fractured；Purple Orb → Void Locus。多个 Orb 可挂在同一传送器上，但只能选一个门走。",
+  "controls": "3D 第三人称：键盘鼠标或手柄，移动 + 跳跃 + 四个技能键（Primary / Secondary / Utility / Special）加一个装备（Equipment）键。装备是「主动道具」，全局限一个槽：「A player can normally hold only one active item at any time; if they try to pick up an active item while they are already holding one, they will swap it for the new one instead.」局内是否需要手动瞄准取决于 Survivor，正文没有给出自动攻击类设定，故不写。",
+  "inRunGrowth": "局内成长完全由**道具叠加**驱动，叠加方式被分成四种，这决定了成长曲线的形状：线性 f(x)=1+a·x（Soldier's Syringe +15%/层）；双曲 f(x)=1−1/(1+a·x)（Tougher Times，10 层为 60% 而非 150%）；倒数 f(x)=a/x（层数越多单层越弱）；指数 f(x)=a^x（Shaped Glass，2 层把伤害翻 4 倍、生命除 4，因为复利）。正文点出指数叠加的意义：「going from 5 to 6 Shaped Glass would make the damage bonus increase from +3200% to +6400%」。叠加一般受 32 位整数上限限制，Focused Convergence 硬上限 3 层。",
+  "itemization": "稀有度用边框颜色表示：White/Common、Green/Uncommon、Red/Legendary、Yellow/Boss & Planet、Blue/Lunar、Purple/Void，另有 Meal 与 Equipment。正负代价集中在 **Lunar** 与 **Void** 两档：Lunar「characterized by their powerful abilities, at the cost of having considerable drawbacks」，不能从箱子出，只能用 Lunar Coins 买；Void 道具会**腐蚀**对应道具，例如身上有 3 把 Tri-Tip Dagger 时拾取 Needletick，会变成 4 把 Needletick 且 Dagger 归零。改造走 3D Printer。",
+  "metaProgression": "局外成长走「解锁 + 图鉴」，不喂养数值。条目明确：「Some items need to be unlocked by completing a Challenge to appear in game. Pick up an item to unlock its logbook entry.」怪物图鉴同理：任何怪物有 1% 概率掉 Monster Log（Boss 为 3%），前提是队伍里还没人有该条目。永久解锁内容还包括 Survivor 与其 alternate skins（mastery 挑战只能在 Monsoon 完成）。货币层面有 Gold（局内、随难度系数膨胀）与 Lunar Coins（买 Lunar 道具与装备），但正文未说明 Lunar Coins 是否跨局持久，故**不写**。",
+  "difficultyMechanics": "难度分两部分。① 开局的 Initial difficulty：Drizzle / Rainstorm / Monsoon。Drizzle 让时间以正常速度的 50% 影响难度、玩家护甲 +70、生命恢复倍率起始 1.5；Monsoon 让时间为 150%、生命恢复起始 0.6。② Scaling difficulty 由全局 **difficulty coefficient** 驱动：playerFactor = 1 + 0.3 × (playerCount − 1)；timeFactor = 0.0506 × difficultyValue × playerCount^0.2；stageFactor = 1.15^stagesCompleted；coeff = (playerFactor + timeInMinutes × timeFactor) × stageFactor。",
+  "enemiesAndBosses": "敌人按等级缩放，公式 enemyLevel = 1 + (coeff − playerFactor) / 0.33，且「enemies always start at level 1」；每升一级敌人获得 30% 生命与 20% 伤害。刷怪由 Directors 管理：随时间累积 credits，弱怪便宜、Magma Worm 最贵，精英额外昂贵（Blazing/Overloading/Glacial 为 6 倍，Malachite/Celestine 高达 36 倍）；难度升高后强怪与精英会出现在传送器事件之外。Boss 分普通 Boss 与 **Teleporter Boss**（红色血条，数量随难度与人数增加），另有 Horde of Many 偶尔充当传送器 Boss。",
+  "deathConsequence": "死亡即本局结束，局内累积的所有道具叠加、金币、已完成的段数与难度系数全部作废，没有任何办法把本局资源带出去，包括刚刚开出来的道具、攒下的金币与还没用掉的装备。跨局保留的是通过 Challenges 解锁的道具、角色、皮肤与 Logbook 图鉴条目，也就是「解锁的是内容而非属性」，因此失败不会让账号变弱，只会让图鉴更完整。正文没有描述任何死亡保留局内资源的机制，因此不写。多人局有细节：传送器掉落「one item drops per player, including dead players」。",
+  "tensionSource": "紧张来自一条**不断自己上涨的计时器**：难度系数里 timeInMinutes 线性进入乘法，同时每完成一个环境 stageFactor 再乘 1.15，于是「多留一分钟刷箱子」永远和「怪变强」直接对冲；正文强调这个增长是指数的——「This increase is exponential, which means that as more Loops are completed, the game becomes exponentially harder.」第二处压力是传送器事件：「A transparent red dome appears, roughly 120 meters in diameter」且会「locks all interactables outside its radius」直到充满。第三处是资源通胀：交互物价格随难度上涨。",
+  "decisionTension": "最核心的取舍是**「再刷一轮」与「现在按传送器」之间选**，且两侧都可量化：难度条按 coeff 推进，每过一个环境整体 ×1.15，所以多留几分钟开箱等于把之后的敌人等级与所有交互物价格一并推高，而多开的箱子又要等下一段才可能用上。第二个高频取舍在同一环境内部：圈定后「outside its radius」的交互物都会被锁住，所以玩家必须在开传送器前决定先吃掉地图的哪一半，顺序选错就等于把资源留在了圈外。第三个是可主动加码的赌博：Shrine of the Mountain 让该次事件多 100% credits 的敌人，换多 100% 道具掉落。",
+  "uniqueMechanic": "**难度系数（difficulty coefficient）这个把时间、人数与关卡数乘在一起的全局标量**，它同时驱动三件本不相关的事：coeff = (playerFactor + timeInMinutes × timeFactor) × stageFactor，其中 stageFactor = 1.15^stagesCompleted 使难度随圈数指数增长而非线性。因此「时间」在这款游戏里不是计分板，而是会被玩家主动消费和压榨的资源。另一条独有设计是 Lunar 道具的「强效果 + 硬代价」交换率：强效果与硬代价写在同一条目上，玩家每次拾取都要同时接受两侧。",
+  "whatPlayersLove": "本轮从正文里能确认的「被明确称赞」都是**开发者自陈的设计取向与玩家反馈被采纳的记录**，逐字可查：团队把精英血量下调（470%→400%、2350%→1800%）并给出理由——「We've had a lot of feedback that elite health has always felt a bit bloated - and that subsequently, it makes the Old Guillotine feel required. Our intent is to make characters less reliant on the Old Guillotine.」玩家与媒体评价类原文本轮**未取得（没找到）**。",
+  "knownCriticism": "本轮从正文里能确认的批评只有**开发者自陈的失衡与修补记录**：① 精英血量长期偏厚，为此两次下调（见 whatPlayersLove 引文）。② 传送器难找——更新记录写道「A lot of players are having issues finding the Teleporter. Players are starting to notice the passive particles indicating the teleporter is around.」③ Drizzle 的回血加成曾因 bug 作用于所有难度，官方自陈「This was being accidentally applied to ALL difficulties since launch. Oops.」玩家与媒体批评原文本轮**未取得（没找到）**。",
+  "lessonsForBronana": [
+    "判据：把难度做成一个显式的全局标量并让它同时驱动三件事——coeff = (playerFactor + timeInMinutes × timeFactor) × stageFactor，同一根系数决定敌人等级、刷怪预算与箱子价格（baseCost × coeff^1.25），所以玩家看到难度条就能估算下一次开箱的成本。对应 Bronana 的**战斗**模块：这样「拖延」的代价能被玩家看见并计算，难度阶梯也就有了统一刻度，而不是各系统各自为政、玩家只能凭感觉判断该不该继续刷，而统一的刻度让每次犹豫都能换算成具体的价格与等级。",
+    "判据：给同名道具设计**分型叠加**而不是统一线性——线性、双曲 1−1/(1+a·x)、倒数 a/x、指数 a^x 四种，用双曲封住「100% 无敌」类失衡（Tougher Times 十层也只到 60%），用指数换取「第 6 层伤害翻倍」的高潮。对应 Bronana 的**养成**模块：这样一套词条里能同时容纳稳健件与爆发件，玩家堆同名牌时会有取舍而不是无脑堆叠，道具池也能靠这四种曲线覆盖不同成长阶段，从前期稳健过渡到后期爆发都留了位置，数值调参时也能一眼看出哪个道具该用哪条曲线，不至于把所有道具都压成同一增长斜率。",
+    "判据：把「加码」做成明码标价的交互物而不是隐藏机制——Shrine of the Mountain 让该次传送器事件多 100% credits 的敌人，换多 100% 的道具掉落；Shrine of Chance 用 $17 起价、每次 +40% 换 36%/9%/1% 的档位期望，连续两次拿到东西后就不能再玩。对应 Bronana 的**经营**模块：把风险回报摆到台面上让玩家自己签，比藏在掉落表里更有张力，代币的每一次投入都成为一次自觉的赌注，而不是被动接受一个随机结果，能主动加码的玩家与只想稳稳过关的玩家都能找到自己的玩法。"
+  ],
+  "sources": [
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Difficulty&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "difficultyMechanics / tensionSource / uniqueMechanic：三档具体数值、difficulty coefficient 四个公式与 enemyLevel 公式、每级 30% 生命与 20% 伤害、moneyCost 随 coeff^1.25、Directors 的 credits 与精英造价"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Item_Stacking&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "inRunGrowth / itemization：线性、双曲、倒数、指数四种叠加公式与原例、叠加上限（Focused Convergence 3 层、整数上限）"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Teleporter&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "coreLoop / sessionShape / tensionSource / decisionTension：传送器事件流程、90 秒最短充能与按人数比例充能、120 米红圈锁圈外交互物、Teleporter Boss 与 Horde of Many、Primordial Teleporter 对齐规则、Shrine of the Mountain +100%"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Items&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "itemization / metaProgression / controls：七个稀有度色阶、Lunar 的代价定位与 Lunar Coins、Void 腐蚀机制、Boss 道具不入普通池、装备只能持一件、Challenges 解锁与 logbook 条目"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Monsters&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "enemiesAndBosses / metaProgression / whatPlayersLove / knownCriticism：Monster Log 1%（Boss 3%）、精英两级与完整数值表、官方对精英血量的玩家反馈与两次下调原文"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Shrine_of_Chance&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "decisionTension：起始 $17、每次 +40%、45% 空手与 36%/9%/1%/9% 的档位表、连拿两件后不可再互动"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Interactables&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "itemization / coreLoop：交互物分类（Chests / Shrines / Drones / Printer / Charging Zones / Portals）与成本类型（Gold、Lunar Coins、Health、Items）"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Shrines&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "decisionTension：该页为重定向（#REDIRECT Interactables#Shrines），神殿细节改由 Shrine_of_Chance 与 Interactables 两页支撑"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Elites&prop=wikitext&format=json&formatversion=2",
+      "strength": "实取",
+      "supports": "enemiesAndBosses：该页为重定向（#REDIRECT Monsters#Elites），精英数值与技能以 Monsters 页为准"
+    },
+    {
+      "url": "https://riskofrain2.wiki.gg/api.php?action=parse&page=Unlockables&prop=wikitext&format=json&formatversion=2",
+      "strength": "未取得",
+      "supports": "metaProgression：该页名不存在（missingtitle），改用 Items 页的 Challenges 说明与 Monsters 页的 Logbook 掉落规则，未取到独立解锁总表"
+    },
+    {
+      "url": "https://store.steampowered.com/api/appdetails?appids=632360&l=english",
+      "strength": "未取得",
+      "supports": "identity：发布日期、开发与发行、平台清单未取得正文，故 identity 中不填写"
+    }
+  ]
+}

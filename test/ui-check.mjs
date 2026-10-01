@@ -1033,7 +1033,12 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   clickAct('codex');
   ok(Game.state === 'codex' && registry['scr-codex']._classes.has('active'),
     '标题页能进图鉴与挑战', Game.state);
-  ok(String(registry['codex-summary'].innerHTML).indexOf('孢子') >= 0, '概览里有孢子');
+  /* ⚠ 断言要跟**权威名**走：`ui.ts` 的概览行改造前写「孢子」，而四笔钱的权威名里
+     没有"孢子"（它是世界观别名，只在剧情台词里合法）。断言跟着界面走是对的，
+     但**跟着错的那个词走**等于把 bug 锁死 —— 所以查「成长点」，并顺手查旧名不许再出现。 */
+  const codexSummary = String(registry['codex-summary'].innerHTML);
+  ok(codexSummary.indexOf('成长点') >= 0, '概览里有权威名「成长点」');
+  ok(codexSummary.indexOf('孢子') < 0, '概览里不再出现旧名「孢子」（用词规范 R53）', codexSummary.slice(0, 120));
   const rows = String(registry['codex-challenges'].innerHTML).split('class="set-row"').length - 1;
   // **隐藏挑战没完成前不列出来**，所以可见条数 = 总数 - 未完成的隐藏条数
   const visibleChallenges = Challenges.visible(id => Profile.isDone(id)).length;

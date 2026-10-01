@@ -42,7 +42,7 @@ var TYPES: DungeonRoomTypeDef[] = [
   },
   { id: 'treasure', name: '宝箱', icon: '▣', budgetMul: 0, note: '白给一件装备（武器或道具）', cls: 'treasure' },
   { id: 'shop', name: '商店', icon: '$', budgetMul: 0, note: '把商店搬进地牢', cls: 'shop' },
-  { id: 'camp', name: '补给', icon: '⌂', budgetMul: 0, note: '回血 + 一笔建材（工坊的本钱）', cls: 'camp' },
+  { id: 'camp', name: '补给', icon: '⌂', budgetMul: 0, note: '回血 + 一笔材料（工坊的本钱）', cls: 'camp' },
   { id: 'event', name: '事件', icon: '?', budgetMul: 0, note: '一次选择，代价与好处并存', cls: 'event' },
   /* 限时房（G5）：同样刷怪，但**时限砍半**、按时清完的奖励翻倍、超时几乎什么都没有。
      它把"时钟"从背景音变成这一间的主角 —— 于是"打得快"本身成了一种玩法。 */
@@ -57,7 +57,7 @@ var TYPES: DungeonRoomTypeDef[] = [
   },
   {
     id: 'secret', name: '密室', icon: '✳', budgetMul: 0,
-    note: '【不显示在地图上】墙上有裂纹，打穿才进得去；里面有合金', secret: true, cls: 'secret'
+    note: '【不显示在地图上】墙上有裂纹，打穿才进得去；里面有成长点', secret: true, cls: 'secret'
   }
 ];
 
@@ -124,7 +124,7 @@ var THEMES: FloorThemeDef[] = [
 
   /* ---- 带 2：中层。带心 生命 ×1.12 / 伤害 ×1.05 / 池 +1 ---- */
   {
-    id: 'fungal', name: '菌毯洞窟', note: '敌人更硬，孢子更多',
+    id: 'fungal', name: '菌毯洞窟', note: '敌人更硬，成长点更多',
     band: 2, poolShift: 1, hpMul: 1.12, dmgMul: 1.05, prop: 'fungus',
     pal: {
       base: '#63536b', tones: ['#453a4d', '#54465c', '#63536b', '#75647d', '#8a7890'],

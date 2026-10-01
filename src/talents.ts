@@ -48,7 +48,7 @@ var SECTORS: Record<string, { name: string; note: string }> = {
   // Gold Reserves（死后保金币）/ Recycling（道具换钱）/ Restock（刷新商店），
   // 也就是**玩家在同一笔点数上权衡"战力"与"赚钱能力"**。
   // 本作的对应物：折扣、收获、幸运、孢子产出 —— 全是"换钱效率"而不是战力。
-  economy: { name: '经营', note: '折扣、收获、孢子 —— 换钱的效率（不是战力）' }
+  economy: { name: '经营', note: '折扣、收获、成长点 —— 换钱的效率（不是战力）' }
 };
 
 /** 角色 → 本命扇区。全能人刻意**没有**本命扇区（万物皆跨扇区，也万物皆不额外贵） */
@@ -78,7 +78,7 @@ var ECON_KEYS: Record<string, string> = {
   shopDiscount: '商店售价折扣（market.shopRoll / packPrice）—— 工坊已不再给折扣，折扣只剩天赋这一条',
   campDiscount: '工坊建造折扣（market.campOpts）',
   rerollDiscount: '刷新折扣（market.shopRoll）',
-  sporeMul: '孢子产出倍率（profile.ts applyRun）—— 据点那一份已删，现在只有天赋与"打得深"',
+  sporeMul: '成长点产出倍率（profile.ts applyRun）—— 据点那一份已删，现在只有天赋与"打得深"',
   // 这一条是**整条边能不能成立的关键**，所以把原因写在这里：
   // 本作的材料几乎全部来自击杀，于是"更能打"本身就是最好的经济 ——
   // 只做折扣与收获倍率的话，经济流永远被战力流支配（实测：5 点战力 8.2 波，
@@ -162,9 +162,9 @@ var SHARED = [
   n('g3', 'economy', 'notable', '议价', '商店折扣 +8%、刷新折扣 +12%、每波 +8 材料',
     { econ: { shopDiscount: 0.08, rerollDiscount: 0.12, waveIncome: 8 } }),
   // 精通类别仍用 'economy' → 与工程扇区的「经济精通」**互斥**（同类精通全树只能选一次）
-  n('g4', 'economy', 'mastery', '商人', '孢子产出 +25%、每波 +6 材料，但生命上限 −3（与工程的「经济精通」互斥）',
+  n('g4', 'economy', 'mastery', '商人', '成长点产出 +25%、每波 +6 材料，但生命上限 −3（与工程的「经济精通」互斥）',
     { econ: { sporeMul: 0.25, waveIncome: 6 }, stats: { maxHp: -3 } }, 'economy'),
-  n('g5', 'economy', 'keystone', '商会', '孢子产出 +60%、商店折扣 +12%、营地折扣 +25%、每波 +14 材料，但伤害 −8%、生命上限 −5',
+  n('g5', 'economy', 'keystone', '商会', '成长点产出 +60%、商店折扣 +12%、营地折扣 +25%、每波 +14 材料，但伤害 −8%、生命上限 −5',
     { econ: { shopDiscount: 0.12, campDiscount: 0.25, sporeMul: 0.60, waveIncome: 14 }, stats: { damage: -0.08, maxHp: -5 } }),
   n('g6', 'economy', 'minor', '库存', '每波 +6 材料（不再是开局一次性）', { econ: { waveIncome: 6 } })
 ];

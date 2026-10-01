@@ -117,6 +117,13 @@ const SYSTEMS = [
          ========================================================= */
       'ledger.ts', 'eco_combat.ts', 'eco_manage.ts', 'eco_grow.ts', 'eco_global.ts',
       'link.ts', 'economy.ts',
+      /* `terms.ts`（**用词总账**，R53-B）：权威名的声明与出处。
+         ⚠ 它坐 **L1** 而不是 L0，而且**刻意不 import 上面那五本账** ——
+           同一个组里谁先加载不确定，读它们会拿到空表并把好数据误报成"拼错了"
+           （`trade.ts` 的加载期自检栽过这一次）。所以它只 import
+           `registry` / `selfcheck`，而"出处真的有那个名字"由
+           `tools/name-audit.mjs` 在**全部模块加载之后**核。 */
+      'terms.ts',
       /* `station.ts`（大厅：三道通往模块的门 + 开门规则）与 `economy.ts` 同层：
          它是"一张站点表 + 几条纯规则"，只 import `registry` / `selfcheck` / `economy`
          （都是 L0/L1），不认识模拟内核，也不认识界面。

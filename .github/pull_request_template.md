@@ -1,3 +1,10 @@
+---
+title: "PR 模板"
+category: 模板
+scope: "提 PR 时要回答的问题（改了谁 / 怎么验的 / 指纹动没动）"
+source: "门与指纹见 `CONTRIBUTING.md`"
+links: ["../../CONTRIBUTING.md"]
+---
 ## 这个 PR 做了什么
 
 <!-- 一句话说清"改了什么、为什么"。如果它推翻了你之前的结论，把"原来错在哪"也写上。 -->

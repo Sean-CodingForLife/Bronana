@@ -38,6 +38,8 @@ export const SUITES = [
   ['NPC 交易 / 报价·关系门槛·§6.5 硬约束', 'trade.mjs'],
   /* R50 第 10 条：状态系统（可叠层、有秒数的 debuff / buff） */
   ['状态系统 / 可叠层·定身·读数收口', 'status.mjs'],
+  /* R53-B：用词门自己的测试（注入坏数据，证明它会红） */
+  ['用词门 / 权威名·弃用词·同名两物（自检）', 'name-gate.mjs'],
   ['骨架系统 / 骨头·部件·几何等价', 'rig.mjs'],
   ['碰撞体 / 帧模型 / 插值', 'frames.mjs'],
   ['三种运行形态 / web·cli·desktop', 'modes.mjs'],
