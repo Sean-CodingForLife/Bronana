@@ -1,9 +1,9 @@
 {
-  "name": "bronana-like",
+  "name": "teapot",
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Bronana · 纯 Canvas 独立肉鸽游戏 —— TypeScript + ES 模块 + Vite，零运行时依赖。三种运行形态：web / cli（含服务器模式）/ desktop",
+  "description": "Teapot Engine（Teapot）—— 自研 2D/3D 游戏引擎。TypeScript + 原生 ES 模块，零运行时依赖，无构建步。三种宿主形态：web / cli（含服务器模式）/ desktop。用引擎做出来的游戏住在工作区里（如 workspace/Bronana）",
   "packageManager": "pnpm@12.5.1",
   "scripts": {
     "test:bonds": "node test/bonds.mjs",
@@ -149,7 +149,9 @@
     "roguelite",
     "canvas",
     "game",
-    "bronana",
+    "teapot",
+    "engine",
+    "game-engine",
     "survivor",
     "typescript",
     "esm",

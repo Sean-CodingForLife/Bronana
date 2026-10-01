@@ -428,8 +428,19 @@ console.log('\n[7b] 桌面外壳：启动失败的三条判据与两个开关');
   /* ⑤ GPU 那一档：默认**关**硬加速，要另一档必须显式说 */
   ok(shell.gpuMode({}, {}).accel === false, '默认不启用硬件加速（GPU 起不来时它会让整个应用起不来）');
   ok(shell.gpuMode({ gpu: true }, {}).accel === true, '命令行 --gpu 才启用');
-  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '1' }).accel === true, '环境变量也能启用');
-  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '0' }).accel === false, '环境变量给 0 不算启用');
+  /* ⚠ **改名（R62/E2）之后这一条要验两件事**，不是一件：
+     ① 新名 TEAPOT_DESKTOP_GPU 生效；
+     ② **旧名 BRONANA_DESKTOP_GPU 仍然生效** —— 那是"改名只改一半"那一类坑的机器判据
+        （已经设过旧变量的人不该**静默失效**）。而且 `why` 里要说清读的是哪一个名字。 */
+  ok(shell.gpuMode({}, { TEAPOT_DESKTOP_GPU: '1' }).accel === true, '新环境变量名 TEAPOT_DESKTOP_GPU 也能启用');
+  ok(shell.gpuMode({}, { TEAPOT_DESKTOP_GPU: '0' }).accel === false, '新名给 0 不算启用');
+  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '1' }).accel === true,
+    '**旧环境变量名 BRONANA_DESKTOP_GPU 仍然生效**（改名兼容 —— 不许静默失效）');
+  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '0' }).accel === false, '旧名给 0 也不算启用');
+  ok(/TEAPOT_DESKTOP_GPU/.test(shell.gpuMode({}, { TEAPOT_DESKTOP_GPU: '1' }).why),
+    '`why` 里说清读的是**新名**（"我明明设了变量"这类困惑就出在没说清）');
+  ok(/BRONANA_DESKTOP_GPU/.test(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '1' }).why),
+    '`why` 里说清读的是**旧名**');
   ok(/默认/.test(shell.gpuMode({}, {}).why), '默认那一档给得出理由（会印在启动横幅里）',
     shell.gpuMode({}, {}).why);
 
@@ -478,9 +489,10 @@ console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一�
   ok(rawCap > 0, 'vite.config.ts 里写着我们自己的 chunk 上限（不再吃 Vite 默认的 500 kB）',
     String(rawCap));
   /* sourcemap 是一条"体积承诺"，不是口味问题：它在 dist/ 里比整个游戏还大，
-     而玩家一个字节都用不到。要它必须**显式**开（BRONANA_SOURCEMAP=1）。 */
-  ok(/sourcemap:\s*process\.env\.BRONANA_SOURCEMAP/.test(cfg),
-    'sourcemap 默认不发（要它得显式开 BRONANA_SOURCEMAP=1）');
+     而玩家一个字节都用不到。要它必须**显式**开（TEAPOT_SOURCEMAP=1）。
+     ⚠ **改名（E2）之后要验两条**：新名在、**旧名也还在**（改名兼容，不许静默失效）。 */
+  ok(/sourcemap:\s*\(process\.env\.TEAPOT_SOURCEMAP \|\| process\.env\.BRONANA_SOURCEMAP\)/.test(cfg),
+    'sourcemap 默认不发（要它得显式开 TEAPOT_SOURCEMAP=1），且**旧名 BRONANA_SOURCEMAP 仍被读**');
 
   const assetsDir = path.join(DIST, 'assets');
   const files = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir) : [];

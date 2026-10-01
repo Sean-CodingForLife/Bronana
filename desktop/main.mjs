@@ -76,7 +76,7 @@ async function boot() {
   if (!dist.ok && !opts.dev) {
     console.error(dist.reason);
     // 有窗口之前也要让用户看到原因（Electron 在无控制台时只显示 GUI）
-    try { dialog.showErrorBox('Bronana 启动失败', dist.reason); } catch (e) { /* headless */ }
+    try { dialog.showErrorBox('Teapot Engine 启动失败', dist.reason); } catch (e) { /* headless */ }
     app.exit(1);
     return;
   }

@@ -50,9 +50,13 @@ export default defineConfig({
     /* sourcemap：默认**不发**。它在 dist/ 里是 2.75 MB —— 比整个游戏
        （html+css+js 共 0.73 MB）还大三倍，而玩家一个字节都用不到它。
        要用的时候（排查线上问题 / 读压缩后的原始数值）：
-         PowerShell:  $env:BRONANA_SOURCEMAP='1'; pnpm run build
-         bash:        BRONANA_SOURCEMAP=1 pnpm run build */
-    sourcemap: process.env.BRONANA_SOURCEMAP === '1',
+         PowerShell:  $env:TEAPOT_SOURCEMAP='1'; pnpm run build
+         bash:        TEAPOT_SOURCEMAP=1 pnpm run build
+       ⚠ **改名兼容**：这个变量原来叫 BRONANA_SOURCEMAP（引擎当时还叫 Bronana）。
+         两个名字**都读**，新的优先 —— 否则已经设过旧变量的人会**静默失效**
+         （家法里"改名只改一半"那一类坑）。旧名保留到下一个大版本再删，
+         删的时候要在 CHANGELOG 写明。 */
+    sourcemap: (process.env.TEAPOT_SOURCEMAP || process.env.BRONANA_SOURCEMAP) === '1',
     emptyOutDir: true,
     assetsInlineLimit: 0
   },

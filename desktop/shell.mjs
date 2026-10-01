@@ -121,15 +121,23 @@ export function shellArgsOf(argv) {
    ========================================================= */
 /**
  * 这一趟要不要硬件加速。
- * 三个来源，优先级从高到低：命令行 `--gpu` → 环境变量 `BRONANA_DESKTOP_GPU=1` → 默认关。
+ * 三个来源，优先级从高到低：命令行 `--gpu` → 环境变量 `TEAPOT_DESKTOP_GPU=1` → 默认关。
+ * ⚠ **改名兼容**：这个变量原来叫 `BRONANA_DESKTOP_GPU`（引擎当时还叫 Bronana）。
+ *   两个名字**都读**，新的优先 —— 否则已经设过旧变量的人会**静默失效**。
  * @returns `{ accel: boolean, why: string }` —— `why` 是给人看的一句话（启动横幅里会印）
  */
 export function gpuMode(opts, env) {
   const e = env || {};
   const forced = !!(opts && opts.gpu);
-  const fromEnv = String(e.BRONANA_DESKTOP_GPU || '') === '1';
+  /* 新名优先，旧名兜底（改名兼容，见上）。
+     ⚠ 用哪个名字要在 `why` 里**说出来** —— "我明明设了变量"这类困惑，
+     根子就是没说清读的是哪一个。 */
+  const fromNew = String(e.TEAPOT_DESKTOP_GPU || '') === '1';
+  const fromOld = String(e.BRONANA_DESKTOP_GPU || '') === '1';
+  const fromEnv = fromNew || fromOld;
+  const envName = fromNew ? 'TEAPOT_DESKTOP_GPU' : 'BRONANA_DESKTOP_GPU';
   if (forced) return { accel: true, why: '命令行 --gpu 要求硬件加速' };
-  if (fromEnv) return { accel: true, why: '环境变量 BRONANA_DESKTOP_GPU=1 要求硬件加速' };
+  if (fromEnv) return { accel: true, why: '环境变量 ' + envName + '=1 要求硬件加速' };
   return { accel: false, why: '默认关（GPU 进程起不来的机器上，硬加速会让整个应用起不来）' };
 }
 
@@ -213,7 +221,7 @@ export function windowOptions(url) {
     backgroundColor: '#141414',
     autoHideMenuBar: true,
     show: false,                       // 等 ready-to-show 再显示，避免白屏闪一下
-    title: 'Bronana',
+    title: 'Teapot Engine',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -255,7 +263,7 @@ export async function startServer(distDir, port, log) {
 /** 把一段启动信息整理成人能读的几行（main.mjs 与测试都用它） */
 export function describeLaunch(opts, dist, url) {
   const lines = [];
-  lines.push('Bronana 桌面外壳');
+  lines.push('Teapot Engine 桌面外壳');
   lines.push('  模式    ' + (opts.dev ? '开发（Vite 开发服务器）' : '生产（内置静态服务器）'));
   lines.push('  目录    ' + dist);
   lines.push('  加载    ' + url);
