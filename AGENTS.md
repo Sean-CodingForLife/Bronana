@@ -33,7 +33,7 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |
 | 测试 | **67 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
-| 验收门 | **26 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
+| 验收门 | **27 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
 
 三种运行形态共用同一份 `src/`：**web**（Vite）、**cli**（无头 `sim` / 静态 `serve`）、**desktop**（Electron 外壳）。
 
@@ -44,9 +44,9 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 ```bash
 pnpm i                 # 装依赖（只有 4 个 devDependencies）
 
-pnpm verify --list     # **先跑这个**：列出 26 道门、每道在挡什么
+pnpm verify --list     # **先跑这个**：列出 27 道门、每道在挡什么
 pnpm verify --quick    # 迭代用（约 20 秒）：跳过测试套件，并明说跳了什么
-pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 26 道门
+pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 27 道门
 ```
 
 > ⚠ **`pnpm verify` 是本项目的准绳。** 说"改好了"之前必须跑它，并附上真实输出。
@@ -339,7 +339,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 ### 需求怎么走（五步，缺一步不算完）
 
 `1 提出（用户）→ 2 复述（AGENT：指认它属于哪个模块、跟已有的谁是同一类）→
-3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（26 道门全绿 + 行为指纹）`，
+3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（27 道门全绿 + 行为指纹）`，
 状态与证据都记在 `docs/requirements.md`。
 
 ### 用词纪律（**AGENT 必须遵守**，写在 `src/terms.ts` 里、由门 `name` 守）
