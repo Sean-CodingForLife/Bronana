@@ -22,6 +22,7 @@ links: ["../README.md", "../AGENTS.md", "requirements.md"]
 | [`scaling-benchmarks.md`](scaling-benchmarks.md) | **外部参考·数值** | **七款游戏的难度与成长曲线对照**（Brotato / Hades / Dead Cells / 以撒 / 地牢 / RoR2 / VS / StS）+ Bronana 站在哪 | 调数值前必读 |
 | [`scaling-isaac-gungeon.md`](scaling-isaac-gungeon.md) | 外部参考·明细 | 以撒的结合 / 挺进地牢的逐项数字（查不到即写「未取得」） | 同上 |
 | [`scaling-ror2-vs-sts.md`](scaling-ror2-vs-sts.md) | 外部参考·明细 | 雨中冒险 2 / 吸血鬼幸存者 / 杀戮尖塔的逐项数字 | 同上 |
+| [`engine-first.md`](engine-first.md) | **判据** | **引擎优先**：为什么"内容用不上"**不是**否决引擎能力的理由 —— 禁用判据表 / 替代的三问 / 唯一真约束（抽象不能是死代码）/ **引擎能力包**这个落地形态 / 与门 `engine-boundary` 的分工 | **提引擎需求或评审时必读** |
 | [`skill-audit.md`](skill-audit.md) | 自检 | 按行业判据逐条体检本作，附"影响 ÷ 代价"排序 | 罕见 |
 | [`techstack-upgrade-research.md`](techstack-upgrade-research.md) | 调研 | 技术栈升级的**联网取证**（Canvas2D 的边界 / WebGL2 的成本 / WebGPU 支持 / 渲染抽象层 / 引擎与内容分离 / 像素游戏现状）。每条带来源链接与强度。⚠ **顶部有作废横幅：结论不要再用，取证仍然有效** | 罕见（结论已由下面的决定文档取代） |
 | [`techstack-upgrade-decision.md`](techstack-upgrade-decision.md) | **决定** | **拍板：渲染后端升级到 WebGL2（WebGPU 为目标态）**——用户的理由 / 原判据为什么不适用 / 四条硬约束（R1~R4）/ 接口形状（Target 一等对象）/ 文本与 3px 描边的真风险 / 预算 / 七阶段施工 | 施工时对照 |
