@@ -22,6 +22,8 @@ links: ["../README.md", "../AGENTS.md", "requirements.md"]
 | [`scaling-benchmarks.md`](scaling-benchmarks.md) | **外部参考·数值** | **七款游戏的难度与成长曲线对照**（Brotato / Hades / Dead Cells / 以撒 / 地牢 / RoR2 / VS / StS）+ Bronana 站在哪 | 调数值前必读 |
 | [`scaling-isaac-gungeon.md`](scaling-isaac-gungeon.md) | 外部参考·明细 | 以撒的结合 / 挺进地牢的逐项数字（查不到即写「未取得」） | 同上 |
 | [`scaling-ror2-vs-sts.md`](scaling-ror2-vs-sts.md) | 外部参考·明细 | 雨中冒险 2 / 吸血鬼幸存者 / 杀戮尖塔的逐项数字 | 同上 |
+| [`workspace-spec.md`](workspace-spec.md) | **决定·规范** | **工作区规范**：模块/插件/工作区三个词说死 · 四层归属 · `teapot.workspace.json` 的最小字段集（**`id` 与 `displayName` 必须分开** —— 否则改名=存档搬家）· 三条硬规范（**改名=改一处清单** / 注册表只放派生数据 / 不一致必须告警）· 编排**两个口径** · 命令面 · **可执行判据表** | **做 E4/E5 前必读** |
+| [`external-workspace-conventions.md`](external-workspace-conventions.md) | 调研 | **六家（Unity / Godot / Unreal / Bevy+Cargo / npm+pnpm / VS Code）怎么定义项目清单 · 名字归谁 · 怎么发现 · 改名要改几处** —— 每条附 URL 与强度 + "能抄 / 不能抄" + **未取得清单** | 施工前查出处 |
 | [`research/`](research/) | 外部参考·**原始取数** | `scaling-*.md` 那几张对照表的**原始 JSON 底稿**（以撒 / 挺进地牢 / RoR2）—— 要核对某个数时看这里 | 同上 |
 | [`engine-first.md`](engine-first.md) | **判据** | **引擎优先**：为什么"内容用不上"**不是**否决引擎能力的理由 —— 禁用判据表 / 替代的三问 / 唯一真约束（抽象不能是死代码）/ **引擎能力包**这个落地形态 / 与门 `engine-boundary` 的分工 | **提引擎需求或评审时必读** |
 | [`teapot-restructure.md`](teapot-restructure.md) | **决定·战略** | **把项目战略重构为 Teapot Engine**：引擎与内容的两层定位 · 术语（模块 / 插件 / 工作区 / 扩展 / 包）· 目标目录 · 八项能力的落点 · **E1~E10 批次表** · **§六之一：E3 的完整入口**（门内 + 门外六类 + 三条硬约束） | **做引擎化改造前必读** |
