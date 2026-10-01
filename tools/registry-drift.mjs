@@ -460,9 +460,15 @@ console.log('[1] 工具入口（' + toolFiles.length + ' 个文件）');
 console.log('  ' + PAD('文件', 26) + PAD('npm 脚本', 24) + '状态');
 for (const r of toolRows) {
   let st;
+  /* ⚠ **`locked` 必须在这条链里**（2026-10-01 修）：判据那边一直把它当"合格"
+     （`ok: … || locked`），而**报告**这条链漏了它 ⇒ 显式允许的状态被印成
+     `✘ 没有入口`。**判据没错，是报告口径错了** —— 这正是本仓库记过的那一类
+     （"报告口径错了，判据本身没错"）。实测代价：我照着这行去查了两轮，
+     才发现门其实是绿的。 */
   if (r.keys.length) st = '';
   else if (r.oneShot) st = '\x1b[90m一次性迁移脚本（跑完就该删）\x1b[0m';
   else if (r.lib) st = '\x1b[36m库 / 被 import（无需脚本）\x1b[0m';
+  else if (r.locked) st = '\x1b[36m版本锁定（升版后**故意**拒绝自己，只能直接 node 跑）\x1b[0m';
   else st = '\x1b[31m✘ 没有入口\x1b[0m';
   console.log('  ' + PAD(r.file, 26) + PAD(r.keys.join(',') || '—', 24) + st);
 }

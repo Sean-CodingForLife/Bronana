@@ -15,14 +15,58 @@
    而"存不进去"绝不该让游戏崩 —— 返回 false 并把原因记下来。
    ========================================================= */
 
+import { SelfCheck } from './selfcheck.ts';
+
 var Storage = {} as StorageApi;
 
-var KEYS = {
-  settings: 'bronana.settings',
-  run: 'bronana.run',
-  records: 'bronana.records',
-  profile: 'bronana.profile'
+/* =========================================================
+   存储命名空间 —— **由工作区注入**（引擎不认识任何具体游戏的名字）
+   ---------------------------------------------------------
+   用户 2026-10-01 的决定（原文与理由见 `docs/teapot-restructure.md` §一）：
+   **引擎的名字与内容的名字必须分开** —— 内容叫什么、它的键用什么前缀，
+   **引擎一个字节都不该知道**；而且「内容命名空间由**工作区**注入」
+   （存储键与种子前缀同一条）。
+   所以这四个键的**前缀不是引擎的知识** —— 引擎只给机制，值由宿主/工作区给：
+
+       Storage.setNamespace('…')      ← main.ts / cli.ts / test/_load.mjs 在启动期调用
+
+   ⚠ **不注入的后果是静默的**：键会写成裸名（`profile` 而不是 `『ns』.profile`），
+     表现是"读不到旧档、像新玩家一样" —— 最难查的一类退化。所以下面有一条
+     **启动期自检**，没注入就报问题，不让它悄悄跑。
+   ⚠ **为什么引擎不自己带一个默认前缀**：那正是"引擎自称某个游戏"的耦合，
+     也就是门 `naming` 与用户那句"不要混了"要拆掉的东西。
+   ⚠ **E5（工作区系统）之后**这个值应当来自 `teapot.workspace.json`；
+     今天它写在三个**宿主入口**里 —— 与 `Skills.make({ chars })` 的注入同一套做法
+     （宿主决定"跑哪个工作区"，引擎不认识它）。
+   ========================================================= */
+var NS = '';
+/** 逻辑键名：引擎侧只知道"有这四份东西"，不知道它们属于哪个游戏 */
+var KEY_NAMES = ['settings', 'run', 'records', 'profile'];
+var KEYS = {} as StorageApi['KEYS'];
+function buildKeys() {
+  for (var i = 0; i < KEY_NAMES.length; i++) {
+    (KEYS as Record<string, string>)[KEY_NAMES[i]] = NS ? NS + '.' + KEY_NAMES[i] : KEY_NAMES[i];
+  }
+}
+buildKeys();
+
+/** 注入命名空间（**启动期必须调一次**，由宿主/工作区决定值）。尾部多余的 `.` 会被去掉 */
+Storage.setNamespace = function (ns) {
+  NS = String(ns || '').replace(/\.+$/, '');
+  buildKeys();
 };
+Storage.namespace = function () { return NS; };
+
+/* 启动期自检：没注入命名空间 ⇒ 键是裸名 ⇒ 会写到另一处去（静默读不到旧档）。 */
+SelfCheck.register('storageNamespace', function () {
+  var problems: string[] = [];
+  if (!Storage.namespace()) {
+    problems.push('存储命名空间没有注入：启动期必须调 Storage.setNamespace(工作区名)。' +
+      '不注入的话键会写成裸名（' + KEY_NAMES.join(' / ') + '），' +
+      '表现是"读不到旧档、像新玩家一样" —— 这是静默的，所以这里要拦。');
+  }
+  return { ok: problems.length === 0, problems: problems };
+});
 
 /** 内存适配器（默认；测试与 CLI 用这个） */
 function memoryAdapter(map?: Record<string, string>): StorageAdapter {
@@ -188,8 +232,8 @@ Storage.removeAll = function (key) {
 /* =========================================================
    槽位（多份存档）
    ---------------------------------------------------------
-   槽位**只改键名，不改数据形状**：`bronana.profile` 是 0 号槽，
-   其余槽位是 `bronana.profile#1`、`#2`……
+   槽位**只改键名，不改数据形状**：`<命名空间>.profile` 是 0 号槽，
+   其余槽位是 `<命名空间>.profile#1`、`#2`……
    这样"加槽位"是一次**键重定向**，不是一次数据迁移 ——
    老玩家那一份存档天然就是 0 号槽，不需要迁移链。
    ========================================================= */
@@ -219,7 +263,7 @@ Storage.lastError = function () { return lastError; };
 Storage.wipe = function (opts) {
   /* ⚠ **连每一个槽位一起清**（R50 修正）。
      改造前这里只删 0 号槽那三个键 + 它们的备份 ——
-     而那正是"槽位 = 键重定向"这条设计的漏洞：`bronana.profile#1` / `#2`
+     而那正是"槽位 = 键重定向"这条设计的漏洞：`<命名空间>.profile#1` / `#2`
      **活过了 wipe**。表现是"清空之后切到 1 号槽，上一段测试（或者上一局）
      留下的档还在" —— 实测：`test/character.mjs` 里 wipe 之后
       `Slots.select(1)` 读出了**别的用例写过的一份档**，

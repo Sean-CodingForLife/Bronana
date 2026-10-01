@@ -160,15 +160,22 @@ function b64decode(s) {
   return '';
 }
 
-/** 要搬运的三份档案（**原值**，不是重新序列化过的 —— 免得引入第二份形状） */
-var CARRIED = [Storage.KEYS.profile, Storage.KEYS.records, Storage.KEYS.run];
+/** 要搬运的三份档案（**原值**，不是重新序列化过的 —— 免得引入第二份形状）
+ *
+ *  ⚠ **按需算，不许在模块顶层快照**（E3 第 2 小步改的）：存储键的**命名空间是
+ *  启动期注入**的（`Storage.setNamespace`），而模块顶层的这次赋值发生在 **import 期** ——
+ *  那时命名空间可能还没注入，于是这里会**冻住裸键名**，而其余读写用的是带前缀的键。
+ *  后果是静默的：导出 / 搬运 / 重置会操作到**另一批键**上（「搬运了但什么都没搬」）。
+ *  键名既然是启动期可变的，任何模块级快照都会过期。 */
+function carried() { return [Storage.KEYS.profile, Storage.KEYS.records, Storage.KEYS.run]; }
 
 Slots.exportText = function (slot) {
   var s = slot === undefined ? currentSlot : slot;
   var pack = { keys: {}, at: 0 };
-  for (var i = 0; i < CARRIED.length; i++) {
-    var raw = Storage.get(Storage.slotKey(CARRIED[i], s));
-    if (raw !== null) pack.keys[CARRIED[i]] = raw;
+  var keys = carried();
+  for (var i = 0; i < keys.length; i++) {
+    var raw = Storage.get(Storage.slotKey(keys[i], s));
+    if (raw !== null) pack.keys[keys[i]] = raw;
   }
   var body = JSON.stringify(pack);
   var payload = b64encode(body);
@@ -202,8 +209,9 @@ Slots.importText = function (text, slot) {
     return { ok: false, reason: '结构不对（缺少 keys）', keys: 0 };
   }
   var n = 0;
-  for (var i = 0; i < CARRIED.length; i++) {
-    var k = CARRIED[i];
+  var carryKeys = carried();
+  for (var i = 0; i < carryKeys.length; i++) {
+    var k = carryKeys[i];
     if (typeof pack.keys[k] !== 'string') continue;
     /* 写进去之前**先验证它是 JSON**：导入一份坏文本不该把好档换掉 */
     try {
@@ -220,11 +228,12 @@ Slots.importText = function (text, slot) {
 Slots.reset = function (slot) {
   var s = slot === undefined ? currentSlot : slot;
   var n = 0;
-  for (var i = 0; i < CARRIED.length; i++) {
+  var carryKeys = carried();
+  for (var i = 0; i < carryKeys.length; i++) {
     /* 走 `Storage.removeAll`：**主 + 备份一起删**。
        只删主键的话 `Slots.readJSON` 会把备份写回去，
        表现是"重置了但进度还在" —— 这条是实测踩出来的。 */
-    if (Storage.removeAll(Storage.slotKey(CARRIED[i], s))) n++;
+    if (Storage.removeAll(Storage.slotKey(carryKeys[i], s))) n++;
   }
   return n;
 };
@@ -250,8 +259,8 @@ Slots.audit = function () {
   var probe = b64encode('{"keys":{}}');
   var good = fnv1a(probe).toString(36);
   if (good === fnv1a(probe + 'x').toString(36)) problems.push('校验和发现不了改动');
-  if (CARRIED.length < 3) problems.push('要搬运的档案少于 3 份（一局 / 战绩 / 档案）');
-  return { ok: problems.length === 0, problems: problems, counts: { slots: Slots.COUNT, carried: CARRIED.length } };
+  if (carried().length < 3) problems.push('要搬运的档案少于 3 份（一局 / 战绩 / 档案）');
+  return { ok: problems.length === 0, problems: problems, counts: { slots: Slots.COUNT, carried: carried().length } };
 };
 
 if (!Slots.audit().ok) throw new Error('slots 自检失败：\n' + Slots.audit().problems.join('\n'));

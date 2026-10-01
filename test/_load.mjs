@@ -253,6 +253,18 @@ export async function loadAll(names, before) {
     out[n] = mod;
     for (const k of Object.keys(mod)) globalThis[k] = mod[k];
   }
+  /* ⚠ **存储命名空间**（E3 第 2 小步）：引擎不认识任何具体游戏的名字，值由**宿主**给 ——
+     测试里的"宿主"就是这里（与 `main.ts` / `cli.ts` 同一条；E5 之后统一来自
+     `teapot.workspace.json`）。
+     ⚠ 这里**直接拿 storage 的模块对象**而不是从 `out` 里取，也不解构动态 import：
+     有的套件只加载一个**子集**（如 `loadAll(['input'])`），那时 `globalThis.Storage`
+     根本不存在，而 `settings` 这类子集虽然会 import storage，却不会被挂到 globalThis 上。
+     放在加载**之后**是安全的：所有键都在**调用时**读（模块顶层唯一会快照键的地方
+     `slots.ts` 的 `CARRIED` 已改成按需算），所以加载期没有任何一处会把裸键名记下来。 */
+  const storageMod = await import('../src/storage.ts');
+  if (!globalThis.Storage) globalThis.Storage = storageMod.Storage;
+  globalThis.Storage.setNamespace('bronana');
+
   globalThis.holdRoom = holdRoom;
   if (globalThis.Skills && globalThis.Chars) {
     globalThis.Skills.make({ chars: function () { return globalThis.Chars.LIST; } });

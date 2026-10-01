@@ -3747,6 +3747,13 @@ Safari（尤其 Intel Mac）的 `ImageBitmap` transfer + 消费成本；引入 w
 > Bronana 工作区声明自己的命名空间 `bronana` ⇒ **值一个字节不变、行为指纹逐位不变**；
 > 若不注入而直接改成 `teapot.*`，那就是**行为变更**（孤立旧档 + 换掉每日 / 周常挑战），
 > 要动 `test/smoke.mjs` 基线并写 CHANGELOG。
+>
+> **⏱ 2026-10-01 进展**：**存储键的机制已落地** —— `Storage.setNamespace(ns)` ＋
+> **启动期自检**（忘注入就报红，因为不注入时键会写成裸名 ⇒ "读不到旧档"是静默的），
+> 前缀由 `main.ts` / `cli.ts` / `test/_load.mjs` 三个宿主入口给；门 `naming` 的
+> `DEBT` 表因此第一次变成**空表**（见 `docs/history/11`）。**值一个字节没变** ⇒ 旧档照读。
+> **2 个种子前缀**与 **`~/.bronana` 目录**留到 **E5**：它们要 `teapot.workspace.json`
+> 才算有真正的出处（后者其实是"**工作区的数据住哪**"）。
 
 **AGENT 的建议（供用户拍板）**：**分两层做** ——
 **品牌层**（可改：`package.json` 的 `name`（现在还是改名前的尾巴 `bronana-like`）/ `description` / keywords、

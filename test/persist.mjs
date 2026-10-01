@@ -207,7 +207,7 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     'scene.ts': ['TABLE'],
     'ai.ts': ['BEHS', 'BEH_NAMES', 'PATS', 'PAT_NAMES'],
     'bronana.ts': ['W'],
-    'storage.ts': ['current', 'lastError'],
+    'storage.ts': ['current', 'lastError', 'NS'],
     'settings.ts': ['values', 'listeners', 'loadedFrom'],
     'save.ts': [],
     // autoPauseEnabled = "失焦自动暂停"设置的镜像；runPeaks = 本局峰值（挑战"极限"组读它）

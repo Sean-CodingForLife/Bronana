@@ -183,6 +183,13 @@ function autoPause(reason) {
 }
 
 function initPersistence() {
+  /* ⚠ **命名空间必须在第一次读写之前注入**（E3 第 2 小步）：引擎不认识任何
+     具体游戏的名字 —— 值由**宿主**给。今天写在这里；**E5 之后应当来自
+     `teapot.workspace.json`**（那一版之前，三个宿主入口各自说清自己跑的是哪个工作区，
+     与 `Skills.make({ chars })` 的注入同一套做法）。
+     晚一步注入的话，键会先以**裸名**被读写 / 被模块级快照冻住，
+     表现是"读不到旧档、像新玩家一样" —— 静默的，所以启动期有自检拦它。 */
+  Storage.setNamespace('bronana');
   // localStorage 在无痕/被禁用时会抛，接不上就退回内存适配器（本次会话内仍生效）
   var ls = null;
   try { ls = (typeof window !== 'undefined') ? window.localStorage : null; } catch (e) { ls = null; }

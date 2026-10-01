@@ -2720,6 +2720,10 @@ interface StorageAdapter {
 
 interface StorageApi {
   KEYS: { settings: string; run: string; records: string; profile: string };
+  /** **启动期必须调一次**：命名空间由宿主 / 工作区注入（引擎不认识任何具体游戏的名字） */
+  setNamespace(ns: string): void;
+  /** 当前命名空间（空串 = 还没注入，自检会报问题） */
+  namespace(): string;
   MAX_BYTES: number;
   memory(map?: Record<string, string>): StorageAdapter;
   use(adapter: StorageAdapter | null): boolean;
