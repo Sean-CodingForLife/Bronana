@@ -189,7 +189,7 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 | --- | --- | --- |
 | **E1** | **术语与身份**（本文件 + 总账 + 门）· **文档整理**（把重复的能力清单收成账本 §八点七 **一份**） | 门 `naming` 上线且**三种注入都会红** · 账本 §八点七 是唯一总表 · `teapot-restructure.md` 不再重复能力清单 |
 | **E2** | **引擎改名**：包名 / 入口标题 / 桌面外壳 / CSS / CI / 文档身份 | 包名 = `teapot` 系 · 界面上不出现"Bronana 引擎"这种混用 |
-| **E3** | **引擎侧去内容耦合**（实测只有 13 处，2 个文件） | `bronanaPath` → `blobPath`（**纯几何，与豆豆无关**）· 存储键→`teapot.*` + **旧键迁移** |
+| **E3** | **引擎侧去内容耦合**（门内 **17 处 / 4 个文件**，跑 `node tools/naming.mjs` 得；**门外另有六类**，见 §六之一 —— **那才是完整入口**） | ① `bronanaPath` → `blobPath`（**纯几何，与豆豆无关**）；② **内容命名空间**（4 个存储键 + 2 个种子前缀）→ **由工作区注入**，**值不变 ⇒ 指纹逐位不变**；③ **引擎身份字符串**（CLI / 崩溃卡 / 自检框 / 工具与 hook 横幅 · `BRONANA_HOME` / `~/.bronana`）→ `teapot*` + **旧名双读 + 旧目录迁移** |
 | **E4** | **内容搬进工作区**（不可逆） | `git mv`（保历史）· 引擎能 `teapot run Bronana` 跑起来 · **指纹逐位不变** |
 | **E5** | **工作区系统** | `teapot ws list/new/open` · `teapot.workspace.json` 有 schema 与自检 |
 | **E6** | **模块系统**（一切皆是模块） | `TeapotModule` 契约 + 拓扑排序 + 环报错 + 加载器只有一份 |
@@ -197,6 +197,74 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 | **E8** | **八项能力**（运行/调试/预览/打包/编译/调优/编排/管理） | 八条**各有一个真实命令 + 一个真实产物**，且各有一条判据 |
 | **E9** | **全仓统一 TypeScript** | `tools/` `test/` `desktop/` 的 `.mjs`/`.cjs` → `.ts`；4 张清单同步 |
 | **E10** | **陈旧目录归位**（我查出来的，用户没提） | `research/` `ui-shots/` `.agents/` `server/` `nettest.*` `test-run.txt` `verify-run.txt` `.tmp-*.txt` 各归位或删 |
+
+### ⚠ 六之一、E3 的**完整**入口 —— 门只覆盖其中一部分（2026-10-01 实查）
+
+**这一节存在的理由**：E3 在批次表里一度写着"实测只有 13 处，2 个文件"。那个数**是错的**，
+而且**错在方向上会让人少做一半**：
+
+| 曾经写的 | 实测 | 怎么查 |
+| --- | --- | --- |
+| "13 处" | `DEBT` 表**建表起就是 17**（`36a96fc` 的 `1+6+7+3`），门的输出也是 **17 处** | `node tools/naming.mjs` · `git show 36a96fc:tools/naming.mjs` |
+| "2 个文件" | **4 个**：`storage.ts` 7 · `draw2d.ts` 6 · `utils.ts` 3 · `comp.ts` 1 | 同上 |
+| （没人写过，但最容易误以为）"门绿 = 改名做完了" | **不成立**：门只扫 **23 个引擎模块**，而 `src/` 有 **97 个** `.ts` | `node tools/naming.mjs --json` 的 `engineModules` |
+
+> 🔴 **教训与门 `doc-num` 完全同一条**：手写的统计数字一定会漂，而漂了没人知道 ——
+> 它看起来是量过的。所以"13 处 / 2 个文件"已从**两处**删掉（此处与 `tools/naming.mjs` 的头注释），
+> 口径改成 **本节 + 门自己的输出**，不再复制数字。
+
+#### A. 门内（`DEBT` 表 · 17 处 / 4 个文件 · 门能判）
+
+| 文件 | 处数 | 欠的那一刀 | 怎么还 |
+| --- | --- | --- | --- |
+| `storage.ts` | 7 | 4 个存储键 `bronana.settings` / `.run` / `.records` / `.profile` + 3 处注释引用它们 | 键改由**工作区注入命名空间**（`Storage.setNamespace`），**值仍是 `bronana.*`** ⇒ 旧档照读 |
+| `draw2d.ts` | 6 | `bronanaPath` / `D.bronanaPath` / `D.bronana` + 3 处注释 | 改名 `blobPath` / `D.blobPath` / `D.blob`（**纯几何，与豆豆无关**） |
+| `utils.ts` | 3 | 调色板键 `BRONANA_DOT` / `BRONANA_DEEP` + 1 处注释 | 中性名（如 `BLOB_DOT` / `BLOB_DEEP`） |
+| `comp.ts` | 1 | 注释里的工程叙述 | 改成中性说法 |
+
+#### B. 门外六类（门**看不见** · E2 **也没做**）
+
+⚠ 这六类都在**宿主 / 入口 / 工具**里，而门 `naming` 的扫描面只有那 23 个引擎模块 ——
+所以它们**今天全绿**，却都是"引擎自称 Bronana"。
+
+| # | 类别 | 具体位置（实测） | 连带 | 处置 |
+| --- | --- | --- | --- | --- |
+| **B1** | CLI 身份 | `src/cli.ts`：`'Bronana 命令行'` · `'=== Bronana 无头跑局 ==='` | ⚠ `test/modes.mjs` **断言了** `'Bronana 命令行'` | 改 `Teapot` + **连判据一起改** |
+| **B2** | 崩溃卡与自检框 | `src/crash.ts`：`'Bronana 出了点意外…'` · `'[Bronana] 运行时错误'`；`src/main.ts`：`'Bronana 启动自检未通过…'` | ⚠ `test/audio.mjs` **断言了** `'Bronana 出了点意外'` | 同上 |
+| **B3** | 工具横幅 | `tools/verify.mjs`（`=== Bronana · 全门验证 ===`，**跑门第一眼看到的就是它**）· `registry-drift.mjs` · `name-audit.mjs`（3 处）· `solid-audit.cjs` | 无测试钉死 | 改 `Teapot` |
+| **B4** | git hook 标记 | `tools/install-hooks.mjs`：`# >>> bronana pre-commit …` / `# <<< bronana pre-commit <<<` | 已装过的 hook 里留着**旧标记** | 改标记 + 能**识别并替换旧标记** |
+| **B5** | 第三只环境变量 | `src/storage_fs.ts` 的 `BRONANA_HOME`（全仓 `TEAPOT_*` **只有** `TEAPOT_SOURCEMAP` 与 `TEAPOT_DESKTOP_GPU`） | E2 的"双读"规则**只落在那一只**上 —— 设过旧变量的人会静默失效 | `TEAPOT_HOME \|\| BRONANA_HOME` |
+| **B6** | 盘上的存档目录 | `src/storage_fs.ts` 的 `~/.bronana`（默认目录） | 它在**文件系统**上（不是对象键）⇒ 只能**读旧目录 + 迁移**，改字面量是不够的 | 新目录 + **旧目录回退读** |
+
+#### C. ⚠ 两类东西必须分清（**这是 E3 的判据，不是措辞**）
+
+"把 `bronana` 全改成 `teapot`"**是错的** —— 同一个字符串在两类位置上含义正好相反：
+
+| | **引擎身份** | **内容命名空间** |
+| --- | --- | --- |
+| 例子 | `BRONANA_HOME` · `~/.bronana`（引擎给的默认目录）· 工具横幅 · CLI 自称 · 崩溃 / 自检文案 | `bronana.settings/run/records/profile`（存档键）· `bronana-daily-` / `bronana-week-`（种子前缀）· 标题字形 `S.EMBLEMS`（玩家看到的游戏名） |
+| 谁的名字 | **引擎**的（这台机器） | **内容**的（这台机器做出来的那个游戏） |
+| 处置 | → `teapot*`，**旧名双读**（E2 已为环境变量立过这条规矩） | **值保持 `bronana*`**，但**出处**从引擎硬编改成**由工作区清单注入** |
+| 为什么 | 引擎改名了，它自称的东西要跟着改 | 它是**玩家的存档数据、对局种子、屏幕上的游戏名** —— 改了就是孤立旧档、换掉每日 / 周常、把游戏改名 |
+
+**用户已拍板（2026-10-01）**：种子前缀**按工作区注入**（Bronana 工作区自带前缀）。
+
+> 🔑 **这条决定的技术价值：它让 E3 成为纯重构。** 引擎只提供"问工作区要命名空间"的机制，
+> 而 Bronana 工作区声明的命名空间**就是 `bronana`** ⇒ `bronana.settings`、`bronana-daily-<日期>`
+> 这些**值一个字节都不变** ⇒ **行为指纹逐位不变**。
+> 反过来，若图省事把这 6 个值直接改成 `teapot.*`，那 4 个存档键会孤立旧档、2 个种子前缀会换掉
+> 每日 / 周常 —— 那是**行为变更**，要动 `test/smoke.mjs` 基线 + 写 CHANGELOG，**不是 E3 的默认做法**。
+
+#### D. E3 动手前的三条硬约束
+
+1. **判据先改，代码后改**：B1 / B2 有三处被测试断言钉死（`test/modes.mjs` · `test/audio.mjs`），
+   这正是 E2 已经栽过一次的"**改名只改一半**"（那次是 `BRONANA_SOURCEMAP` 被断言写死）。
+   改字符串时**连判据一起改**，否则门会红在你想不到的地方。
+2. **不许改历史叙述**：`tools/rename-bronana.cjs` / `rename-doudou.cjs`（"土豆 → 豆豆 → Bronana"那段历史）、
+   `CHANGELOG.md`、`docs/history/**` 里的旧名**保持原样** —— 改了就是篡改历史。
+3. **不许把内容名写进引擎模块**：门的判据是**双向的** —— 新增一处红、**还清了不删表也红**。
+   所以 E3 收尾必须把 `tools/naming.mjs` 的 `DEBT` 表**删到空**，
+   而不是留着"已经还清的欠条"。
 
 ### ⚠ E10 是"用户没提到的也要检查"那一句的落点 —— 我查出来的清单
 

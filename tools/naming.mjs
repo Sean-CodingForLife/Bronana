@@ -13,9 +13,23 @@
 
    ## 为什么这条门今天就要存在（而不是等改完再写）
 
-   改造前实测：引擎模块里 `bronana` 出现 **13 处**（`draw2d.ts` 的 `bronanaPath` /
-   `D.bronana`、`storage.ts` 的 4 个存储键、以及若干注释）。
-   其中**真代码 9 处**、注释 4 处。
+   实测：引擎模块里 `bronana` 落在 **4 个文件**里 —— `storage.ts`（4 个存储键
+   `bronana.settings/run/records/profile` + 3 处注释引用它们）、`draw2d.ts`（`bronanaPath` /
+   `D.bronanaPath` / `D.bronana` + 3 处注释）、`utils.ts`（`BRONANA_DOT` / `BRONANA_DEEP`
+   + 1 处注释）、`comp.ts`（1 处工程叙述）。
+
+   ⚠ **本句不写总数** —— 总数的**唯一出处是下面的 `DEBT` 表**（`Object.values(DEBT)` 求和）。
+   这里曾经写的是"**13 处 / 2 个文件**"，而 `DEBT` 表**从建表那一刻起就是 17**
+   （`36a96fc`：1 + 6 + 7 + 3）—— 两个数**从来没有对上过**，漂了很久没人发现。
+   同一个坑门 `doc-num` 也踩过三次，治法是同一条：**数字要么从清单算，要么只引用出处**。
+   删掉硬数字就是为了不再犯；要读今天有几处，跑 `node tools/naming.mjs`。
+
+   ⚠⚠ **这条门不是改名清单的全部。** 它只扫 **23 个引擎模块**（清单唯一出处：门
+   `engine-boundary` 的 `ENGINE` + `ENGINE_MIXED`），而 `src/` 有 **97 个** `.ts`。
+   于是**宿主与入口**（`cli.ts` / `main.ts` / `crash.ts` / `storage_fs.ts` …）里的引擎自称、
+   以及 `tools/` 与 git hook 里的横幅，**本门一个都不管**。
+   改名清单的**完整口径（门内 + 门外六类）**写在 `docs/teapot-restructure.md` §六之一 ——
+   **那才是 E3 的入口，不要只看这张 `DEBT` 表。**
 
    ⚠ **处置不是"豁免"，是"欠账"**：
    · 每一条都写进下面的 `DEBT` 表 —— **含文件、行号、原文、以及它欠的那一刀**；
