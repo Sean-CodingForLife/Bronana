@@ -116,3 +116,5 @@ tools/tmp-*.mjs
 .tmp-*.txt
 tmp-*.txt
 
+# 开工标记（tools/env.mjs --start 写下；每个会话自己的，不进仓库）
+tools/.session.json

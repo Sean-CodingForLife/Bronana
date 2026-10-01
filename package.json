@@ -73,6 +73,7 @@
     "solid": "node tools/solid-audit.cjs",
     "name:audit": "node tools/name-audit.mjs",
     "eol:audit": "node tools/eol-audit.mjs",
+    "env": "node tools/env.mjs",
     "doc:num": "node tools/doc-num-audit.mjs",
     "hardcode": "node tools/hardcode-audit.cjs",
     "audio:census": "node tools/audio-census.mjs",
