@@ -1335,7 +1335,7 @@ v3 §8-3 要求养成模块建"角色/羁绊系统"，含两样：**共享关系
 | **R54** | **图层契约**（用户："现在游戏是没有图层吗，然后为啥没有采用游戏开发里常用的图层概念"） | ✅ **已交付**（门 `name` 之外新增四条自检）。**先纠正问题**：`depth.ts` 本来就有 13 个具名层带（对齐 Unity/Godot/Bevy，tie-break 比那三家都严）。缺的是**变换域不是声明**（"不随相机"靠一句调用约定）、**没有整层开关**、**隐藏传播语义未定义**。层表改成声明对象（`domain` / `ySort` / `baked`）+ 四条启动期自检（域合法性 / 域必须成块 / screen 恰一层且在最高层 / 没有 screen 域）。详见 §十 R54 |
 | **R55** | **游戏引擎与游戏内容分离**（用户："我认为是不是要考虑将游戏引擎部分和游戏内容部分分离呢……**现有引擎再有内容**……**有关系但不能耦合**"） | ✅ **已交付**（门 `engine-boundary`，第 21 道）。判据来自 Unity / Godot / Bevy / Unreal 四家调研，压成一句「**先看边，再看词，最后看可替换性**」——而"边"是唯一有机器可验证性的。分类：**引擎 22 · 混合 1 · 显式内容 2 · 数据表 31 · 未认领 38**。**门自己抓到我三次分类错**（幽灵模块 `signals.ts` / 自相矛盾 / `record.ts` 判错）。详见 §十 R55 |
 | **R56** | **图层与窗口、图层与视口的关系**（用户："还有图层和窗口的关系也不对，和视口的关系也不对"） | ✅ **已交付**（`src/viewport.ts`）。**先纠正**：不是"没有"，是三件事压缩在一个 `R.cam` 里 —— `w`/`h` 既是窗口 CSS 尺寸、又是相机取景尺寸。按 `Window ⊃ Viewport ⊃ Layer ⊃ Item`（相机**属于 Viewport**）拆成三个对象；**两条互逆的变换放在一起**；缩放策略**声明出来**（四档 + 每档的"看到多少/代价"，当前 `fit-1x` 保持行为不变）。详见 §十 R56 |
-| **R57** | **引擎核心 WASM 模块**（用户："既然是游戏引擎，而且我还是全自研的 TS，由于 **JS 的种种限制**，我建议你考虑设计一个引擎核心，也就是 **WASM 模块**，专门用来处理游戏引擎的**性能热点问题**和 **JS 难以处理的问题**，你先调研，调查清楚了，再给出报告"） | 🟡 **调研完成，建议已给出（见 §十 R57）**。**关键实测**：CPU profiler 显示模拟层 **56.8% 的时间在 `grid.ts`**（`queryCircle` 43.4% + `rebuild` 13.4%），根因是**字符串键**（`'3,4'`）—— 那是**数据结构问题，不是语言算力问题**；原型 A/B 实测"整数键 + 扁平 `Int32Array`"快 **4.64×**（纯 TS 就能拿到）。所以结论是**分两步**：先做纯 TS 的 grid（立刻兑现），WASM 的判据与触发条件写在那一节 |
+| **R57** | **引擎核心 WASM 模块**（用户："既然是游戏引擎，而且我还是全自研的 TS，由于 **JS 的种种限制**，我建议你考虑设计一个引擎核心，也就是 **WASM 模块**，专门用来处理游戏引擎的**性能热点问题**和 **JS 难以处理的问题**，你先调研，调查清楚了，再给出报告"） | ✅ **调研完成，结论：现在不做（见 §十 R57）**。**关键实测**：CPU profiler 显示模拟层 **56.8% 的时间在 `grid.ts`**（`queryCircle` 43.4% + `rebuild` 13.4%），根因是**字符串键**（`'3,4'`）—— 那是**数据结构问题，不是语言算力问题**；原型 A/B 实测"整数键 + 扁平 `Int32Array`"快 **4.64×**（纯 TS 就能拿到）。所以结论是**分两步**：先做纯 TS 的 grid（立刻兑现），WASM 的判据与触发条件写在那一节 |
 
 #### R52 · 外部游戏机制档案：20 款，逐字段带出处
 
@@ -2177,7 +2177,210 @@ function gridKey(cx, cy) { return cx + ',' + cy; }   // ← 每次查一格都�
 
 #### 三、调研结论（WASM 该做什么、不该做什么）
 
-<!-- R57-RESEARCH -->
+> 取证纪律：每条附来源与强度（**高**=官方规范 / 厂商官方文档 / 官方仓库；**中**=官方博客 / 工程博客 / 论文；**低**=论坛）。
+> 抓取限制（诚实交代）：`raw.githubusercontent.com` 本机 DNS 失败 → 改用 `cdn.jsdelivr.net/gh/` 与 GitHub API；
+> `web_fetch` 拒收 PDF（多篇关键论文只拿到摘要）；Godot 官方文档页正文抓不到（只返回导航壳层）。
+
+##### 3.1 三条**改变结论**的硬事实
+
+**① WASM 不能替你绘制，而且这么做是负收益。**（〔高〕[portability](https://webassembly.org/docs/portability/) ·
+〔高〕[MDN Concepts](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Concepts) ·〔中〕[Interface Types](https://hacks.mozilla.org/2019/08/webassembly-interface-types/)）
+
+官方原文：**"WebAssembly does not specify any APIs or syscalls, only an import mechanism"** ——
+规范里**根本没有 API**；**"there is no mapping between WebAssembly types and Web IDL types.
+This means that, even for simple types like numbers, your call has to go through JavaScript."**
+一次 `wasm → Web API` 是**三步、两块内存**：wasm 把值交给 JS → 引擎转成 JS 类型放进 JS heap →
+JS 值再交给 Web API → 转成 Web IDL 类型放进 renderer heap。
+
+**最有力的反面教材是 Emscripten 自己**（〔高〕[Interacting with code](https://emscripten.org/docs/porting/connecting_cpp_and_javascript/Interacting-with-code.html)）：
+它有一节叫 **"Implement a C API in JavaScript"**，原文写明 **"This is the approach used in many of
+Emscripten's libraries, like SDL1 and OpenGL."** —— **连 Emscripten 的 OpenGL 都是"一层 JS library"**。
+
+> ⇒ 对本作的直接含义：现在是 Canvas2D + `D.*`（1900 个调用点、稳态约 290 次/帧、最密约 3000 次/帧）。
+> **把绘制搬进 wasm，等于给每一次 `D.*` 加一层"回 JS"的往返**，并把绘制原语层从一层变成两层
+> （wasm 侧描述 + JS 侧执行）。**这是纯负收益。**
+
+**② "用 WASM 换更强的跨平台确定性"这个论点在本项目站不住。**（〔高〕[ECMA-262](https://ecma-international.org/wp-content/uploads/ECMA-262_16th_edition_june_2025.pdf) ·
+〔高〕[tc39/ecma262#3347](https://github.com/tc39/ecma262/issues/3347) ·〔高〕[wasm FAQ](https://webassembly.org/docs/faq/)）
+
+真正的确定性泄漏源在 **JS 侧**：ECMA-262 把 `Math.sin/cos/tan/exp/pow/log/cbrt…` 定义为
+**"implementation-approximated"**（规范步骤原文是 *"Return an implementation-approximated Number value
+representing…"*），而 TC39 有一条**仍然开放**的议题（#3347）要求给它们一个最低精度下界 ——
+**也就是说目前没有强制的精度下界**。
+
+**而 wasm 救不了它**：官方 FAQ 明说 wasm **根本不含** `sin/cos/exp/pow`，
+策略是让它们"作为库实现在 wasm 自身里"。⇒ 你**仍然要自带一份 libm** ——
+而**自带 libm 这件事在 TS 里也做得到**，不需要引入 wasm。
+
+唯一"wasm 才给得起"的是：`f32` 是**真类型**（不必每步 `Math.fround`）+ 规范里的
+**Deterministic Profile（DET）**（"所有浮点指令产生的 NaN 都是 canonical 且为正"）。
+但：**浏览器是否实现 DET profile：未取得**；而 `f32` 纪律在 TS 里可以靠
+"强制 `Math.fround` 包装层 + 一条门"守住 —— **那正是本仓库 `PAL` / `Terms` 那类"唯一入口 + 机器门"的现成套路。**
+
+**③ 多线程一旦引入，逐位确定性直接消失。**（〔高〕[design/Nondeterminism.md](https://github.com/WebAssembly/design/blob/main/Nondeterminism.md)）
+官方非确定清单里明确写着：**`shared` 内存被多线程访问时，load / read-modify-write / wait / awake 的结果非确定**。
+这与家法第五节的**行为指纹**正面冲突。
+
+##### 3.2 边界开销：不贵，而且"切小"才是错的
+
+Mozilla 官方实测（Firefox，2018-10，横轴是 **100,000,000 次调用**；〔中〕
+[Calls between JS and WebAssembly are finally fast](https://hacks.mozilla.org/2018/10/calls-between-javascript-and-webassembly-are-finally-fast-%f0%9f%8e%89/)）：
+
+| 调用类型 | 优化后 | 折合每次 |
+| --- | --- | --- |
+| wasm → JS | ~450 ms | **~4.5 ns** |
+| JS → wasm（**monomorphic**） | ~250 ms | **~2.5 ns** |
+
+⚠ 边界：这是 **2018 年的 Firefox**，其他引擎当时未同步；**现代各引擎的同类数字未取得**。
+
+**"为什么把函数切小反而更慢"** —— 官方原文（同篇）给了答案：
+
+> **"There's only one case where an optimized call from JavaScript » WebAssembly is not faster than
+> JavaScript » JavaScript. That is when JavaScript has in-lined a function."**
+
+拆开是三条同时发生：① 你**丢掉了 JS JIT 的跨函数 inline**（跨语言 inline 当时不存在）；
+② 每次调用付 2.5~4.5 ns，**且只有调用点 monomorphic 才拿得到 2.5 ns 那一档**；
+③ 参数/返回值涉及字符串或数组时还要在 linear memory 与 JS heap 之间编解码。
+
+> ⇒ 官方建议：**把跨界次数压到最低、把每次跨界的工作量做到最大**。
+> 这与"为了性能把函数切小"完全相反。对本作的含义：
+> **唯一形状正确用法是"每帧跨界 O(1) 次、单次调用内工作量 O(n)"** ——
+> 也就是"把整个实体数组交进 wasm 做一遍再取回"，而**不是**"每个实体跨界一次"。
+
+##### 3.3 逐子系统的"该 / 不该"
+
+| 子系统 | 该/不该 | 理由 |
+| --- | --- | --- |
+| **碰撞宽相 + 空间索引** | **该**（实体量足够大时） | Jolt 官方把宽相设计成 **quadtree 且"一次处理 4 个子节点正好对上一条 SIMD 指令"**（〔高〕[Jolt Architecture](https://jrouwe.github.io/JoltPhysics/)）⇒ 官方认定宽相是数值热点。**但**本作 `grid.ts` 是 O(1) 查表的均匀网格，几百实体下 JS 完全够 —— 见下面的实测。 |
+| **刚体求解 / 约束 / soft body** | **该**（若存在通用求解器） | JoltPhysics.js 是官方维护的 wasm 端口，被 GDevelop 采用（〔高〕[README](https://app.unpkg.com/jolt-physics@1.0.0/files/README.md)）。**但本作 `collide.ts` 是自研圆/多边形判定，不是通用刚体求解器。** |
+| **程序化生成与噪声** | 该（离线 / 换波期）· **不该**（每帧） | 本作的生成发生在换波，不在 60fps 预算内。 |
+| **粒子系统** | **不该** | 成本在**绘制调用与内存带宽**，不在算术（本作 particles 约 440 次/帧是 `D.*` 侧）。搬进 wasm 只会每帧多一次 O(n) 搬运。 |
+| **确定性随机** | **不该** | 整数 PRNG（`Math.imul` + `>>>0` / xorshift）在 JS 里**已经是逐位确定的**（JS 位运算有明确定义的 32 位语义）。搬进 wasm **不增加任何保证**。 |
+| **寻路** | **不适用** | 本仓库已把它记为「刻意不做」（大厅是一间敞屋、战场无墙）。 |
+| **排序** | **不该** | 规模几百元素；`TypedArray.prototype.sort` 是引擎原生实现。 |
+| **字符串 / 文本排版** | **不该** | AS 官方：`String` 在 linear memory 是 UTF-16；**`RegExp` 无标准实现**（靠社区包）；且 wasm 无 DOM 文本 API。本作 `D.text` 在渲染侧。 |
+| **存档序列化（JSON）** | **不该** | AS 官方：**"JSON is not strictly typed in nature, so we haven't settled on a standard yet"**。 |
+| **事件总线** | **不该**（这条证据最硬） | AS 官方 status 把**闭包捕获 / 迭代器 / `for..of` / rest 参数 / `any` / 联合类型 / 类作为值 / `prototype` 补丁 / `arguments`** 全列为**不支持或未实现**。而事件总线 = 一堆回调闭包 + 字符串键 + 动态对象 —— **搬进去会当场撞语言限制**。 |
+| **UI 布局** | **不该** | 必须落到 DOM/Canvas ⇒ 撞 3.1①；且布局是"对象 + 少量算术"，形状不对。 |
+
+##### 3.4 "实体数超过 N 才值得"—— **这个 N 不该存在**
+
+**可核对经验值：未取得**；而且工程上**不该有**它，理由是：
+
+1. **边界开销在这个量级根本不构成约束**：4.5ns/次 × 300 实体 × 每帧 1 次 = **1.35 µs = 0.00135 ms**。
+2. 真正的约束是三个**比值**：**(a)** 每次调用内部工作量 ÷（跨界 + 编解码）；
+   **(b)** 每帧搬运的数据量（把实体数组交给 wasm 再取回是 **O(n) 拷贝**，**比跨界贵得多**）；
+   **(c)** **要维护两份实体定义（TS 一份、wasm 一份）并保证逐位一致** —— 这个成本随 N 增长，
+   而且失败形态是"改了 A 忘了 B"的**静默漂移**。
+
+⇒ **可执行的判据不是"实体数 > N"，而是**：
+**① 热点集中度**（单一函数自身耗时 ≥ 60%？）**② 该函数是不是纯数值循环**（无字符串、无对象分配、无 DOM）
+**③ 实测 P99 是否已吃掉一半以上帧预算**。三条同时成立才值得谈。
+
+##### 3.5 三条技术路线的代价（决定项）
+
+| 维度 | Rust（wasm-bindgen） | C/C++（Emscripten） | AssemblyScript |
+| --- | --- | --- | --- |
+| 工具链 | `rustup target add` + `wasm-bindgen` + `wasm-pack` | `emsdk`（clang/LLVM/`emcc`） | **`pnpm add -D assemblyscript`**（Node ≥ 20） |
+| 最小产物 | 官方例子 `add(a,b)` = **710 字节**；`wasm-opt -Os` 后 **172 字节**（〔高〕[Small Wasm files](https://wasm-bindgen.github.io/wasm-bindgen/examples/add.html)） | 绝对 kB **未取得**（只有相对数字） | 绝对 kB **未取得** |
+| 胶水 JS | **有**（生成 `foo.js`） | **有，且是硬依赖**：官方明说 **".wasm 文件不是 standalone… 它依赖拿到正确的 imports"** | **最轻**（只需 `--exportRuntime` 的几个导出） |
+| **维护现状（关键）** | ⚠️ **Rust 与 WebAssembly 工作组 2024 年正式归档**；**`rustwasm` GitHub 组织 2025-09 归档**；`wasm-pack`/`twiggy`/`walrus` 等**将被归档**（〔高〕[Rust 官方博客 2025-07-21](https://blog.rust-lang.org/inside-rust/2025/07/21/sunsetting-the-rustwasm-github-org/)） | 活跃 | 活跃（**v0.28.20 / 2026-07-22**） |
+| **能不能直接吃 TS 语法** | — | — | ❌ **不能**。官方：**"AssemblyScript compiles a *variant* of TypeScript"**、**"It likely won't support all of TypeScript"**；"足够严格的 TS **often** 可以 **little effort** 兼容"（注意措辞） |
+| 调试 | DWARF 默认剥，官方明说 **"no known environments that support DWARF with Wasm"** | `-g` 开 DWARF | 官方：**"support for debug information and source maps"** |
+
+**"零依赖"这条约束下最优的是 AssemblyScript** —— 唯一一条不引入第二个语言宇宙、
+且能保住 `dependencies` 为空的路。**而且要引入 wasm，正确做法是让它留在构建产物里、不进仓库**
+（**不要** base64 内嵌：那会在源码里塞进不可读的大字符串，让 `git diff` 与"每处设计都有注释里的理由"
+这套文化当场失效）。
+
+**先例**：`JoltPhysics.js` 官方就提供 **base64 内嵌**的 flavour（〔高〕[README](https://app.unpkg.com/jolt-physics@1.0.0/files/README.md)）——
+说明这不是野路子；但**它更适合"发行一个库"，而不是"一个自己的游戏仓库"**。
+
+##### 3.6 【建议】不做，并给出**可验证**的触发条件
+
+**站队：现在不做「WASM 引擎核心」。** 理由**按重要性排序**：
+
+1. **它能解决的问题，本项目现在没有**：模拟层真实波次 P95 **0.833ms** / 中位 **0.299ms**（60fps 预算的 **2.2%**）；
+   最密场景截尾均值 1.425ms / P95 2.434ms / P99 5.31ms / 最差 13.91ms（**8.6%**）。
+2. **它解决不了本项目真正的"JS 限制"**：痛点是**绘制调用的宿主侧开销做不了**（3.1①）与**文本渲染**（在渲染侧）。
+3. **它的确定性卖点在本项目不成立**（3.1②）。
+4. **代价高且不可逆**：会实质破坏"零运行时依赖"（Emscripten 路线）、或破坏"无编译步、`node` 直接跑 `.ts`"
+   （现在是 `pnpm verify --quick` ≈ 20 秒）。
+
+| # | 触发条件（必须**实测**，不许估计） | 为什么是这条 |
+| --- | --- | --- |
+| **T1 · 性能** | **先穷尽纯 JS 手段**之后，300 怪场景 **P99 ≥ 12.0ms**（帧预算 72%）且连续两轮体检都是，**并且**剖析证明**单一函数自身耗时 ≥ 总耗时 60%**，**并且**该函数是纯数值循环 | P99 5.31ms 现在离 12ms 差 2.3 倍。**先要求把 grid 用纯 TS 压到 5ms 以下** —— 压不下去才说明"JS 不够"是真的，而不是"算法该改" |
+| **T2 · i64 能力** | 需要**精确的 > 53 位整数运算**（64 位哈希 / > 2^53 的精确计数） | 这是 JS **结构性**不能（只能 BigInt 或成对 32 位手工模拟），wasm 的 `i64` 是唯一干净解 |
+| **T3 · SIMD 能力** | 实测证明**标量 JS 循环**是瓶颈且算法可向量化，且 95.69% 的浏览器覆盖可接受 | `simd128` 是唯一"wasm 能给、JS 给不了"的吞吐能力 |
+| **T4 · 真多线程** | 需要**单帧内必须并行**才能达标的任务，**并且**接受"此后行为指纹可能不再逐位可复现" | 3.1③ 官方条文：共享内存访问非确定 ⇒ 直接撞家法第五节。**这条要走"显式选择"流程** |
+
+**四条都不成立 ⇒ 结论是"不做"，而不是"等等看"。**
+
+##### 3.7 如果将来做：先做哪一块、什么语言、验收判据
+
+**唯一候选模块**：**`collide.ts` + `grid.ts` + `chamber.ts` 组成的"空间查询 + 碰撞判定"内核**。
+为什么是它：它是纯数值 + 数组遍历 + 无字符串 + 无对象分配的循环，而且**形状唯一正确**
+（每帧跨界 O(1) 次、单次调用内工作量 O(n)）。
+**明确不要先做**：`emit.ts`（撞 AS 闭包/迭代器限制）· `utils.ts` 的 RNG（不增加确定性）·
+`save.ts` / `run_save.ts`（JSON 无标准）· `ai.ts`（含字符串与对象）。
+
+**语言：AssemblyScript** —— 但**必须先做一次"端口可行性普查"**（把三个模块逐函数对照 AS 的
+"不支持"清单读一遍；**不需要装编译器，成本极低**）。
+
+**验收判据（缺一不可）**：
+
+| # | 判据 | 为什么 |
+| --- | --- | --- |
+| ① | **行为指纹逐位不变**（`622d6ebf` / `a9c2902b` / `354cc83c`） | 家法第五节的唯一硬判据 |
+| ② | **同一 seed、同一帧数下，wasm 内核与 JS 内核的输出逐位一致**（不只是指纹相等 —— 直接对比内核输出） | 这是 wasm 在确定性上**唯一站得住的兑现方式**：不是"更确定"，而是"**可对照**" —— 顺带给纯重构一条两内核互证的安全网 |
+| ③ | 300 怪场景 **P99 实测下降 ≥ 30%** | 否则净收益为负（多一个语言、一个构建步、一份重复定义） |
+| ④ | gzip 预算按既有流程放宽并**记账**：写清"**多少 kB 是 wasm 内核、多少 kB 是胶水**" | 沿用 decision 文档的"只为引擎能力放宽一次"那条纪律 |
+| ⑤ | `test/_load.mjs` 的三种加载集合**不需要 wasm 也能跑** | 保住"64 套无头测试在 Node 里直接跑"这条前提 |
+
+##### 3.8 建议记为「刻意不做」的能力（每条写清理由）
+
+| 刻意不做 | 理由（一句话） |
+| --- | --- |
+| **把绘制调用（`D.*`）外包给 WASM** | 官方：wasm 与 Web IDL 之间**没有映射**，每次调用必回 JS；**Emscripten 自己的 OpenGL 就是 JS library**。这是纯负收益 |
+| **事件总线 / 存档 JSON / 字符串排版 / 正则 / UI 布局 进 WASM** | 撞 AS 官方"不支持"清单（闭包捕获 / 迭代器 / rest / 无联合类型 / 无 `any`）+ wasm 无 DOM 访问 + 无收益 |
+| **为"确定性"引入 WASM** | 真正的泄漏源是 JS 的 `Math.*`（*implementation-approximated*，且 TC39 #3347 仍未强制精度下界），**wasm 同样没有 `Math.*`**；自带 libm 在 TS 里就能做 |
+| **WASM 多线程** | 官方：共享内存访问非确定 ⇒ 直接摧毁逐位行为指纹；且线程需 COOP/COEP，会波及 web/cli/desktop 三种形态 |
+| **把 `.wasm` 以 base64 blob 提交进 `src/`** | 会让 `git diff` / code review / "每处设计都有注释里的理由"这套文化当场失效。**要引入 wasm，就必须让它留在构建产物里，不进仓库** |
+
+##### 3.9 风险清单（WASM 会怎么影响本项目的五条约束）
+
+| 约束 | 影响 | 严重度 |
+| --- | --- | --- |
+| **零运行时依赖** | AssemblyScript ✅ 可保住（编译器进 `devDependencies`）；Rust ⚠️ 多一份胶水 `foo.js`；**Emscripten ❌ 实质破坏**（官方：`.wasm` 不是 standalone）。**另一条隐患**：新增一条**构建期依赖**（Node ≥ 20 + Binaryen 版本钉死），`pnpm i` 体积与时间上升 | 高（Emscripten）/ 低（AS） |
+| **零素材** | 形式上不冲突（`.wasm` 是编译产物，不参与 `PAL.setMode`）。**但它会引入"仓库里第一个必须先构建才能运行的二进制"**，与"Node 24 直接跑 `.ts`、不经打包器"正面冲突 | 中 |
+| **三层运行形态** | **cli 风险最大**：64 套无头测试从"直接 `import src/*.ts`"变成"**先 build 再 test**"，迭代时间上升。**Node 侧加载 `.wasm` 的官方文档：未取得，需实测** | 中高（cli 最高） |
+| **行为指纹** | 有利面：`f32` 是真类型 + DET profile 的形式化承诺（**但浏览器是否实现：未取得**）。**不利面更多**：多线程摧毁确定性；NaN 位模式默认非确定；**内核一搬走，三条指纹基线必须重算**（走"有意改行为"流程，但风险等级高于历次）；且真正的杀手在 JS 侧，**wasm 不修它** | 高 |
+| **构建时间** | 可核对秒数**未取得**；结构性事实：优化级别越高编译越久（Emscripten `-O3` "significantly longer compilation time"）。⇒ **一定会多一条"改一行 → 等编译"的循环**，而现在是 `pnpm verify --quick` ≈ 20 秒。**这一条必须在动手前实测** | 中高 |
+
+##### 3.10 本次明确「未取得」与「需实测才能定」
+
+**未取得（15 项，择要）**：wasm `i128` 值类型 · **现代各引擎**的跨界耗时（只有 2018 Firefox 的数字）·
+**浏览器是否实现 DET profile** · JS 的 f64 与 wasm 的 f64 逐位一致的权威来源 ·
+**"实体数超过 N 才值得"的任何经验值** · 独立/小型 2D 游戏把引擎核心放进 wasm 的量化复盘 ·
+**任何"后来把 WASM 拿掉"的可核对案例** · Godot / Unreal 的 Web 官方说明（页面抓取失败）·
+Rust/Emscripten/AS 的构建时间秒数 · Node 侧加载 `.wasm` 的官方文档。
+
+> ⚠ **最后两条"未取得"本身是结论**：这个问题的公开证据很薄 ——
+> 所以本节的建议**不建立在"别人的先例"上，只建立在本项目自己的实测与官方条文上**
+> （与 `techstack-upgrade-research.md` §6.4 同一立场）。
+
+**需实测才能定（6 项，择要）**：`asc` 编译本仓库级别模块的**墙钟时间** ·
+Node 24 加载 `.wasm` 的实际方式与开销 · **300/1000/3000 三档微基准**（JS 内核耗时 vs 拷贝+边界耗时）·
+**把 `collide.ts`/`grid.ts`/`chamber.ts` 逐函数对照 AS"不支持"清单的结果**（最低成本的下一步）·
+当前指纹算法用到的整数位宽是否已 > 53 位 · 一个 base64 内嵌 `.wasm` 对 gzip 预算的实际冲击。
+
+#### 四、这一节的**执行顺序**（把"先做什么"写死）
+
+1. **先做纯 TS 的 `grid.ts`**（已验证 4.64×，零构建成本、零依赖、零产物）——
+   它把 56.8% 的热点压到约 12%；
+2. 然后**重测** T1 的三条判据。**如果 P99 掉到 5ms 以下，这一轮到此为止**（结论：JS 够用）；
+3. 只有 T1/T2/T3/T4 任一条成立，才做 **3.7 的"端口可行性普查"**（读代码对照 AS 清单，不装编译器）；
+4. 普查通过才谈编译与产物，且那时要**先实测构建墙钟时间**。
 
 ---
 
