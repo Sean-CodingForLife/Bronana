@@ -1,0 +1,56 @@
+# =========================================================
+# .gitattributes —— 行尾的**唯一出处**
+# ---------------------------------------------------------
+# 为什么需要它（实测踩过）：这台机器上 `core.autocrlf = true`，而不同工具写文件时
+# 的行尾不一样 ——
+#
+#   · `pwsh` 的 `Set-Content` / `Add-Content` 写 **CRLF**
+#   · `[System.IO.File]::WriteAllText` 与 `edit` / `write` 工具写 **LF**
+#
+# 两种行尾混在同一个文件里，`git diff` 就会把**整文件**报成改动。
+# 实测：`tools/registry-drift.mjs` 只加了 25 行，diff 却是 **1616 行**
+# （199+/175− 的内容差异被行尾噪声淹掉）—— 于是那一笔改动**没法被审**。
+#
+# 这份文件把它钉死：**仓库里一律 LF**。
+# 每台机器、每个工具写出来的都是同一种，diff 就只剩真正的内容差异。
+#
+# ⚠ 想改这一行之前先读上面这段 —— "本地 CRLF 更顺手"不是理由：
+#   这个仓库的历史与工具链都按 LF 存的，混行尾的代价是**每一笔 diff 都不可读**。
+# =========================================================
+
+# 默认：一切按文本处理，仓库里存 LF
+* text=auto eol=lf
+
+# ---- 明确是文本的（与上面同一条，写出来是为了可读） ----
+*.md      text eol=lf
+*.ts      text eol=lf
+*.mjs     text eol=lf
+*.cjs     text eol=lf
+*.json    text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.txt     text eol=lf
+*.py      text eol=lf
+
+# ---- 二进制：**不许**碰它的行尾 ----
+# `git` 默认就能认出大部分二进制，但这两类会被 `text=auto` 误伤：
+#   · `pnpm-lock.yaml` 是文本（上面已覆盖），而真正的锁文件产物不在这里
+#   · 图标 / 字体这类资源一旦入库，改行尾会**直接损坏文件**
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.webp    binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.otf     binary
+*.zip     binary
+*.gz      binary
+*.exe     binary
+
+# ---- 语言统计：`docs/history/` 与 `docs/requirements.md` 是文档不是源码 ----
+docs/**   linguist-documentation

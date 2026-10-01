@@ -28,6 +28,7 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const JSON_OUT = process.argv.includes('--json');
@@ -54,7 +55,30 @@ const VERSION_LOCKED = ['make-migration-fixture'];
    而 `readFileSync` 撞上目录会抛 EISDIR —— 那是"工具被数据目录绊倒"，
    不是"代码有问题"。第一版就是这么崩的。 */
 const readDir = d => fs.readdirSync(path.join(ROOT, d))
-  .filter(f => fs.statSync(path.join(ROOT, d, f)).isFile());
+  .filter(f => fs.statSync(path.join(ROOT, d, f)).isFile())
+  /* ⚠ **`.gitignore` 里写明的文件不算漂移**（R41 第三批补）。
+     判据：`.gitignore` 是这个仓库**唯一**的"哪些文件不该入库"声明 ——
+     一份声明在 `.gitignore` 里、门却在抱怨它，那两边本来就对不上。
+     实测踩到的场景：`AGENTS.md` 第三节写着"临时脚本放 `tools/tmp-*.mjs`，
+     验完立刻删"，而**忘了删**的时候这道门会报 4 处红
+     （"写好了没人能调"）—— 那句话于是要靠人记得才成立。
+     现在 `.gitignore` 里有 `tools/tmp-*.mjs` 与 `.agents/`，两边一致。
+     `git check-ignore` 不可用时（没装 git / 不是仓库）**一律按不忽略**处理：
+     这道门在那种环境下仍然按原样工作，不会因为过滤失败而静默变绿。 */
+  .filter(f => !isGitIgnored(path.posix.join(d, f)));
+
+/** 这个路径是不是被 `.gitignore` 排除了（见 `readDir` 上面那段）。 */
+const ignoreMemo = new Map();
+function isGitIgnored(rel) {
+  if (ignoreMemo.has(rel)) return ignoreMemo.get(rel);
+  let out = false;
+  try {
+    const r = spawnSync('git', ['check-ignore', '-q', rel], { cwd: ROOT, stdio: 'ignore' });
+    out = r.status === 0;
+  } catch (e) { out = false; }
+  ignoreMemo.set(rel, out);
+  return out;
+}
 
 /* 一个文件名有没有被 repo 里任何文件 import / require。
    ⚠ 匹配的是**带引号的相对路径**（`'./_run.mjs'` / `'../test/_run.mjs'`），
