@@ -453,7 +453,21 @@ Comp.define('Cooldown', { cd: 0 });
    而且池化复用时会留下上一只怪的残值。 */
 Comp.define('AI', { speed: 0, phase: 0, atkCd: 0, windup: 0, shootCd: 0, spawnT: 0, t1: 0, t2: 0 });
 Comp.define('Knock', { kx: 0, ky: 0 });
-Comp.define('Burn', { burn: 0, burnDps: 0 });
+/* ---- **状态系统的宿主字段**（R50 第 10 条）----
+   ⚠ 这两个组件是"状态写在谁身上"的**唯一声明**（`status.ts` 只管时长与叠法，
+     不管字段住在哪）。加一种新状态 = 这里加字段 + `status.ts` 的表里加一行。
+
+   ⚠ 改造前这里只有 `Burn`（`burn` / `burnDps`），而**技能载荷的 `slow` / `stun`
+     是写在未声明字段上的**（`e.slow` / `e.slowMul` / `e.stun`）——
+     于是两个真 bug：
+       ① 它们**没有任何读点**（全仓搜 `e.slow` / `e.stun` 只搜到写入那两行）：
+          「冰冻」与「打断」两个技能载荷**实际什么也没做**，而界面上写着它的说明
+       ② 未声明字段**不参与池化复位**：容器回收复用一只怪时，
+          上一只的 `slow` / `stun` 会**留在它身上**（`Comp` 的字段校验只看声明过的字段）
+     现在它们与 `burn` 同一个待遇：声明 → 初始化 → 有读点 → 池化复位。 */
+Comp.define('Burn', { burn: 0, burnDps: 0, burnN: 0 });
+Comp.define('Slow', { slow: 0, slowMul: 0, slowN: 0 });
+Comp.define('Stun', { stun: 0, stunMul: 0, stunN: 0 });
 Comp.define('Pierce', { pierce: 0, hitSet: null });
 Comp.define('Crit', { crit: false, bigCrit: false });
 Comp.define('Origin', { fromX: 0, fromY: 0 });
@@ -519,7 +533,7 @@ Comp.archetype('player',
 
 Comp.archetype('enemy',
   ['Transform', 'Motion', 'Body', 'Health', 'Damage', 'HitFlash',
-    'Knock', 'Burn', 'AI', 'EnemyCore', 'SpriteCache'],
+    'Knock', 'Burn', 'Slow', 'Stun', 'AI', 'EnemyCore', 'SpriteCache'],
   { list: 'enemies', note: '怪：AI 驱动追击 / 攻击，掉落与经验在死亡时结算' });
 
 Comp.archetype('bullet',

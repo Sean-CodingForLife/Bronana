@@ -124,10 +124,20 @@ Diag.talk = function () {
   return '对白  ' + (said.length ? (said.length + '/' + all + ' 条短句说过：' + said.join(' ')) : '（这一局还没说短句）');
 };
 
+/**
+ * 状态（R50 第 10 条）：表里有几种 · 这一局场上挂着几个。
+ *
+ * ⚠ 它**只取模拟层那一行字**（`Game.statusLine`），不 import `status.ts` ——
+ * 第一版是直接读状态字段的，`test/debug.mjs` 的"诊断不依赖界面层 / 只读各系统的账"
+ * 与 `test/status.mjs` [6] 的"没有第二个模块自己按名字读写状态字段"
+ * **两条判据各抓了它一次**。与 `Diag.talk` 走 `Game.barkTotal` 是同一条处置。
+ */
+Diag.statuses = function () { return Game.statusLine(); };
+
 /** 汇总：面板就显示这几行 */
 Diag.lines = function () {
   return [Diag.header(), Diag.frame(), Diag.world(), Diag.objects(), Diag.containers(),
-    Diag.depth(), Diag.registry(), Diag.cache(), Diag.talk()];
+    Diag.depth(), Diag.registry(), Diag.cache(), Diag.talk(), Diag.statuses()];
 };
 
 Diag.text = function () { return Diag.lines().join('\n'); };

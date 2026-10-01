@@ -130,7 +130,7 @@ Demo.scene = function (sess) {
   ];
   spots.forEach(function (s, idx) {
     var e = Game._internals.spawnEnemy(s[0], p.x + s[1], p.y + s[2], { elite: idx % 5 === 0 });
-    if (e) { e.spawnT = 0; e.hp = e.maxHp * (0.35 + (idx % 4) * 0.2); if (idx % 3 === 0) e.burn = 1.5; }
+    if (e) { e.spawnT = 0; e.hp = e.maxHp * (0.35 + (idx % 4) * 0.2); if (idx % 3 === 0) e.burn = 1.5; } // status-field-ok：只是给演示摆出"几只怪在烧"的样子，不参与任何状态语义
   });
   Game._internals.spawnEnemy('giant', p.x + 300, p.y - 200, {});
   sess.enemies.forEach(function (e) { if (e.def.boss) e.spawnT = 0; });

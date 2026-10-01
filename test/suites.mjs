@@ -36,6 +36,8 @@ export const SUITES = [
   ['对话引擎 / 打字机·分支·历史·战斗短句', 'dialogue.mjs'],
   /* R41：NPC 交易（普查里"完全没有"的那一栏） */
   ['NPC 交易 / 报价·关系门槛·§6.5 硬约束', 'trade.mjs'],
+  /* R50 第 10 条：状态系统（可叠层、有秒数的 debuff / buff） */
+  ['状态系统 / 可叠层·定身·读数收口', 'status.mjs'],
   ['骨架系统 / 骨头·部件·几何等价', 'rig.mjs'],
   ['碰撞体 / 帧模型 / 插值', 'frames.mjs'],
   ['三种运行形态 / web·cli·desktop', 'modes.mjs'],

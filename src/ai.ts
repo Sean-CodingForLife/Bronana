@@ -107,6 +107,20 @@ AI.step = function (e, ctx) {
     }
   }
 
+  /* **状态的移动倍率作用在位置积分的前一步**（R50 第 10 条）。
+     ⚠ 它必须在这里，而不是在 `game.ts` 调完 `AI.step` 之后 ——
+       这一函数退出时位置**已经挪完了**，在外面按倍率只是白乘一场
+       （第一版就是这么错的：定身期间怪照样走）。
+     ⚠ **倍率由 ctx 注入**（`ctx.statusMul`），本模块不认识 `status.ts` ——
+       与"要什么能力都由 AiCtx 注入，不认识 Game / 渲染层"同一条纪律
+       （`test/ui-check.mjs` 有一条静态判据盯着 `ai.ts` 的依赖面）。
+       注入的倍率同时按住 `vx`/`vy`（上面刚算出来的追击速度）与 `kx`/`ky`（击退残余）：
+       只按前者的话，定身期间怪会被击退推着滑。 */
+  var sm = ctx.statusMul ? Number(ctx.statusMul(e)) : 1;
+  if (isFinite(sm) && sm !== 1) {
+    e.vx *= sm; e.vy *= sm;
+    e.kx *= sm; e.ky *= sm;
+  }
   e.x += e.vx * dt;
   e.y += e.vy * dt;
   var cl = ctx.clamp(e.x, e.y, e.r * 0.8);

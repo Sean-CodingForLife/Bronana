@@ -1106,7 +1106,7 @@ R.playerAnim = function (p) {
    每帧新建这些对象就是每帧几次分配，改成模块级复用（同步用完即弃）。 */
 var _skin = { base: PAL.SKIN, hi: '#fffdf2', sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT };
 var _pose = { x: 0, y: 0, rx: 0, ry: 0, bob: 0, armSwing: 0 };
-var _atlasWarm = false;   // 姿态图集预热过一次就够
+var _atlasWarm = '';   // 已经预热过的「职业 + 色板 + 脸型 + 半径」指纹（换人换色就要重烘）
 var _parts = {
   skin: _skin, seed: 1, face: 0, mood: 'idle',
   eyeStyle: 'stern', mouthStyle: 'flat', dots: true, outlineWidth: 0
@@ -1164,9 +1164,14 @@ function drawPlayer(x, p, sess) {
     _parts.dots = true;
 
     // 身体走**姿态图集**：一次 drawImage 顶掉原本 300+ 次绘制调用。
-    // 首次进场先把呼吸的所有档位烘完（否则每跨一档现烘一张，会有一帧抖动）
-    if (!_atlasWarm) {
-      _atlasWarm = true;
+    /* 首次进场先把呼吸的所有档位烘完（否则每跨一档现烘一张，会有一帧抖动）。
+       ⚠ 判据是**指纹**而不是"预热过一次就够"：图集键里含皮肤颜色（见
+          `sprites.ts` 的 `skinKey`），换一套色板 / 换一个存档就换了一批键 ——
+          只判布尔的写法会让新色板的第一帧现烘约 25 张，正是预热要消除的那种抖动。 */
+    var warmKey = p.charDef.id + '|' + _skin.base + '|' + _skin.sh + '|' + _skin.hi + '|' +
+      _skin.dp + '|' + _parts.eyeStyle + '|' + p.r;
+    if (_atlasWarm !== warmKey) {
+      _atlasWarm = warmKey;
       S.warmPlayerAtlas(p.charDef, { r: p.r, skin: _skin, seed: seed, eyeStyle: _parts.eyeStyle });
     }
     // 手臂/武器仍是矢量（它们每帧都在转），用的是同一个骨架、同一套部件层序。
@@ -1303,6 +1308,10 @@ function drawOneEnemy(x, e) {
     D.rect(x, ex - w / 2, ey - e.r * 1.65, w, 5, '#3a2f26', D.O.ink16);
     D.rect(x, ex - w / 2, ey - e.r * 1.65, w * k, 5, k > 0.5 ? PAL.E2 : PAL.E3, D.O.none);
   }
+  /* 燃烧环：**直接读剩余时长**（不走 `Status` 的门面）—— status-field-ok
+     理由是这一处要的是"它在烧吗"这个**表现层的问题**，而不是状态的门面
+     那两条语义（多个减速相乘 / 定身归零）。给渲染层加一个"有没有这个状态"的
+     查询口，只会让那个口为了一个读者而存在。 */
   if (e.burn > 0) {
     x.save(); x.globalAlpha = 0.5;
     D.arcRing(x, ex, ey, e.r + 5, 0, U.TAU, 2, PAL.FIRE, D.O.empty);

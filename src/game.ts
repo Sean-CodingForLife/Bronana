@@ -54,6 +54,7 @@ import { Craft } from './craft.ts';
 import { Market } from './market.ts';
 import { Pool } from './levelup.ts';
 import { Profile } from './profile.ts';
+import { Status } from './status.ts';
 import { Story } from './story.ts';
 import { RunSave } from './run_save.ts';
 import { Skills } from './skills.ts';
@@ -2399,21 +2400,28 @@ function damageEnemy(e, amount, opt) {
  * 现在元素表声明 `effect`（`burn` / `chain`），这里只按**机制名**分派：
  * 元素改名字、加元素都不碰这一行；声明了却没人认领的机制由 `test/elems.mjs` 抓。
  *
- * 系数（灼烧 0.35 / 电弧 0.5）留在这里而不是表里：它们是**公式的一部分**
- * （和暴击倍率、击退换算同一个位置），不是"每种元素各自的参数"。
+ * 系数（灼烧 0.35 / 电弧 0.5 / 霜冻的减速倍率）留在这里而不是表里：它们是
+ * **公式的一部分**（和暴击倍率、击退换算同一个位置），不是"每种元素各自的参数"。
+ *
+ * ⚠ **状态本身归 `status.ts`**（R50 第 10 条）：这一行只说"这个元素挂哪个状态"，
+ *   "挂多久 / 能叠几层 / 怎么读数"全在那边。改造前 `applyBurn` 是手写的两个魔数，
+ *   而"一共有几种状态"没有任何一处能回答。
  */
 function applyElement(e, element, dmg, depth) {
   switch (Elems.effectOf(element)) {
-    case 'burn': applyBurn(e, dmg * 0.35); return;
+    case 'burn': Status.apply(e, 'burn', { dps: dmg * 0.35 }); return;
     case 'chain': shockChain(e, dmg * 0.5, depth); return;
     default: return;                       // 没有附带效果（含认不出的元素名）
   }
 }
 
-function applyBurn(e, dps) {
-  e.burn = Math.max(e.burn || 0, 2.2);
-  e.burnDps = Math.max(e.burnDps || 0, dps);
-}
+/* ⚠ 这里**没有** `freeze` / `slow` 那一支，而且那是对的：
+   元素表（`data_elems.ts`）里只有 `burn` 与 `chain` 两种附带效果，
+   而"减速"这条状态是由**技能载荷**挂的（见下面 `applySkillPayload` 的 `slow`）。
+   本函数第一版留了一支 `case 'freeze'` + 一个 `FREEZE_MUL` 魔数 —— 那是**死代码**
+   （没有任何元素声明 `freeze`，于是那一支永远不会被执行）。
+   加霜冻元素时：`data_elems.ts` 里加一行 `effect: 'freeze'` 并在这里认领它 ——
+   `data_elems.ts` 的自检会要求"声明的效果有人读"，所以两处必须同时改。 */
 
 function shockChain(e, dmg, depth) {
   if (depth > 2) return;
@@ -2625,6 +2633,36 @@ Game.barksSaid = function () { return Object.keys(_barkSaid); };
 /** 短句表一共几条（诊断面板要"说过几 / 共几"—— 它不该 import `dialogue.ts`） */
 Game.barkTotal = function () { return Dialogue.BARKS.length; };
 
+/**
+ * **状态那一行**（R50 第 10 条）：表里有几种 · 这一局场上挂着几个。
+ *
+ * ⚠ 为什么这个口开在 `Game` 而不是让诊断面板自己算（`diag.ts` 那一行原本是
+ *   `host[i][id]` 直接摸字段）：`test/debug.mjs` 有一条判据
+ *   "诊断面板只读各系统的账、**不依赖界面层**"，而 `diag.ts`（L7）→
+ *   `status.ts` 是一条新的依赖边 —— 实测当场报红。
+ *   与 `Game.barkTotal` 同一条处置：**统计的口开在模拟层**，诊断只取一行字。
+ */
+Game.statusLine = function () {
+  var kinds = Status.LIST.map(function (d) { return d.name + ' ' + d.dur + 's×' + d.maxStacks; });
+  var head = '状态  ' + Status.LIST.length + ' 种（' + kinds.join(' · ') + '）';
+  if (!S) return head + '  无会话';
+  var live: Record<string, number> = Object.create(null);
+  var host: Array<Record<string, any>> = [];
+  var list = S.enemies || [];
+  for (var k = 0; k < list.length; k++) host.push(list[k] as unknown as Record<string, any>);
+  if (S.player) host.push(S.player as unknown as Record<string, any>);
+  for (var i = 0; i < host.length; i++) {
+    for (var j = 0; j < Status.LIST.length; j++) {
+      var id = Status.LIST[j].id;
+      /* **走门面**（`Status.leftOf`），不按字段名自己摸 —— 与状态那条静态判据同一条纪律 */
+      if (Status.leftOf(host[i], id) > 0) live[id] = (live[id] || 0) + 1;
+    }
+  }
+  var keys = Object.keys(live);
+  return head + '  场上挂着 ' +
+    (keys.length ? keys.map(function (x) { return x + '×' + live[x]; }).join(' ') : '无');
+};
+
 function hurtPlayer(raw) {
   var p = S.player;
   if (p.invuln > 0) return;
@@ -2736,7 +2774,12 @@ function spawnEnemy(def, x, y, opt) {
     speed: def.speed * spMul * (elite ? ELITE_SPEED : 1),
     elite: elite,
     hp: 0, dead: false,
-    hitFlash: 0, burn: 0, burnDps: 0,
+    hitFlash: 0, burn: 0, burnDps: 0, burnN: 0,
+    /* 状态字段全都在**出生时归零**（`comp.ts` 的 Burn / Slow / Stun 三个组件；
+       `<id>N` 是层数，见 `status.ts` 的 `apply` 那段说明）——
+       容器回收复用一只怪时，没归零的字段会把上一只身上的状态带过来。
+       改造前 `slow` / `stun` 连声明都没有，所以它们**从来不参与复位**（真 bug）。 */
+    slow: 0, slowMul: 0, slowN: 0, stun: 0, stunMul: 0, stunN: 0,
     atkCd: (def.atkCd || 0) * (0.5 + S.rnd() * 0.8),
     windup: 0, shootCd: 0.6 + S.rnd() * 1.2,
     phase: S.rnd() * 10,
@@ -3489,14 +3532,11 @@ function hurtWithSkill(e, dmg, element, fromX, fromY, knock) {
     applyElement(e, 'shock', dmg * 0.35, 0);
   }
   switch (sk.payload) {
-    case 'burn': applyBurn(e, pr && pr.burn ? pr.burn : 7); break;
-    case 'slow':
-      e.slow = Math.max(e.slow || 0, (pr && pr.life) || 3);
-      e.slowMul = Math.min(e.slowMul === undefined ? 1 : e.slowMul, 1 - ((pr && pr.slow) || 0.45));
-      break;
-    case 'stun':
-      e.stun = Math.max(e.stun || 0, (pr && pr.stun) || 0.55);
-      break;
+    /* 三个状态载荷走**同一张表**（R50 第 10 条）——
+       改造前 `slow` / `stun` 是手写的两行、而且没有任何读点。 */
+    case 'burn': Status.apply(e, 'burn', { dps: pr && pr.burn ? pr.burn : 7 }); break;
+    case 'slow': Status.apply(e, 'slow', { mul: 1 - ((pr && pr.slow) || 0.45) }); break;
+    case 'stun': Status.apply(e, 'stun', { dur: (pr && pr.stun) || 0.55 }); break;
     default: break;
   }
 }
@@ -3645,7 +3685,11 @@ var _aiCtx: AiCtx = {
   rnd: function () { return S.rnd(); },
   // 母巢召唤：走的是同一条刷怪路径（所以召唤物也受上限/回收策略管）
   spawn: function (id, x, y) { return spawnEnemy(Enemies.BY_ID[id], x, y, {}); },
-  shake: function (a) { requestShake(a); }
+  shake: function (a) { requestShake(a); },
+  /* 状态的移动倍率（R50 第 10 条）：**注入**给 AI 那一层 ——
+     `ai.ts` 不认识 `status.ts`（它的依赖面被一条静态判据盯着）。
+     传的是**函数引用**，不是每帧现建一个闭包（那是每帧一次分配）。 */
+  statusMul: function (e) { return Status.moveMul(e); }
 };
 
 function updateEnemies(dt) {
@@ -3658,15 +3702,22 @@ function updateEnemies(dt) {
     if (e.spawnT > 0) { e.spawnT -= dt; continue; }
 
     if (e.hitFlash > 0) e.hitFlash -= dt;
-    if (e.burn > 0) {
-      e.burn -= dt;
-      e.hp -= e.burnDps * dt;
-      if (S.rnd() < dt * 8) {
-        Emit.ember(e);
-      }
+    /* **状态计时与结算**（R50 第 10 条）：计时归 `status.ts`（`tick`），
+       这里只做它不管的那一半 —— 扣血（它不认识"血"）与粒子。
+       ⚠ 顺序要紧：先 `tick` 再结算，否则最后那一帧的状态按"还剩负数秒"算。 */
+    Status.tick(e, dt);
+    var dps = Status.rateOf(e, 'burn');
+    if (dps > 0) {
+      e.hp -= dps * dt;
+      if (S.rnd() < dt * 8) Emit.ember(e);
       if (e.hp <= 0) { killEnemy(e); continue; }
     }
 
+    /* **减速 / 定身真的生效**（改造前这两个载荷是死写入，见 comp.ts 那段说明）。
+       ⚠ 施加点在 `ai.ts` 的 `AI.step` **里面**（位置积分的前一步）——
+         因为位置积分就在那儿（`e.x += e.vx * dt`），而在外面加是加不上的：
+         `AI.step` 返回时这一帧的位置**已经挪完了**（第一版就是这么错的）。
+         计时与结算在这一层，位移的那一步归 AI 那一层 —— 两边各管一半。 */
     AI.step(e, _aiCtx);
   }
 }

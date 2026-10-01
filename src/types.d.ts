@@ -1380,6 +1380,8 @@ interface DiagApi {
   objects(): string;
   /** 对白那一行（这一局说过哪几句 bark / 打字机速度）—— R41 */
   talk(): string;
+  /** 状态那一行（表里有几种 · 这一局场上挂着几个）—— R50 第 10 条 */
+  statuses(): string;
   depth(): string;
   registry(): string;
   cache(): string;
@@ -1671,6 +1673,16 @@ interface AiCtx {
   spawn?(id: string, x: number, y: number): Enemy | null;
   /** 请求镜头抖动（破土那一下；同样是注入的能力） */
   shake?(amount: number): void;
+  /**
+   * **状态的移动倍率**（R50 第 10 条）：位置积分前那一步要乘的那个数。
+   *
+   * 为什么要注入而不是让 `ai.ts` 直接读状态：`ai.ts` 的依赖面只有
+   * `utils` / `registry`（要什么能力都由 AiCtx 注入，它不认识 Game / 渲染层），
+   * 而 `test/ui-check.mjs` 有一条静态判据盯着这句话 —— 直接 import `status.ts`
+   * 当场报红（实测就是它抓到的）。
+   * @returns 倍率（1 = 什么都没挂；`stun` 是 0）
+   */
+  statusMul?(e: Enemy): number;
 }
 
 interface AiBehaviour {
@@ -1748,7 +1760,8 @@ interface Enemy {
   armorFlat?: number; _shockTag?: number;
   /** 超时狂暴标记（渲染/调试可读） */
   enraged?: boolean;
-  _spr?: Sprite; _fl?: Sprite;
+  /* 每实例的贴图记忆：本体 / 白闪 / 精英覆盖层（倍率变了就整批重取） */
+  _spr?: Sprite; _fl?: Sprite; _el?: Sprite;
 }
 
 interface Bullet {
@@ -2492,6 +2505,8 @@ interface SpritesApi {
   enemySprite(def: EnemyDef): Sprite | null;
   enemyBox(def: EnemyDef): EnemyBox;
   enemyFlash(def: EnemyDef): Sprite | null;
+  /** 精英色覆盖层（薄金 **只落在轮廓内**）—— 与白闪同一套路：离屏烘一次、绘制时只 blit */
+  enemyElite(def: EnemyDef): Sprite | null;
   drawEnemy(x: any, e: Enemy, time: number, ox?: number, oy?: number): void;
   weaponSprite(kind: string, tints: string[] | undefined, scale?: number, swing?: number): Sprite | null;
   WEAPON_SWING_SHAPED: Record<string, boolean>;
@@ -3538,6 +3553,62 @@ interface TradeApi {
   isEmpty(offer: TradeOfferDef | null): boolean;
   giveText(offer: TradeOfferDef | null): string;
   askText(offer: TradeOfferDef | null): string;
+  describe(): string;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
+
+/* ---------------- 状态系统（status.ts，R50 第 10 条） ----------------
+   可叠层、有秒数的 debuff / buff。与契约（层间一次选择）和角色机制
+   （`rage` / `invuln`）的分工写在 `status.ts` 的头注释里 —— 那一节就是
+   R50 那条"待确认 ③"的答案。
+   ⚠ **运行时不另开字段**：状态就写在它作用的那个对象上（敌人 `e.burn` / `e.slow`），
+     宿主对象的字段由 `comp.ts` 的 `Burn` / `Slow` 两个组件声明。 */
+interface StatusDef {
+  id: string;
+  name: string;
+  en: string;
+  /** 它能干什么（`dot` 按秒扣血 / `slow` 减速 / `haste` 加速 / `regen` 按秒回血） */
+  kind: string;
+  /** 挂一次持续多久（秒） */
+  dur: number;
+  /** 最多挂几层 */
+  maxStacks: number;
+  /** 重复施放怎么算：`max` 取较长的时长（不叠加）· `stack` 时长累加到上限 */
+  refresh: 'max' | 'stack';
+  note: string;
+}
+interface StatusApplyOpt {
+  /** 覆盖时长（缺省用表里的） */
+  dur?: number;
+  /** `slow` / `haste` 的倍率（0.6 = 慢 40%） */
+  mul?: number;
+  /** `dot` / `regen` 的每秒量 */
+  dps?: number;
+}
+interface StatusApi {
+  LIST: StatusDef[];
+  BY_ID: Record<string, StatusDef>;
+  /** 四种 `kind` 的唯一出处 */
+  KINDS: string[];
+  byId(id: string): StatusDef | null;
+  maxStacksOf(id: string): number;
+  /** 挂一个状态上去；返回挂上之后的**层数**（0 = 没挂上） */
+  apply(host: Record<string, any> | null, id: string, opt?: StatusApplyOpt): number;
+  /** 走 `dt` 秒，返回**到期的那几个**（调用方据此做收尾） */
+  tick(host: Record<string, any> | null, dt: number): string[];
+  /** 还剩多少秒 */
+  leftOf(host: Record<string, any> | null, id: string): number;
+  /** 现在挂了几层（由"已消耗的时长"反推，不另存字段） */
+  stacksOf(host: Record<string, any> | null, id: string): number;
+  /** **移动倍率**（`slow` / `haste` / `stun` 的唯一读法；多个状态相乘、定身归零） */
+  moveMul(host: Record<string, any> | null): number;
+  /** **把移动倍率作用到速度上**（唯一的施加处）。
+   *  ⚠ 它同时按住 `vx`/`vy`（AI 的追击）与 `kx`/`ky`（击退的残余）——
+   *  只按前者的话，定身期间怪会被击退**推着滑**（实测踩过）。
+   *  @returns 用掉的那个倍率（1 = 什么都没挂） */
+  applyMove(host: Record<string, any> | null): number;
+  /** **每秒扣/回多少血**（`dot` / `regen` 的唯一读法；按层数乘） */
+  rateOf(host: Record<string, any> | null, id: string): number;
   describe(): string;
   audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
@@ -4825,6 +4896,9 @@ interface GameApi {
   barksSaid(): string[];
   /** 短句表一共几条（诊断面板要"说过几 / 共几"） */
   barkTotal(): number;
+  /** **状态那一行**（表里有几种 · 这一局场上挂着几个）——
+   *  诊断面板读它，于是它不必 import `status.ts`（`test/debug.mjs` 有一条判据盯着）。 */
+  statusLine(): string;
   /* ---- **存档角色**（R50）：改哪一份存档、这一档的那个人是谁 ----
      与 `Game.material` / `Game.keepBuy` 同一条纪律：界面走**一个口**，
      于是"这个人归哪一层"只有一个答案。真正的账在 `profile.ts`

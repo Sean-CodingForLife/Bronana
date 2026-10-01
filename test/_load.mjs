@@ -62,6 +62,8 @@ export const MODULES = {
   character:  '../src/character.ts',
   /* 对话引擎（R41 补的那一半）：纯函数、不认识 DOM，与 story.ts 同层 */
   dialogue:   '../src/dialogue.ts',
+  /* 状态系统（R50 第 10 条）：一张声明表 + 收口，不认识 DOM / 不认识会话 */
+  status:     '../src/status.ts',
   /* NPC 交易（R41）：规则表 + 纯函数，只 import bonds / ledger / registry / selfcheck */
   trade:      '../src/trade.ts',
   tiers:   '../src/data_tiers.ts',
@@ -127,6 +129,8 @@ export const SIM_MODULES = [
   'appearance', 'openings', 'character',
   /* 对话引擎（R41）：只依赖 registry / selfcheck —— 与 `appearance` 同一批 */
   'dialogue',
+  /* 状态系统（R50 第 10 条）：只依赖 registry / selfcheck —— 同一批 */
+  'status',
   /* NPC 交易（R41）：读 `bonds`（关系阶段门槛）与 `ledger`（收的钱是不是真代币）*/
   'trade',
   'tiers', 'elems', 'curves',
