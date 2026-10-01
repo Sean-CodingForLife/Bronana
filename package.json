@@ -22,6 +22,8 @@
     "desktop:gpu": "node desktop/launch.mjs --gpu",
     "desktop:nosandbox": "node desktop/launch.mjs --no-sandbox",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "env:declared": "node tools/env-declared.mjs",
+    "where": "node tools/where.mjs",
     "verify": "node tools/verify.mjs",
     "verify:quick": "node tools/verify.mjs --quick",
     "typecheck:report": "node tools/tsc-report.cjs",

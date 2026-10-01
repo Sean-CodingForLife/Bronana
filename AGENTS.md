@@ -32,7 +32,7 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |
 | 测试 | **67 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
-| 验收门 | **25 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
+| 验收门 | **26 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
 
 三种运行形态共用同一份 `src/`：**web**（Vite）、**cli**（无头 `sim` / 静态 `serve`）、**desktop**（Electron 外壳）。
 
@@ -43,9 +43,9 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 ```bash
 pnpm i                 # 装依赖（只有 4 个 devDependencies）
 
-pnpm verify --list     # **先跑这个**：列出 25 道门、每道在挡什么
+pnpm verify --list     # **先跑这个**：列出 26 道门、每道在挡什么
 pnpm verify --quick    # 迭代用（约 20 秒）：跳过测试套件，并明说跳了什么
-pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 25 道门
+pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 26 道门
 ```
 
 > ⚠ **`pnpm verify` 是本项目的准绳。** 说"改好了"之前必须跑它，并附上真实输出。
@@ -92,6 +92,38 @@ pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 25 �
 - `SelfCheck.register` 的函数必须**无参、返回 `{ ok, problems }`**；
 - **启动期不得读别的模块的家族**（那个模块可能还没加载）—— 先用 `Registry.has(name)` 问在不在；
 - 参考样板：`src/economy.ts`（最完整的一份）、`src/danger.ts`（最小的一份）。
+
+### ⚠ 机器层的两条实操陷阱（**先看 `pnpm run where`**）
+
+这个仓库**不一定在固定机器上开发**，所以本节只写**机制**（跨机器都成立）；
+**值**（代理端口 / 存档目录 / tsc 路径）是**机器层**的，跑 `pnpm run where` 看这台机器的事实卡。
+
+| 层 | 进版本库吗 | 住哪 |
+| --- | --- | --- |
+| **仓库层** | ✅ | `.env.example`（**键的声明**）· 本节 · `tools/where.mjs` |
+| **机器层** | ❌（已 gitignore） | `.env`（**值**）· `~/.gitconfig`（git 自己的那份，如代理） |
+| **会话层** | ❌ | `tools/.session.json`（并行会话快照，见 `tools/env.mjs`） |
+
+**陷阱一：`git`（libcurl）不读 Windows 的 WinINET 代理。**
+系统代理开着（浏览器、PowerShell 都走它）时，git 仍然**直连** `github.com` ⇒
+`git push` 报 **`Recv failure: Connection was reset`** / **21 秒超时** / **403**，
+而 `git ls-remote`（**连读都失败**）是判断"这条路的传输通不通"的最快判据。
+
+```powershell
+git config --get http.https://github.com.proxy     # 没输出 = 没配 ⇒ 直连 ⇒ 大概率就是它
+git config --global http.https://github.com.proxy http://127.0.0.1:<你的端口>
+```
+⚠ 这条配置在**用户全局**（`C:/Users/<你>/.gitconfig`），**跟着机器+账号走、不跟着仓库走** ——
+**换机器就要重新配**。所以本节不写端口号：写进来就是"文档说了一道在这台机器上才存在的修复"。
+
+**陷阱二：`node --env-file` **不覆盖** shell 里已有的同名变量。**
+实测：shell 有 `PROBE_VAR=from_shell`、`.env` 写 `from_file` ⇒ 结果是 `from_shell`。
+所以"我在 `.env` 里改了，怎么不生效"是**结构性**的（与 Cargo「成员写 `[profile]` 被静默忽略」同形）。
+诊断：`node --env-file-if-exists=.env tools/where.mjs` 会指出哪个键被 shell 盖住。
+另外：**可选文件必须用 `--env-file-if-exists`** —— `--env-file` 在文件缺失时**硬失败**。
+
+> **判据（与用词纪律同级）**：环境须知里的每一句，都必须能回答"**在哪台机器上**"；
+> 答不出来的，就是一句没有主语、因而**不可核对**的断言 —— 而"不可核对"正是本仓库最忌的那种文档。
 
 ### 自检必须**证明它会失败**
 
@@ -306,7 +338,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 ### 需求怎么走（五步，缺一步不算完）
 
 `1 提出（用户）→ 2 复述（AGENT：指认它属于哪个模块、跟已有的谁是同一类）→
-3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（25 道门全绿 + 行为指纹）`，
+3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（26 道门全绿 + 行为指纹）`，
 状态与证据都记在 `docs/requirements.md`。
 
 ### 用词纪律（**AGENT 必须遵守**，写在 `src/terms.ts` 里、由门 `name` 守）

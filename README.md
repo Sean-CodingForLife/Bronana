@@ -1768,7 +1768,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **25 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **26 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **67 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | 93 个 · 43k 行（另有 `types.d.ts` 5.2k 行） |

@@ -3821,7 +3821,7 @@ Safari（尤其 Intel Mac）的 `ImageBitmap` transfer + 消费成本；引入 w
 
 | 维度 | 实测值 |
 | --- | --- |
-| 门 | **25 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `audio` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **26 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `audio` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **67 套**（清单在 `test/suites.mjs`，**数量由清单算出来**） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | **97 个 · 45307 行**（另有 `types.d.ts` 5469 行；`hall.ts` 724 行） |

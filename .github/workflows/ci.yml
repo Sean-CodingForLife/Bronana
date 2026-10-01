@@ -129,6 +129,9 @@ jobs:
       - name: 附加 · SOLID 体检
         run: pnpm run solid -- --strict
 
+      - name: 附加 · 环境变量声明（每个被读的键都在 .env.example 里）
+        run: pnpm run env:declared
+
       - name: 附加 · 用词规范
         run: pnpm run name:audit
 
