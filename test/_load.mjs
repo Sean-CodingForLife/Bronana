@@ -15,6 +15,7 @@ export const MODULES = {
   utils:   '../src/utils.ts',
   /* 视口（R56）：窗口 / 视口 / 相机三件事分开，坐 L0（纯几何，不认识 Game） */
   viewport: '../src/viewport.ts',
+  rhi:      '../src/rhi.ts',
   registry: '../src/registry.ts',
   selfcheck: '../src/selfcheck.ts',
   containers: '../src/containers.ts',
@@ -127,7 +128,7 @@ export const SIM_MODULES = [
   /* `world`（世界系统）只需要 registry / selfcheck；`object`（对象系统）需要 comp / containers。
      两者都是 L0 地基，所以排在最前面 —— 后面的 arena / hall / game / render 都读它们。 */
   'utils',
-  'viewport', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
+  'viewport', 'rhi', 'registry', 'selfcheck', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
   'world', 'comp', 'object', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats',
   /* **外观与入门三选**（R50）：两者都只依赖 registry / selfcheck（openings 还读 stats），
      所以它们坐在这一批的最前面 —— `character` 读 `appearance`，顺序必须如此。 */

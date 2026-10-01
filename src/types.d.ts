@@ -1653,6 +1653,41 @@ interface ViewportApi {
   halfView(cam: { zoom: number }): { w: number; h: number };
   audit(): { ok: boolean; problems: string[] };
 }
+/* ---------------- 渲染硬件接口（rhi.ts，R60） ----------------
+   把"引擎允许用哪些绘制成员"从**宿主**收进**引擎自己的表**。
+   改造前 `draw2d.ts` 直接读写 `CanvasRenderingContext2D` ——
+   于是"换后端"等于"重写全部绘制原语"。 */
+/** 绘制面的一块（按用途分组）：**唯一出处**，新增成员要显式写进来 */
+interface RHISurfaceDef {
+  id: string;
+  /** 这一块是干什么的（不写用途的成员表会被随手塞东西） */
+  note: string;
+  members: string[];
+}
+/** 一个渲染后端 */
+interface RHIBackendDef {
+  id: string;
+  note: string;
+  /** 实现在哪（**必填**：没写就等于"计划里有个名字"） */
+  impl: string;
+  status: 'active' | 'planned';
+}
+interface RHIApi {
+  /** 包装一个 Canvas2D 上下文成 RHI 视图（**幂等**）。返回**同形状**对象 ⇒
+   *  `draw2d.ts` 一行都不用改（"透明"这条要求的直接推论） */
+  wrap(ctx: any): any;
+  /** 这个 ctx 是不是已经被包过 */
+  isWrapped(ctx: any): boolean;
+  /** 引擎允许的绘制面（拍平成一维成员名） */
+  surface(): string[];
+  /** 按用途分组的面 */
+  surfaceGroups(): { id: string; note: string; count: number; members: string[] }[];
+  /** 后端表 */
+  backends(): { id: string; note: string; impl: string; status: string; active: boolean }[];
+  /** 当前活跃后端的 id（必须恰好一个） */
+  activeBackend(): string | null;
+  audit(): { ok: boolean; problems: string[] };
+}
 /* ---------------- Z 深度（depth.ts） ----------------
    层带 + 层内 y 排序 + 确定性 tie-break；sim 层不参与，实体由渲染层注册。
 

@@ -34,6 +34,14 @@ const SYSTEMS = [
            `R.cam` 里，而相机**属于 Viewport**（行业通行模型
            `Window ⊃ Viewport ⊃ Layer ⊃ Item`）—— 所以它坐这里而不是 L7。 */
       'viewport.ts',
+      /* `rhi.ts`（**渲染硬件接口**，R60）坐在 L0 的理由：它只 import
+         `registry.ts` / `selfcheck.ts`（都是 L0），而且它声明的是
+         **"引擎允许用哪些绘制成员"** —— 面是**引擎的**，不是**宿主的**。
+         改造前 `draw2d.ts` 直接读写 `CanvasRenderingContext2D`，于是"换后端"
+         等于"重写全部绘制原语"、"换宿主"等于"重写引擎"。
+         ⚠ 它**不认识** `CanvasRenderingContext2D`（那是后端的事）——
+         所以它比 `draw2d.ts` 更靠近底层，而 `draw2d.ts` 反过来 import 它。 */
+      'rhi.ts',
       /* `fold.ts`（数值折叠：一张表四种折法）坐在 L0 的理由：它只 import
          `registry.ts` / `selfcheck.ts`（都是 L0），不认识任何一个玩法概念 ——
          而 data（1）/ dungeon（2）/ meta（3）/ sim（4）四层都要用它的折法。

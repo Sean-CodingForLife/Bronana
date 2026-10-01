@@ -110,6 +110,7 @@
     "test:economy": "node test/economy.mjs",
     "test:render": "node test/render-check.mjs",
     "test:depth": "node test/depth.mjs",
+    "test:rhi": "node test/rhi.mjs",
     "test:cache": "node test/cache.mjs",
     "test:ui": "node test/ui-check.mjs",
     "test:input": "node test/input.mjs",

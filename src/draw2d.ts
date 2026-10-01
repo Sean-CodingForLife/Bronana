@@ -5,12 +5,31 @@ draw2d.ts — 美术宪法执行层
 ========================================================= */
 
 import { PAL, U } from './utils.ts';
+import { RHI } from './rhi.ts';
 var OUT = 3;             // 标准外轮廓线宽
 
 /* ================= 基础 ================= */
+
+/**
+ * 取绘制上下文 —— **本模块唯一的 ctx 入口**（R60 之后它是 RHI 的插点）。
+ *
+ * ## 为什么这里是那个插点
+ * 改造前本文件 382 行、**27 个成员**全部直接读写 `CanvasRenderingContext2D`
+ * （`strokeStyle` / `lineWidth` / `beginPath` / `quadraticCurveTo` …）。
+ * ⇒ 这台引擎的"渲染能力"当时就是 **HTML Canvas API 的一个薄包装**：
+ *   换后端 = 重写全部绘制原语；换宿主 = 重写引擎。
+ *
+ * 现在经 `RHI.wrap()` 过一次（`rhi.ts` 声明**引擎允许用哪些成员**）。
+ * ⚠ **它今天是透明的**：`wrap()` 用 `Proxy` 逐成员转发，不改时序、不改成员可见性 ——
+ * 所以本文件下面那 380 行**一行都没改**，而绘制调用序列与改造前**逐字节一致**
+ * （`test/draw.mjs` 有断言；这是"零行为变化"的机器判据）。
+ * 将来的 WebGL2 后端要自己实现这同一个面（路径→三角带、3px 外轮廓→三角扩张描边）。
+ */
 function ctxOf(c) {
   if (!c) return null;
-  var x = (c.getContext ? c.getContext('2d') : c);
+  var raw = (c.getContext ? c.getContext('2d') : c);
+  if (!raw) return null;
+  var x = RHI.wrap(raw);
   if (x) { x.lineJoin = 'round'; x.lineCap = 'round'; }
   return x;
 }

@@ -21,7 +21,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在挡什么
 
 # —— 也可以单独跑某一道 ——
 pnpm typecheck         # tsc ×2（src + node 两套配置），必须 0 错
-pnpm test              # 64 套测试，必须全绿
+pnpm test              # 65 套测试，必须全绿
 pnpm fingerprint       # 行为指纹，必须逐位不变（除非你是有意改行为，见下）
 pnpm run audit         # 分层 / 环 / 死代码 / 未读字段
 pnpm run guards        # 家族与模块守卫
