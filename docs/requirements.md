@@ -799,6 +799,17 @@ v3 §6.5 的原话是"NPC 互动**不能直接花战斗/经营模块代币**，�
 （只挪坐标、不碰任何玩法状态）。"走过去真的能到"由 `hall.ts` 的连通性自检
 与 `test/trade.mjs` [4] 一条**真走位**断言各自守着 —— 两条路分开量，各自才说得清。
 
+#### ✅ R41 第三批收尾记录（2026-10）—— 推送与 CI 核对
+
+| 核对项 | 结果 |
+| --- | --- |
+| 推送 | ✅ `git push origin main` 成功（`21f01af..0df7b18`） |
+| 远端对齐 | ✅ `git log origin/main..HEAD` 为空 |
+| CI（`.github/workflows/ci.yml`） | ✅ **completed / success**（[run 36812385388](https://github.com/Sean-CodingForLife/Bronana/actions/runs/36812385388)） |
+| 工作区 | ✅ 干净（只剩用户自己的 `pnpm-lock.yaml` 改动，未纳入本轮） |
+
+⚠ 与 R44 同一条纪律：**推送与核对是两件事** —— 只看到"推送成功"就收工，那次核对不成立。
+
 ---
 
 #### R41 对话系统 / NPC 交易：有骨架、缺一半，以及一个**真 bug**
