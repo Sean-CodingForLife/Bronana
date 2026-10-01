@@ -112,6 +112,8 @@
     "test:render": "node test/render-check.mjs",
     "test:depth": "node test/depth.mjs",
     "test:rhi": "node test/rhi.mjs",
+    "dev:edit": "node tools/dev-edit.mjs",
+    "test:dev-edit": "node test/dev-edit.mjs",
     "test:cache": "node test/cache.mjs",
     "test:ui": "node test/ui-check.mjs",
     "test:input": "node test/input.mjs",

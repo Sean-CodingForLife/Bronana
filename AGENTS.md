@@ -31,7 +31,7 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | 模块格式 | 真 `import` / `export`（无 IIFE、无 `window.X`） | 依赖图能被静态校验，测试能直接 `import src/*.ts` |
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |
-| 测试 | **65 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
+| 测试 | **66 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
 | 验收门 | **24 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
 
 三种运行形态共用同一份 `src/`：**web**（Vite）、**cli**（无头 `sim` / 静态 `serve`）、**desktop**（Electron 外壳）。
@@ -49,14 +49,14 @@ pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 24 �
 ```
 
 > ⚠ **`pnpm verify` 是本项目的准绳。** 说"改好了"之前必须跑它，并附上真实输出。
-> 只跑 `--quick` 不算 —— 它跳过的恰好是"行为与数值的唯一真相"（65 套测试）。
+> 只跑 `--quick` 不算 —— 它跳过的恰好是"行为与数值的唯一真相"（66 套测试）。
 
 只跑某一道门时（门 = 命令 = 退出码，没有别的判据）：
 
 | 门 | 命令 | 挡什么 |
 | --- | --- | --- |
 | 类型 | `pnpm typecheck` | tsc ×2（浏览器侧 `types: []` + Node 侧），必须 **0 错** |
-| 测试 | `pnpm test` | 65 套无头套件的总入口 |
+| 测试 | `pnpm test` | 66 套无头套件的总入口 |
 | 指纹 | `pnpm fingerprint` | 纯重构必须**逐位不变**（见第五节） |
 | 分层 | `pnpm run audit` | 依赖环 / 死代码 / 未读字段 / 向上依赖未登记 |
 | 守卫 | `pnpm run guards` | 每个家族的值域要么有自检、要么被跨表引用守着 |
@@ -127,7 +127,7 @@ pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 24 �
 
 ### 2. `sim` 层及以下**不许碰 DOM，也不许碰 Node**
 
-这不是风格问题，是**"65 套测试能在 Node 里跑"的前提**，而且被两道机器守着：
+这不是风格问题，是**"66 套测试能在 Node 里跑"的前提**，而且被两道机器守着：
 
 - `tsconfig.json` 刻意 `types: []` → `src/` 里误用 `process` / `fs` / `Buffer` 直接**编译报错**；
 - `test/ui-check.mjs` 解析整张 import 图并断言：无环、模拟层不得依赖渲染/界面/输入/音频、
@@ -332,6 +332,60 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 **加一个新术语怎么办**：改 `src/terms.ts` 的表（`CURRENCY` / `RETIRED` / `ALIAS` / `SOURCE` / `ALIAS_DOMAIN`），
 然后 `pnpm run name:audit`。**不要**在文档或注释里另立一份术语表 —— 门抓不到它。
 门的自检在 `test/name-gate.mjs`（调门本身 + 注入坏数据证明它会红）。
+
+### ⚠ 改文件：**不要用 shell 做文本编辑**（踩过一整轮，所以单列一节）
+
+**判据只有一条**：
+
+| 你要改的东西 | 用什么 |
+| --- | --- |
+| **含非 ASCII**（中文注释 / 文案）· 含引号 / 反斜杠 / 反引号 · 跨多行 | **`node tools/dev-edit.mjs --patch <patch.json>`**，或 `write` / `edit` 工具 |
+| 跑命令、看输出、`git`、查文件 | shell 没问题 |
+
+**为什么**：实测 shell（PowerShell）在文本编辑上咬过 **6 类**，每类都真发生过：
+
+| # | 失败模式 | 症状 |
+| --- | --- | --- |
+| 1 | **非 ASCII + 内嵌引号** | `ParserError` —— shell 的**解析**先于你的意图介入 |
+| 2 | **反引号转义被展开** | here-string 里的反引号 n 变成**真换行**，写进去的不是字面 `\n` |
+| 3 | **CRLF vs LF 不匹配** | `.Replace()` **静默不命中** —— "改了但没改到"，**不报错** |
+| 4 | **`+` 被当成算术** | 多行字符串拼接 ⇒ `InvalidArgument` |
+| 5 | **`Set-Content` 写 CRLF** | 整文件变改动（见下面「行尾」那一节） |
+| 6 | **正则误改注释** | `[regex]::Replace` 把**注释里的同名文本**也改了 |
+
+> 🔴 **还有第 7 类，而且它是"讲转义时踩转义"**：在**块注释里写出块注释的结束符**
+> （两个字符 `*` 与 `/` 紧挨着，例如想举例说明"注释"）会把**那段注释提前关掉** ——
+> 于是下面几行落到代码位置，`SyntaxError`。**本项目在写 `tools/dev-edit.mjs`
+> 的文件头时真踩了这一次。** 所以：**块注释里不要写那个结束符**，要描述就说"块注释的结束符"。
+
+**用法（关键：文本进 patch 文件，命令行上只有 ASCII 路径）**：
+
+1. 用 `write` 工具写一个 patch（它保证 UTF-8 + LF，不经 shell）：
+
+   ```json
+   { "ops": [
+     { "op": "replace",      "file": "src/x.ts", "from": "旧文本", "to": "新文本" },
+     { "op": "replaceAll",   "file": "src/x.ts", "from": "旧", "to": "新" },
+     { "op": "insertBefore", "file": "src/x.ts", "anchor": "某行", "text": "新内容" },
+     { "op": "insertAfter",  "file": "src/x.ts", "anchor": "某行", "text": "新内容" },
+     { "op": "writeLine",    "file": "src/x.ts", "match": "^import", "line": "新行" }
+   ] }
+   ```
+
+2. `node tools/dev-edit.mjs --patch .tmp-patch.json`（可加 `--code-only` / `--dry`）
+
+**它比 shell 的字符串替换安全在哪**（这四条正是上表 1 / 2 / 3 / 6 的根治）：
+
+- **UTF-8 进出**，不碰编码；
+- **行尾不猜**：先把原文件统一成 LF 再匹配，写回时**恢复原行尾**（失败模式 3）；
+- **`from` 必须唯一**：命中 0 次或 >1 次**都退出码 1、且不写盘** ——
+  而 shell 的 `.Replace()` 不命中时**静默成功**；
+- **`--code-only` 只改代码行**，跳过注释（失败模式 6）。
+
+> 门 `test:dev-edit`（`test/dev-edit.mjs`，**25 条断言**）**逐条证明它能挡住上面那 6 类** ——
+> 拿真 CRLF 文件、真中文引号、真注释行跑。**这条测试本身也修过两版**：
+> 第一版有两条断言**把工具的正确行为写成了反面**（一处少写了反斜杠、一处描述了一个
+> 因为搜索串形状而根本不会发生的命中），已按实测形状改正。
 
 ### ⚠ 行尾与「刷新工作区」（**踩过两次，所以单列一节**）
 

@@ -80,6 +80,8 @@ export const SUITES = [
   /* R60：渲染硬件接口。它测的是**一个承诺** —— `RHI.wrap()` 是透明的。
      因为 `draw2d.ts` 那 380 行绘制原语**一行都没改**，全靠这句承诺不破。 */
   ['RHI 渲染硬件接口 / 透明性与面完整性', 'rhi.mjs'],
+  /* 开发工具：证明 	ools/dev-edit.mjs 能挡住 shell 的 6 类文本编辑失败 */
+  ['开发工具 / 结构化文本编辑（挡住 shell 的 6 类）', 'dev-edit.mjs'],
   ['缓存 / 烘焙倍率 / 条目收敛', 'cache.mjs'],
   ['界面层 / DOM 流程', 'ui-check.mjs'],
   ['架构 / 系统分层与依赖方向', 'arch.mjs'],
