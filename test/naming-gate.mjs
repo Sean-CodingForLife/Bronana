@@ -63,13 +63,26 @@ T.section('① 往引擎模块写一个新内容名 ⇒ 红');
 /* ---------------- ② 欠账表对不上 ⇒ 红（两个方向） ---------------- */
 T.section('② 欠账表与实测对不上 ⇒ 红（表是欠条，不是豁免）');
 {
-  /* 方向 A：实测 > 表（有人加了）—— 把 comp.ts 的表值改小 */
-  const rA = withFile(GATE, (s) => s.replace("'comp.ts': 1,", "'comp.ts': 0,"), run);
+  /* ⚠ **探针由本测试自己造，不再引用表里任何一条真实欠账。**
+     第一版把 `'comp.ts': 1,` 写死在测试里 —— 而 E3 第 1 小步把那一条**还清并删掉**之后，
+     `s.replace("'comp.ts': 1,", …)` 变成**静默的空操作**（`.replace` 匹配不到**不报错**），
+     于是门照旧是绿的、而测试报「期望 1 得到 0」。
+     这与本项目记过的「**改名只改一半 / 判据里硬编旧值**」是同一个坑
+     （E2 的 `BRONANA_SOURCEMAP` 被断言写死那一次）—— **判据里的旧值要跟着被测对象一起改**。
+     现在改成**注入一条合成欠账**（`fold.ts` 是引擎模块、实测 0 处）：
+     表变短、乃至表被清空成 `{}`，这一套仍然有效。 */
+  const victim = path.join(ROOT, 'src', 'fold.ts');
+  const injectDebt = (src, line) => src.replace('const DEBT = {', 'const DEBT = {\n  ' + line);
+
+  /* 方向 A：实测 > 表（有人加了）—— 表里写 0，源码里塞进 1 处内容名 */
+  const rA = withFile(GATE, (s) => injectDebt(s, "'fold.ts': 0,"), () =>
+    withFile(victim, (s) => s + '\nvar probeBronana = 1;\n', run));
   T.eq(rA.code, 1, '实测多于表 ⇒ 退出码 1');
   T.ok(rA.out.includes('对不上'), '报告里出现「欠账表与实测对不上」');
+  T.ok(!fs.readFileSync(victim, 'utf8').includes('probeBronana'), '（还原）fold.ts 的探针已经清掉');
 
-  /* 方向 B：实测 < 表（债还清了但没删）—— 把 comp.ts 的表值改大 */
-  const rB = withFile(GATE, (s) => s.replace("'comp.ts': 1,", "'comp.ts': 5,"), run);
+  /* 方向 B：实测 < 表（债还清了但没删）—— 表里写 2，源码里 0 处 */
+  const rB = withFile(GATE, (s) => injectDebt(s, "'fold.ts': 2,"), run);
   T.eq(rB.code, 1, '实测少于表 ⇒ 退出码 1');
   T.ok(rB.out.includes('还清了'), '报告里出现「债还清了，请删掉表里那一条」');
 }

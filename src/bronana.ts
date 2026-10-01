@@ -110,7 +110,7 @@ var PAINT = {
   weapon: 50     // 武器由 render 画在最外层（需要武器列表与挥击进度）
 };
 
-/* 共享选项对象：D.bronana 的 o 参数每帧新建一个字面量就是一次分配。
+/* 共享选项对象：D.seedBlob 的 o 参数每帧新建一个字面量就是一次分配。
    这里复用同一个对象、只改 seed 字段（同步读取，读完即失效）。 */
 var _bronanaOpt = { seed: 0, outline: PAL.INK, outlineWidth: D.OUT };
 
@@ -119,14 +119,14 @@ function drawBody(ctx, inst, a) {
   _bronanaOpt.seed = a.seed;
   _bronanaOpt.outlineWidth = a.outlineWidth || D.OUT;
   Rig.at(ctx, inst, B.body, function (g) {
-    D.bronana(g, 0, 0, rx, ry, a.skin.base, _bronanaOpt);
+    D.seedBlob(g, 0, 0, rx, ry, a.skin.base, _bronanaOpt);
   });
 }
 
 /**
  * 平涂暗部：把躯干轮廓当裁剪区，往里压一块同色系暗部 + 一块高光。
  * 这里曾经有个只有浏览器才暴露的 bug —— 老代码是
- *     x.save(); D.bronanaPath(x, ...); x.translate(cx, cy+bob); x.clip();
+ *     x.save(); D.seedBlobPath(x, ...); x.translate(cx, cy+bob); x.clip();
  * Canvas2D 的路径在加入时就被当时的变换映射到设备空间，之后 translate
  * 不会移动已经建好的路径。于是裁剪区留在了"变换原点"（游戏里就是战场
  * 左上角），躯干的暗部与高光被整块裁掉，同时左上角被多填了一块豆豆形
@@ -136,7 +136,7 @@ function drawBelly(ctx, inst, a) {
   var rx = Rig.wsx(inst, B.body), ry = Rig.wsy(inst, B.body);
   Rig.at(ctx, inst, B.body, function (g) {
     g.save();
-    D.bronanaPath(g, rx, ry, a.seed);
+    D.seedBlobPath(g, rx, ry, a.seed);
     g.clip();
     D.fill(g, a.skin.sh);
     g.beginPath();
@@ -244,7 +244,7 @@ Bronana.pose = function (inst, o) {
 
 /* 默认皮肤与空参数对象（保持老 S.drawBronana 的调用习惯） */
 var DEFAULT_SKIN = {
-  base: PAL.SKIN, hi: PAL.SKIN_HI, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT
+  base: PAL.SKIN, hi: PAL.SKIN_HI, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.SKIN_DOT
 };
 var EMPTY = { skin: DEFAULT_SKIN, seed: 1, face: 0, mood: 'idle' };
 

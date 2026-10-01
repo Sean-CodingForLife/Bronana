@@ -189,7 +189,7 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 | --- | --- | --- |
 | **E1** | **术语与身份**（本文件 + 总账 + 门）· **文档整理**（把重复的能力清单收成账本 §八点七 **一份**） | 门 `naming` 上线且**三种注入都会红** · 账本 §八点七 是唯一总表 · `teapot-restructure.md` 不再重复能力清单 |
 | **E2** | **引擎改名**：包名 / 入口标题 / 桌面外壳 / CSS / CI / 文档身份 | 包名 = `teapot` 系 · 界面上不出现"Bronana 引擎"这种混用 |
-| **E3** | **引擎侧去内容耦合**（门内 **17 处 / 4 个文件**，跑 `node tools/naming.mjs` 得；**门外另有六类**，见 §六之一 —— **那才是完整入口**） | ① `bronanaPath` → `blobPath`（**纯几何，与豆豆无关**）；② **内容命名空间**（4 个存储键 + 2 个种子前缀）→ **由工作区注入**，**值不变 ⇒ 指纹逐位不变**；③ **引擎身份字符串**（CLI / 崩溃卡 / 自检框 / 工具与 hook 横幅 · `BRONANA_HOME` / `~/.bronana`）→ `teapot*` + **旧名双读 + 旧目录迁移** |
+| **E3** | **引擎侧去内容耦合**（门内 **7 处 / 1 个文件** —— 原 **17 处 / 4 个文件**，**第 1 小步已还清 10 处**；跑 `node tools/naming.mjs` 得。**门外另有六类**，见 §六之一 —— **那才是完整入口**） | ① ✅ **已完成（第 1 小步）**：`bronanaPath` / `D.bronana` → `seedBlobPath` / `D.seedBlob`（**纯几何，与豆豆无关**；⚠ 计划里的 `blobPath` / `D.blob` **会撞名** —— 详见 §六之一）；② **内容命名空间**（4 个存储键 + 2 个种子前缀）→ **由工作区注入**，**值不变 ⇒ 指纹逐位不变**；③ **引擎身份字符串**（CLI / 崩溃卡 / 自检框 / 工具与 hook 横幅 · `BRONANA_HOME` / `~/.bronana`）→ `teapot*` + **旧名双读 + 旧目录迁移** |
 | **E4** | **内容搬进工作区**（不可逆） | `git mv`（保历史）· 引擎能 `teapot run Bronana` 跑起来 · **指纹逐位不变** |
 | **E5** | **工作区系统** | `teapot ws list/new/open` · `teapot.workspace.json` 有 schema 与自检 |
 | **E6** | **模块系统**（一切皆是模块） | `TeapotModule` 契约 + 拓扑排序 + 环报错 + 加载器只有一份 |
@@ -209,18 +209,25 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 | "2 个文件" | **4 个**：`storage.ts` 7 · `draw2d.ts` 6 · `utils.ts` 3 · `comp.ts` 1 | 同上 |
 | （没人写过，但最容易误以为）"门绿 = 改名做完了" | **不成立**：门只扫 **23 个引擎模块**，而 `src/` 有 **97 个** `.ts` | `node tools/naming.mjs --json` 的 `engineModules` |
 
+> **⏱ 进度（2026-10-01）**：**第 1 小步已完成** —— 门内已还清 **10 处**
+> （`draw2d.ts` 6 · `utils.ts` 3 · `comp.ts` 1），`DEBT` 表**当场删到只剩 `storage.ts`**；
+> 当前门输出 **7 处 / 1 个文件**。
+> 判据：`pnpm verify` **25 / 25 门全绿**，且行为指纹**逐位不变**
+> （出处：`node tools/fingerprint.mjs` —— **不抄值，家法**）⇒ 证明这是一次**纯改名**。
+> ⚠ 下一小步（`storage.ts` 的**命名空间注入**）是这三小步里**唯一要碰存档**的一步。
+
 > 🔴 **教训与门 `doc-num` 完全同一条**：手写的统计数字一定会漂，而漂了没人知道 ——
 > 它看起来是量过的。所以"13 处 / 2 个文件"已从**两处**删掉（此处与 `tools/naming.mjs` 的头注释），
 > 口径改成 **本节 + 门自己的输出**，不再复制数字。
 
-#### A. 门内（`DEBT` 表 · 17 处 / 4 个文件 · 门能判）
+#### A. 门内（`DEBT` 表 · 原 17 处 / 4 个文件 ⇒ **第 1 小步后 7 处 / 1 个文件** · 门能判）
 
 | 文件 | 处数 | 欠的那一刀 | 怎么还 |
 | --- | --- | --- | --- |
 | `storage.ts` | 7 | 4 个存储键 `bronana.settings` / `.run` / `.records` / `.profile` + 3 处注释引用它们 | 键改由**工作区注入命名空间**（`Storage.setNamespace`），**值仍是 `bronana.*`** ⇒ 旧档照读 |
-| `draw2d.ts` | 6 | `bronanaPath` / `D.bronanaPath` / `D.bronana` + 3 处注释 | 改名 `blobPath` / `D.blobPath` / `D.blob`（**纯几何，与豆豆无关**） |
-| `utils.ts` | 3 | 调色板键 `BRONANA_DOT` / `BRONANA_DEEP` + 1 处注释 | 中性名（如 `BLOB_DOT` / `BLOB_DEEP`） |
-| `comp.ts` | 1 | 注释里的工程叙述 | 改成中性说法 |
+| `draw2d.ts` | 6 | `bronanaPath` / `D.bronanaPath` / `D.bronana` + 3 处注释 | ✅ **已还清**：`seedBlobPath` / `D.seedBlobPath` / `D.seedBlob`。⚠ **原计划写的 `blobPath` / `D.blobPath` / `D.blob` 会撞名** —— `D.blob`（点列表团形，`draw2d.ts` :230）与 `blobPath`（它的路径助手，:66）**本来就存在**，是动手前查出来的；`seedBlob` 保留「团形」家族名并点出「种子调制」这个区别特征 |
+| `utils.ts` | 3 | 调色板键 `BRONANA_DOT` / `BRONANA_DEEP` + 1 处注释 | ✅ **已还清**：`SKIN_DOT`（皮肤斑点色，也是 `D.dots` 的默认色）/ `DEEP`（一块更深的暗色：躯干暗部 / 武器残量槽 / 拾荒者兜帽） |
+| `comp.ts` | 1 | 注释里的工程叙述 | ✅ **已还清**：改成「内容模块注册 player → `rig = Rig.instance(TPL)`」 |
 
 #### B. 门外六类（门**看不见** · E2 **也没做**）
 

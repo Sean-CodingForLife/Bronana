@@ -1037,7 +1037,7 @@ function drawDoors(x, sess, dt) {
     var k2 = U.clamp(w.hp / w.maxHp, 0, 1);
     if (k2 < 1) {
       var barW = 46, barH = 5;
-      x.fillStyle = PAL.BRONANA_DEEP;
+      x.fillStyle = PAL.DEEP;
       x.fillRect(-barW / 2, (w.dir === 0 ? -34 : 34), barW, barH);
       x.fillStyle = PAL.E4;
       x.fillRect(-barW / 2 + 1, (w.dir === 0 ? -33 : 35), (barW - 2) * k2, barH - 2);
@@ -1105,7 +1105,7 @@ R.playerAnim = function (p) {
 
 /* 角色绘制的复用对象：皮肤 / 骨架姿态参数 / 部件参数 / 挂点坐标。
    每帧新建这些对象就是每帧几次分配，改成模块级复用（同步用完即弃）。 */
-var _skin = { base: PAL.SKIN, hi: PAL.SKIN_HI_BRIGHT, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT };
+var _skin = { base: PAL.SKIN, hi: PAL.SKIN_HI_BRIGHT, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.SKIN_DOT };
 var _pose = { x: 0, y: 0, rx: 0, ry: 0, bob: 0, armSwing: 0 };
 var _atlasWarm = '';   // 已经预热过的「职业 + 色板 + 脸型 + 半径」指纹（换人换色就要重烘）
 var _parts = {
@@ -1227,7 +1227,7 @@ function drawPlayer(x, p, sess) {
     x.save();
     x.globalAlpha = Math.min(0.45, p.hurtFlash * 1.5);
     _flashOpt.seed = seed;
-    D.bronana(x, ppx, ppy + an.bob, rx, ry, PAL.LASER, _flashOpt);
+    D.seedBlob(x, ppx, ppy + an.bob, rx, ry, PAL.LASER, _flashOpt);
     x.restore();
   }
 

@@ -199,7 +199,7 @@ Comp.archetypeInfo = function (name) {
 /**
  * 为一个原型注册"生成钩子"：每次 spawn 出来后自动补齐那些**不能写进组件默认值**
  * 的字段（对象/函数类型的默认值被 define 拒绝，因为会隐式共享可变状态）。
- * 第一个用它的就是骨架：`bronana.ts` 注册 player → `rig = Bronana.create()`，
+ * 第一个用它的就是骨架：内容模块注册 player → `rig = Rig.instance(TPL)`，
  * 于是"玩家一定有骨架"由原型保证，而不是靠调用方记得再 assign 一次。
  */
 Comp.onSpawn = function (archName, fn) {

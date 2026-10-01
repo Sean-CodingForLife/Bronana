@@ -2298,6 +2298,11 @@ boot 时写"波次 1"，第 9 波崩了卡片会**报错波次**，那比没有�
 
 - `D.bronana` 的实现是 `bronanaPath(x, rx, ry, seed, bump)` —— **一个 30 点、被种子调制的团形**，
   与豆豆无关（**豆豆的骨架在 `bronana.ts`**）。它被 3 处调用（玩家 / 精英白闪 / 精灵烘焙）。
+
+> ⚠ **2026-10-01（E3 第 1 小步）后记**：本节提到的 `D.bronana` / `bronanaPath` **已改名为
+> `D.seedBlob` / `seedBlobPath`** —— 那一刀改的正是本节判为「内容」的**名字**那一半。
+> 而 `eye` / `mouth` 的**表情语义**仍留在 `draw2d.ts` 里，所以它今天**仍然是混合模块**
+> （见门 `engine-boundary` 的 `ENGINE_MIXED`）。**本节的历史结论一字未改。**
 - 所以真相是**两份东西写在一个文件里**：原语层（`rect`/`circle`/`poly`/`capsule`/`text`…）是引擎；
   `bronana` 这个名字与 `eye`/`mouth` 的"表情"语义是内容。
 

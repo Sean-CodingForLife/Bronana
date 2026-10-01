@@ -61,7 +61,7 @@ function polyPath(x, pts, close) {
 }
 
 /**
- * 钝圆多边形：把折线边向外圆角化（Bronana 圆润笨拙感）
+ * 钝圆多边形：把折线边向外圆角化（圆润笨拙的造型感 —— 美术宪法）
  */
 function blobPath(x, pts, r, close) {
   var n = pts.length;
@@ -100,10 +100,15 @@ function blobPath(x, pts, r, close) {
 }
 
 /**
- * 豆豆形轮廓：圆润饱满、略扁、底部两瓣
- * 用平滑谐波生成，天然带手绘笨拙感且逐帧稳定
+ * 种子团形轮廓：圆润饱满、略扁、底部两瓣
+ * 用平滑谐波生成，天然带手绘笨拙感且逐帧稳定（**与任何具体角色无关**）
+ *
+ * ⚠ 为什么叫 `seedBlob` 而不叫 `blob`：`D.blob`（点列表团形，本文件 :230）与
+ *   `blobPath`（它的路径助手，:66）**本来就已经存在** —— E3 原始计划里写的
+ *   `D.blob` / `blobPath` 会**撞名**。`seedBlob` 保留「团形」家族名，
+ *   并点出区别特征（**由 seed 调制**）。
  */
-function bronanaPath(x, rx, ry, seed, bump) {
+function seedBlobPath(x, rx, ry, seed, bump) {
   var N = 30, pts = [], i;
   bump = bump === undefined ? 0.055 : bump;
   for (i = 0; i < N; i++) {
@@ -141,7 +146,7 @@ var D = {} as DrawApi;
 D.OUT = OUT;
 D.ink = ink;
 D.fill = fill;
-D.bronanaPath = bronanaPath;
+D.seedBlobPath = seedBlobPath;
 D.starPath = starPath;
 
 /**
@@ -238,13 +243,13 @@ D.blob = function (c, pts, r, color, o) {
   if (st) x.restore();
 };
 
-D.bronana = function (c, cx, cy, rx, ry, color, o) {
+D.seedBlob = function (c, cx, cy, rx, ry, color, o) {
   o = o || {};
   var x = ctxOf(c);
   x.save();
   x.translate(cx, cy); x.rotate(o.rot || 0);
   if (o.alpha !== undefined) x.globalAlpha = o.alpha;
-  bronanaPath(x, rx, ry, o.seed === undefined ? 1 : o.seed, o.bump);
+  seedBlobPath(x, rx, ry, o.seed === undefined ? 1 : o.seed, o.bump);
   fill(x, color);
   ink(x, o.outline, lw(o.outlineWidth));
   x.restore();          // 本函数无条件 save（含变换），故无条件 restore
@@ -341,12 +346,12 @@ D.mouth = function (c, cx, cy, w, style, color) {
 };
 
 /* ================= 平涂辅助 ================= */
-/** 纯色斑点（豆豆坑、怪物疣） */
+/** 纯色斑点（躯体凹坑、怪物疣） */
 D.dots = function (c, cx, cy, r, n, seedStr, color, size) {
   var x = ctxOf(c);
   var rnd = U.rng(U.seedFromStr(seedStr || 'dot'));
   x.save();
-  if (color) x.fillStyle = color; else x.fillStyle = PAL.BRONANA_DOT;
+  if (color) x.fillStyle = color; else x.fillStyle = PAL.SKIN_DOT;
   for (var i = 0; i < n; i++) {
     var a = rnd() * U.TAU;
     var d = Math.sqrt(rnd()) * r * 0.78;

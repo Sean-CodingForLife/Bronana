@@ -2627,7 +2627,7 @@ interface DrawApi {
   O: Record<string, DrawOptions>;
   ink(x: any, color?: string, width?: number): void;
   fill(x: any, color?: string): void;
-  bronanaPath(x: any, rx: number, ry: number, seed?: number, bump?: number): void;
+  seedBlobPath(x: any, rx: number, ry: number, seed?: number, bump?: number): void;
   starPath(x: any, spikes: number, rOut: number, rIn: number, rot: number): void;
   rect(c: any, x0: number, y0: number, w: number, h: number, color?: string | null, o?: DrawOptions): void;
   roundRect(c: any, x0: number, y0: number, w: number, h: number, r: number, color?: string | null, o?: DrawOptions): void;
@@ -2635,7 +2635,7 @@ interface DrawApi {
   ellipse(c: any, cx: number, cy: number, rx: number, ry: number, rot: number, color?: string | null, o?: DrawOptions): void;
   poly(c: any, pts: number[][], color?: string | null, o?: DrawOptions): void;
   blob(c: any, pts: number[][], r: number, color?: string | null, o?: DrawOptions): void;
-  bronana(c: any, cx: number, cy: number, rx: number, ry: number, color?: string | null, o?: DrawOptions): void;
+  seedBlob(c: any, cx: number, cy: number, rx: number, ry: number, color?: string | null, o?: DrawOptions): void;
   arcRing(c: any, cx: number, cy: number, r: number, a0: number, a1: number, width: number, color: string, o?: DrawOptions): void;
   capsule(c: any, x0: number, y0: number, x1: number, y1: number, w: number, color: string, o?: DrawOptions): void;
   eye(c: any, cx: number, cy: number, r: number, style: string, o?: DrawOptions): void;
@@ -5288,7 +5288,7 @@ interface CfgApi { moveSpeedPerPoint: number; }
 interface Palette {
   [key: string]: any;
   INK: string; G1: string; G2: string; G3: string; G4: string; G5: string; G6: string;
-  SKIN: string; SKIN_HI: string; SKIN_SH: string; SKIN_DP: string; BRONANA_DOT: string;
+  SKIN: string; SKIN_HI: string; SKIN_SH: string; SKIN_DP: string; SKIN_DOT: string;
   WHITE: string; BONE: string; GREY: string; DARK: string;
   BLOOD: string; MUZZLE: string; XP: string; MAT: string; GOLD: string; HEAL: string;
   /** 当前色弱档（0 = 原色，1 = 红绿友好，2 = 高对比） */

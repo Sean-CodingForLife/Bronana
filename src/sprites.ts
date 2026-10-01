@@ -150,7 +150,7 @@ S.drawBronana = function (x, cx, cy, rx, ry, skin, seed, opts) {
   opts = opts || {};
   if (!_scratchRig) _scratchRig = Bronana.create();
   if (!skin) {
-    skin = { base: PAL.SKIN, hi: PAL.SKIN_HI, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.BRONANA_DOT };
+    skin = { base: PAL.SKIN, hi: PAL.SKIN_HI, sh: PAL.SKIN_SH, dp: PAL.SKIN_DP, dot: PAL.SKIN_DOT };
   }
   Bronana.pose(_scratchRig, {
     x: cx, y: cy, rx: rx, ry: ry,
@@ -313,7 +313,7 @@ S.drawEmblem = function (x, emblem, scale) {
 
   if (em.id === 'emblem') {
     /* 徽记：一颗豆 + 硬边光环 */
-    D.circle(x, 64, 64, 40, PAL.BRONANA_DOT, D.O.ink3);
+    D.circle(x, 64, 64, 40, PAL.SKIN_DOT, D.O.ink3);
     D.circle(x, 52, 52, 9, PAL.INK, D.O.none);
     D.circle(x, 76, 52, 9, PAL.INK, D.O.none);
     D.arcRing(x, 64, 64, 54, 0, U.TAU, 4, PAL.GOLD);
@@ -496,7 +496,7 @@ S.stationPortrait = function (id, size) {
       case 'picker':      // 拾荒者：兜帽 + 一只露出来的眼
         D.poly(x, [[-r * 0.8, r * 0.9], [-r * 0.6, -r * 0.2], [0, -r * 0.95],
           [r * 0.6, -r * 0.2], [r * 0.8, r * 0.9]], c, D.O.ink3);
-        D.rect(x, -r * 0.42, -r * 0.24, r * 0.84, r * 0.5, PAL.BRONANA_DEEP, D.O.ink2);
+        D.rect(x, -r * 0.42, -r * 0.24, r * 0.84, r * 0.5, PAL.DEEP, D.O.ink2);
         D.circle(x, -r * 0.18, 0, r * 0.11, PAL.GOLD, D.O.none);
         D.rect(x, -r * 0.5, r * 0.42, r, r * 0.3, sh, D.O.ink2);
         break;
@@ -690,15 +690,15 @@ S.enemySprite = function (def) {
       D.capsule(x, cx + R * 0.70, cy - R * 0.50, cx + R * 0.34, cy - R * 0.16, 2, def.dark, D.O.none);
     } else {
       // blob：圆润笨拙，与豆豆同源的轮廓语言
-      D.bronana(x, cx, cy, R, R * 1.02, def.color, { seed: U.seedFromStr(def.id) % 50, outline: PAL.INK, outlineWidth: 3 });
+      D.seedBlob(x, cx, cy, R, R * 1.02, def.color, { seed: U.seedFromStr(def.id) % 50, outline: PAL.INK, outlineWidth: 3 });
       // 轮廓内压一层暗色（与 jelly 分支同样的处理）。
       // 注意顺序：Canvas2D 的路径在加入时就被当前变换固定，所以必须先 translate
-      // 再建路径 —— 老实现把 translate 放在 bronanaPath 之后，裁剪区留在了画布原点
+      // 再建路径 —— 老实现把 translate 放在 seedBlobPath 之后，裁剪区留在了画布原点
       // （比身体低 1.00R），实际只盖住了下半身、且是"意外地"盖住的。
       // 这里的椭圆坐标相应改成角色局部坐标（原来写的是绝对坐标 cy + ...）。
       x.save();
       x.translate(cx, cy);
-      D.bronanaPath(x, R, R * 1.02, U.seedFromStr(def.id) % 50);
+      D.seedBlobPath(x, R, R * 1.02, U.seedFromStr(def.id) % 50);
       x.clip();
       D.fill(x, def.dark);
       x.beginPath(); x.ellipse(R * 0.15, R * 0.62, R * 0.66, R * 0.46, 0, 0, U.TAU); x.fill();

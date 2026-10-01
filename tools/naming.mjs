@@ -13,10 +13,10 @@
 
    ## 为什么这条门今天就要存在（而不是等改完再写）
 
-   实测：引擎模块里 `bronana` 落在 **4 个文件**里 —— `storage.ts`（4 个存储键
-   `bronana.settings/run/records/profile` + 3 处注释引用它们）、`draw2d.ts`（`bronanaPath` /
-   `D.bronanaPath` / `D.bronana` + 3 处注释）、`utils.ts`（`BRONANA_DOT` / `BRONANA_DEEP`
-   + 1 处注释）、`comp.ts`（1 处工程叙述）。
+   实测：引擎模块里 `bronana` 只剩 **1 个文件** —— `storage.ts`（4 个存储键
+   `bronana.settings/run/records/profile` + 3 处注释引用它们，等 E3 第 2 小步）。
+   **2026-10-01（E3 第 1 小步）已还清另三个**：`draw2d.ts` → `seedBlobPath` / `D.seedBlobPath` /
+   `D.seedBlob` · `utils.ts` → `SKIN_DOT` / `DEEP` · `comp.ts` → 注释改中性。
 
    ⚠ **本句不写总数** —— 总数的**唯一出处是下面的 `DEBT` 表**（`Object.values(DEBT)` 求和）。
    这里曾经写的是"**13 处 / 2 个文件**"，而 `DEBT` 表**从建表那一刻起就是 17**
@@ -40,7 +40,7 @@
 
    | 欠账 | 还法 |
    | --- | --- |
-   | `bronanaPath` / `D.bronanaPath` / `D.bronana` | 改名 `blobPath` / `D.blobPath` / `D.blob` —— **它画的是"一个 30 点、被种子调制的团形"，与豆豆无关**（`CHANGELOG.md` 已判过它是**引擎**） |
+   | `bronanaPath` / `D.bronanaPath` / `D.bronana` | ✅ **已还清（E3 第 1 小步）**：改名 `seedBlobPath` / `D.seedBlobPath` / `D.seedBlob`。⚠ **原计划写的 `blobPath` / `D.blobPath` / `D.blob` 会撞名** —— **它画的是"一个 30 点、被种子调制的团形"，与豆豆无关**（`CHANGELOG.md` 已判过它是**引擎**） |
    | `storage.ts` 的 4 个键 | 键改为**由工作区注入命名空间**（`Storage.setNamespace`），内容名从工作区清单来 |
 
    ## 自证条件（这条门必须能红 —— 家法：一条不会失败的审计等于装饰）
@@ -83,10 +83,11 @@ const BANNED = /bronana/gi;
    ⚠ 判据是**大小写不敏感**的 —— 第一版我只搜小写，漏了 `utils.ts` 的
      `BRONANA_DOT` / `BRONANA_DEEP`（全大写），**是这条门当场抓出来的**。 */
 const DEBT = {
-  'comp.ts': 1,        // 注释里举例提到 bronana.ts / Bronana.create（工程叙述，E3 改成中性说法）
-  'draw2d.ts': 6,      // bronanaPath / D.bronanaPath / D.bronana + 3 处注释
-  'storage.ts': 7,     // 4 个存储键 bronana.settings/run/records/profile + 3 处注释引用了它们
-  'utils.ts': 3        // 调色板键 BRONANA_DOT / BRONANA_DEEP + 1 处注释
+  /* ⚠ 2026-10-01（E3 第 1 小步）已还清三条并**当场删掉**：
+       `comp.ts`(1) → 注释改中性 · `draw2d.ts`(6) → `seedBlobPath` / `D.seedBlob` ·
+       `utils.ts`(3) → `SKIN_DOT` / `DEEP`。
+     这张表**只许变短**，而且判据是**双向的**：还清了不删也红（不许留成永久豁免）。 */
+  'storage.ts': 7     // 4 个存储键 bronana.settings/run/records/profile + 3 处注释引用了它们（E3 第 2 小步）
 };
 
 /* ⚠ 两个不同的东西，**必须分开记**：
