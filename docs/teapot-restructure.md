@@ -285,12 +285,12 @@ links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 
 | 项 | 现状 | 处置建议 |
 | --- | --- | --- |
-| `research/` | 14 个文件 | 归入 `docs/research/` 或删（要看内容） |
-| `ui-shots/` | 逐屏截图产物 | 归入 `.gitignore` 的产物目录（**不该进仓**） |
-| `.agents/` | 会话/Agent 配置 | 检查是不是"环境与其他 Agent 的识别机制"（原目标第 1 条） |
-| `server/` | 服务器模式 | 引擎的宿主之一 ⇒ 归 `src/host/` 或留 |
-| `nettest.mjs` / `nettest.py` | 探测脚本 | 一次性探针 ⇒ 删 |
-| `test-run.txt` / `verify-run.txt` / `.tmp-rs.txt` / `.tmp-v.txt` / `.tsbuildinfo*` | 运行产物 | **进 `.gitignore`** |
+| `research/` | **3** 个文件（`gungeon.json` / `isaac.json` / `ror2.json`） | ✅ **已归位 `docs/research/`**（2026-10-02）。⚠ 原写"**14 个文件**"是**错的** —— 又一次手写数字漂移（这行自己就是证据）。内容是 `scaling-*.md` 的**原始取数**，但**没有任何文档引用它们** ⇒ 一并**登记进索引**，否则等于孤儿 |
+| `ui-shots/` | ✅ **已在 `.gitignore`**（盘上 1383 个文件） | 盘上体积可随时清（可再生成）；**"不该进仓"这条已经成立** |
+| `.agents/` | 会话 / Agent 配置（170 个文件，已 gitignore） | ⚠ 待查：是不是"环境与其他 Agent 的识别机制"（原目标第 1 条）。**注意它已被 gitignore ⇒ 它不是仓库内容**，别当成"该归位的目录" |
+| `server/` | `server/static.mjs`（服务器模式的宿主） | 引擎的宿主之一 ⇒ 归 `src/host/` 或留 |
+| `nettest.mjs` / `nettest.py` | ✅ **已删**（2026-10-02） | 一次性探针 ⇒ 删（**git 历史就是归档**） |
+| `test-run.txt` / `verify-run.txt` / `.tmp-rs.txt` / `.tmp-v.txt` / `.tsbuildinfo*` | ✅ **已在 `.gitignore`**（盘上还有，可清） | 运行产物 —— **"不该进仓"这条已经成立** |
 | `LICENSE` / `CODE_OF_CONDUCT.md` / `SECURITY.md` | 项目文件 | 身份从 Bronana 改成 Teapot |
 
 ---

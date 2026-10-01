@@ -80,7 +80,7 @@ var FACES: AppearanceFaceDef[] = [
    有一支画法（程序化，零素材），所以"这个表有多长"= "有多少支画法"。
    表长而画法少 = 玩家选中一件什么也看不见，那是最坏的一种假声明。
    于是两者由同一条守卫对齐：`sprites.ts` 的画法表必须与本表**逐一对应**
-   （`test/appearance.mjs` 的静态扫描 + `Registry.family('lookAccessory')`）。
+   （`test/character.mjs` 那条「配件表每一档都有一支画法」的断言 + `Registry.family('lookAccessory')`）。
 
    `dy` 是"相对头顶往上多少倍身体半径" —— 配件要跟着角色的呼吸与体型走，
    写死像素的话换个角色就会陷进头里或飘在半空。0 = 贴着头顶。

@@ -3,7 +3,7 @@ title: "PR 模板"
 category: 模板
 scope: "提 PR 时要回答的问题（改了谁 / 怎么验的 / 指纹动没动）"
 source: "门与指纹见 `CONTRIBUTING.md`"
-links: ["../../CONTRIBUTING.md"]
+links: ["../CONTRIBUTING.md"]
 ---
 ## 这个 PR 做了什么
 
