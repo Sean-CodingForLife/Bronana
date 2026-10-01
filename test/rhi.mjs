@@ -49,6 +49,12 @@ T.section('1. 绘制面与后端表');
   const v = RHI.audit();
   T.ok(v.ok, '启动期自检认可这套表');
   T.ok(!!(Registry && Registry.has && Registry.has('rhiSurface')), '绘制面注册进了总账');
+
+  /* 造目标的能力（E2 体检查出的缺口：全仓 16 处 `getContext` 散在 5 个文件里） */
+  const tf = RHI.targetFactories();
+  T.ok(tf.length >= 1 && tf.every(f => f.note), '目标工厂表非空、每项都写了用途');
+  T.eq(RHI.acquire(4, 4) === null, typeof document === 'undefined',
+    '`acquire()` 在有 DOM 时造得出目标、无 DOM 时返回 null（不抛）');
 }
 
 /* ---------------- [2] 透明性：包与不包，记录逐字节一致 ---------------- */

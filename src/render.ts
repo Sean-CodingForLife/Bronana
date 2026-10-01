@@ -18,6 +18,7 @@ import { Scene } from './scene.ts';
 import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
 import { Viewport } from './viewport.ts';
+import { RHI } from './rhi.ts';
 import { PAL, Perf, U } from './utils.ts';
 import { World } from './world.ts';
 
@@ -38,7 +39,9 @@ var R = ({
 
 R.init = function (canvas) {
   R.canvas = canvas;
-  R.ctx = canvas.getContext('2d');
+  /* ⚠ 经 RHI 取 ctx（R60）：draw2d.ts 已经这么做了，这里是**主画布**那一处。
+     拿不到 ctx 就是拿不到 —— 不抛（无头环境靠这条分支降级）。 */
+  R.ctx = RHI.wrap(canvas.getContext ? canvas.getContext('2d') : null);
   R.resize();
   // 模拟层只发"发生了需要抖动的冲击"事件，具体幅度由渲染层决定（保持层次分离）
   Game.events.on('shake', function (a) { R.addTrauma(a); });
@@ -407,7 +410,7 @@ function bakeLayer(slot, wave, theme, drawFn, a) {
   var c = document.createElement('canvas');
   c.width = Math.ceil(lw * s);
   c.height = Math.ceil(lh * s);
-  var g = c.getContext('2d');
+  var g = RHI.wrap(c.getContext('2d'));
   g.scale(s, s);              // 之后用逻辑坐标画，倍率只体现在分辨率上
   g.translate(GROUND_PAD, GROUND_PAD);
   drawFn(g, a);

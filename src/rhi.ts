@@ -184,6 +184,63 @@ RHI.wrap = function (ctx) {
 /** 这个 ctx 是不是已经被包过（测试与诊断用） */
 RHI.isWrapped = function (ctx) { return !!ctx && WRAPPED.has(ctx); };
 
+/* =========================================================
+   3.5 造目标：**"从哪拿到一块能画的东西"也归引擎**
+   ---------------------------------------------------------
+   ⚠ 这一节是**体检发现的缺口**（E2 普查）。改造前全仓有 **16 处** `getContext(`：
+     · `draw2d.ts` 1 处 —— 绘制原语唯一的取 ctx 点（R60 已经过 RHI）；
+     · `render.ts` 2 处 · `sprites.ts` 3 处 —— **烘焙层与贴图缓存造离屏 canvas**；
+     · `ui.ts` 8 处 —— DOM 覆盖层里的**辅助 canvas**（头像/图标/小图）；
+     · `rhi.ts` 1 处 —— 是上一行的**注释**，不是代码。
+
+   那 5 处真正的创建点**画的时候都经过 `D.*`**（所以绘制面是被遵守的），
+   但"**造一块能画的东西**"这件事仍是散着的 —— 于是：
+     · 要换成 WebGL2 目标时，这 5 处要各改一遍；
+     · 而 R49 的决定文档已经点明 **`Target` 必须是一等对象**
+       （一帧内 GL 目标与 Canvas2D 辅助 canvas **并存**）。
+   ⇒ 所以"造目标"这一步也收进这里。**它只是把入口收拢，不改任何行为。**
+
+   ## 为什么 `acquire()` 不创建后端实例，只创建"目标"
+   因为**目标**（一块可画的表面）与**后端**（谁来解释绘制命令）是两件事：
+   同一个 Canvas2D 后端可以服务主画布、烘焙层、UI 辅助 canvas 三个目标；
+   而将来 GL 后端服务主画布、Canvas2D 后备服务 UI 辅助 canvas ——
+   那正是"一帧内多后端并存"的形状。**把后端写成全局单例就表达不出它。** */
+
+/** 当前活跃后端要实现的"造目标"能力。**默认是 Canvas2D 的那一套。**
+ *  ⚠ 这是本层与**宿主**的**唯一**接触点，而且它被显式登记在这里 ——
+ *  不在别处偷偷 `document.createElement`。 */
+var TARGET_FACTORY = {
+  id: 'dom-canvas',
+  note: '用宿主 DOM 造一块离屏 canvas。**这是本层唯一碰 DOM 的地方**',
+  available: function () { return typeof document !== 'undefined' && !!document.createElement; },
+  create: function (w, h) {
+    var c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+};
+
+/** 造一块**可以画的目标**。
+ *
+ *  @param w 逻辑宽（像素缓冲 = 逻辑 × dpr，由调用方决定，本层不猜）
+ *  @returns 一个有 `width` / `height` / `getContext` 的对象；**无 DOM 时返回 null**
+ *
+ *  ⚠ **无头环境必须返回 `null`**，而不是抛 ——
+ *  这与 `render.ts:403` / `sprites.ts` 那 7 处既有的降级分支同形：
+ *  "65 套测试能在 Node 里跑"是硬约束，靠的就是这些显式降级。 */
+RHI.acquire = function (w, h) {
+  if (!TARGET_FACTORY.available()) return null;
+  return TARGET_FACTORY.create(w, h);
+};
+
+/** 造目标的能力表（谁在造、能不能造）—— 与后端表分开登记，因为它们是两件事 */
+RHI.targetFactories = function () {
+  return [{
+    id: TARGET_FACTORY.id, note: TARGET_FACTORY.note,
+    available: TARGET_FACTORY.available(), active: true
+  }];
+};
+
 /** 引擎允许的绘制面（拍平成一维成员名）—— 后端实现者与审计都用它 */
 RHI.surface = function () {
   var out: string[] = [];
@@ -245,15 +302,21 @@ RHI.audit = function () {
   }
   if (active !== 1) problems.push('活跃后端必须**恰好一个**，实得 ' + active);
 
-  /* ③ ⚠ **"本层不许认识游戏内容"这条判据不在本文件里实现**，理由是一个真踩过的坑：
-     第一版我在这里写了一份禁用词表（波次 / 废料 / 豆豆…）并让它**扫自己的源码** ——
+  /* ③ 造目标的能力：至少一个可用（否则整个引擎画不出东西）。
+     ⚠ 无头环境**没有** DOM，而"65 套测试能在 Node 里跑"正是靠 `acquire()` 返回 null
+     的降级 ⇒ "当前不可用"**不是错**，所以这一条只登记、不判红。 */
+  var factories = RHI.targetFactories();
+  if (!factories.length) problems.push('目标工厂表是空的 —— 那样一块画布都造不出来');
+
+  /* ④ ⚠ **"本层不许认识游戏内容"这条判据不在本文件里实现** —— 理由是一个真踩过的坑：
+     第一版我在这里写了一份禁用词表（波次 / 废料 / 豆豆…）并让它**扫自己的源码**，
      而**那份表本身就在本文件里** ⇒ 自扫必然自伤，模块一加载就抛。
      正确的分工是：
-       · **本文件**只做"我自己的表对不对"（①②）；
+       · **本文件**只做"我自己的表对不对"（①~③）；
        · **"引擎有没有认识内容"由门 `engine-boundary`（`tools/engine-boundary.mjs`）判** ——
-         它读的是**真的源码**，而且判据是**依赖边**（引擎不许 import 内容/数据表），
+         它读的是**真的源码**，判据是**依赖边**（引擎不许 import 内容 / 数据表），
          那一条比"文本里有没有某个词"硬得多，也不会被自己的注释绊倒。
-     ⇒ 一条判据只能有一个出处，不许在模块里再养一份副本。 */
+     ⇒ **一条判据只能有一个出处**，不许在模块里再养一份副本。 */
   return { ok: problems.length === 0, problems: problems };
 };
 

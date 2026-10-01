@@ -1678,6 +1678,12 @@ interface RHIApi {
   wrap(ctx: any): any;
   /** 这个 ctx 是不是已经被包过 */
   isWrapped(ctx: any): boolean;
+  /** 造一块**可以画的目标**（离屏 canvas）。
+   *  ⚠ **无头环境必须返回 `null`**，不抛 ——
+   *  "65 套测试能在 Node 里跑"就是靠这些显式降级（与 `render.ts` / `sprites.ts` 同形） */
+  acquire(w: number, h: number): any;
+  /** 造目标的能力表（与后端表**分开**登记：目标与后端是两件事） */
+  targetFactories(): { id: string; note: string; available: boolean; active: boolean }[];
   /** 引擎允许的绘制面（拍平成一维成员名） */
   surface(): string[];
   /** 按用途分组的面 */
