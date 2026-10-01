@@ -224,6 +224,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 | [`docs/requirements.md`](docs/requirements.md) | **需求账本**：每条需求 + 现状 + 证据，讨论在这里留痕 | 每次讨论 |
 | [`docs/history/`](docs/history/README.md) | **交付记录**：逐轮改了什么、踩了什么坑、量出了什么 | **每轮追加到这里** |
 | [`docs/scaling-benchmarks.md`](docs/scaling-benchmarks.md) | 七款同类游戏的曲线对照 | 调数值前必读 |
+| [`docs/external-game-mechanics.md`](docs/external-game-mechanics.md) | **20 款外部游戏的机制档案**（核心循环 / 操作 / 分段 / 成长 / 失败代价 / 张力 / 取舍 / 独有机制 / 褒贬）+ 按三条轴的横向综合 + 来源强度分级 | **做设计决策前必读**（要数字看上面两份，要机制看这一份） |
 | [`docs/external-benchmarks.md`](docs/external-benchmarks.md) | 同类游戏的公开设计数字（带来源强度标注） | 做设计决策前 |
 
 **三条硬约定：**

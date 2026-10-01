@@ -300,7 +300,7 @@ console.log('\n[8] 长局：只增不换、条目有界');
   held['@mat'] = [S.pickupSprite('mat')];
   held['@heal'] = [S.pickupSprite('heal')];
   /* 建完这批"手上就有的贴图"之后**立刻记一次账**：之后长局里新增的键必须
-     **只有**角色图集与武器图集两类。
+     **只有**角色图集、武器图集与精英覆盖层三类。
      改造前的写法是 `st.entries === 怪×2 + 2 + atlas + wp` —— 一条**算术恒等式**：
      它能发现"数目对不上"，却说不出"多/少的是哪个键"，而且它假定"两种掉落一定都被
      画过"（只有材料掉到地上时，那条就假失败了）。现在改成按**键前缀分类**核对：
@@ -347,26 +347,30 @@ console.log('\n[8] 长局：只增不换、条目有界');
   /* 按键前缀分类，逐类核对 —— 每一类都有明确的**来源**：
        en-*    怪物本体（每个怪种一张）
        fl-*    受击白闪剪影
+       el-*    精英色覆盖层（**懒烘**：只有真的出现过精英怪的那些怪种才有）
        pk-*    掉落（材料 / 回血）
        atlas-* 角色姿态图集（每个呼吸档一张，有界）
        wp-*    武器图集（每把武器一张，有界）
-     出现第六类键，说明有新的贴图来源没人记账（缓存就会慢慢失控）。 */
+     出现第七类键，说明有新的贴图来源没人记账（缓存就会慢慢失控）。 */
   const byPrefix = p => st.list.filter(e => e.key.indexOf(p) === 0);
   const mobN = byPrefix('en-').length, flashN = byPrefix('fl-').length;
+  const eliteN = byPrefix('el-').length;
   const dropN = byPrefix('pk-').length, atlasN = byPrefix('atlas-').length, wpN = byPrefix('wp-').length;
   const nowKeys = st.list.map(e => e.key);
   const lost = baseKeys.filter(k => nowKeys.indexOf(k) < 0);
   const extra = nowKeys.filter(k => baseKeys.indexOf(k) < 0 &&
-    k.indexOf('atlas-') !== 0 && k.indexOf('wp-') !== 0);
+    k.indexOf('atlas-') !== 0 && k.indexOf('wp-') !== 0 && k.indexOf('el-') !== 0);
   ok(lost.length === 0, '长局跑完，"开局就有的那批贴图"一张都没被顶掉', lost.join(', '));
-  ok(extra.length === 0, '长局新增的键只有角色图集与武器图集两类（没有第三类悄悄进来）', extra.join(', '));
+  ok(extra.length === 0, '长局新增的键只有角色图集 / 武器图集 / 精英覆盖层三类（没有别的悄悄进来）', extra.join(', '));
   ok(mobN === Enemies.LIST.length && flashN === Enemies.LIST.length,
     '每一只怪都有本体与白闪各一张（各 ' + Enemies.LIST.length + ' 张）', mobN + '/' + flashN);
+  ok(eliteN <= Enemies.LIST.length,
+    '精英覆盖层不超过怪种数（懒烘：跑出来几种精英就有几张）', eliteN + ' 张');
   ok(dropN === 2, '两种掉落贴图都在（材料 / 回血）', dropN + ' 张');
-  ok(st.entries === mobN + flashN + dropN + atlasN + wpN,
-    '条目数正好等于五类之和（怪 ' + mobN + ' + 白闪 ' + flashN + ' + 掉落 ' + dropN +
-    ' + 角色图集 ' + atlasN + ' + 武器图集 ' + wpN + '），没有第六类键',
-    st.entries + ' vs ' + (mobN + flashN + dropN + atlasN + wpN));
+  ok(st.entries === mobN + flashN + eliteN + dropN + atlasN + wpN,
+    '条目数正好等于六类之和（怪 ' + mobN + ' + 白闪 ' + flashN + ' + 精英 ' + eliteN +
+    ' + 掉落 ' + dropN + ' + 角色图集 ' + atlasN + ' + 武器图集 ' + wpN + '），没有第七类键',
+    st.entries + ' vs ' + (mobN + flashN + eliteN + dropN + atlasN + wpN));
   ok(atlasN > 0 && atlasN <= 30, '角色姿态图集条目有界（一次呼吸只覆盖 0.975~1.025 的档位）', atlasN + ' 张');
   ok(wpN > 0 && wpN <= 40, '武器图集条目有界（每把武器一张，形状随 swing 变的那种按档）', wpN + ' 张');
   const dup = st.list.length - new Set(st.list.map(e => e.key)).size;

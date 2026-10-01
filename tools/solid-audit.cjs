@@ -155,6 +155,16 @@ function isp() {
       /* 也可能是被**解构**取用的（`const { x } = Api`）—— 一并算作有读点 */
       const re2 = new RegExp('\\{[^}]*\\b' + esc(mem) + '\\b[^}]*\\}\\s*=');
       for (const f of files) if (re2.test(srcOf[f])) return false;
+      /* ⚠ **第三个读法：模块级调用**（`S.enemyElite(def)`）。
+         测试这个门时实测踩到：`sprites.ts` 里 `S.enemyElite` 被定义、
+         也在同一文件里被调用（`var el = e._el || (e._el = S.enemyElite(def))`），
+         而前两条读法**都不认这种写法** ——
+         于是成员被判成"全仓库没人读"（假接口），基线 `isp: 0` 当场变 1，
+         **CI 红而本地绿**（本地那个工作区里有别人未提交的改动，
+         恰好把这一处绕开了 —— 这本身就是"别拿脏工作区下结论"的一个实例）。
+         判据：`模块名.成员(` —— 大写的模块名 + 成员名 + 左括号（= 调用）。 */
+      const re3 = new RegExp('\\b[A-Z][\\w$]*\\.' + esc(mem) + '\\s*\\(');
+      for (const f of files) if (re3.test(srcOf[f])) return false;
       return true;
     });
     if (dead.length) out.push({ iface: name, dead });

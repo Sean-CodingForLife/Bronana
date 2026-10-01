@@ -259,13 +259,21 @@ D.capsule = function (c, x0, y0, x1, y1, w, color, o) {
 /* ================= 面部（豆豆与怪物共用简化五官） ================= */
 /**
  * 眼睛：默认"坚毅冷峻"半月眼
- * @param style: 'stern' | 'round' | 'angry' | 'dead' | 'dot'
+ * @param style: 'stern' | 'round' | 'angry' | 'dead' | 'dot' | 'none'
+ *   `'none'` = **一个像素都不画**（给"眼球本体自己就是眼睛"的那种怪用）。
+ *   它与选项常量 `D.O.none` 是两件事：那个是"不描边"，这个是"不画眼睛"。
  */
 D.eye = function (c, cx, cy, r, style, o) {
   o = o || {};
   style = style || 'stern';
   var x = ctxOf(c);
   x.save();
+  /* ⚠ 这一支必须存在：老实现没有它，`'none'` 就落到最后的 `else`（stern），
+     表现是浮游之眼 / 钟摆那颗白眼球上多压了一道半月形 —— 而 `sprites.ts` 对
+     `shape === 'eye'` 传的正是 `'none'`（那里的注释写着"眼球本体已有瞳孔"）。
+     `'empty'` 这个名字**从来没有过画法**：它混进家族是因为 `D.O.empty` 是个选项常量；
+     家族里已经删掉它（声明一个画不出来的值 = 假声明）。 */
+  if (style === 'none') { x.restore(); return; }
   if (style === 'round' || style === 'dot') {
     D.circle(x, cx, cy, style === 'dot' ? r * 0.55 : r, o.white === false ? PAL.INK : PAL.WHITE, O.ink2);
     D.circle(x, cx, cy + r * 0.1, Math.max(1, r * 0.42), PAL.INK, O.none);

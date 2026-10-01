@@ -185,6 +185,24 @@ var ATLAS_ARGS = { skin: null, seed: 1, face: 0, mood: 'idle', eyeStyle: 'stern'
 var _atlasRig: RigInstance | null = null;
 var SY_QUANT = 500;                       // sy 量化档数（0.002 一档）
 
+/**
+ * 皮肤取色的**缓存键片段**：颜色必须进键。
+ *
+ * 老键只有（职业 id / seed / 脸型 / 情绪 / 眼型 / 斑点 / 呼吸档），于是"同一个职业
+ * 换一套色板"会命中上一套颜色烘出来的那张图 —— 实测：同参数换皮肤后拿到的是
+ * **同一个 canvas**，贴图里旧色有 9 笔、新色 0 笔。而手臂是逐帧矢量绘制、用的是新色，
+ * 结果同一个角色身上出现两种颜色（UI 肖像的键含 `look`，所以肖像还是新色，更容易看混）。
+ *
+ * 取四段而不是拼整个对象：键要短；`undefined` 一律落成固定占位符 `x`，
+ * 否则"没传皮肤"的两次调用会拼出两个不同的键，缓存条目会凭空翻倍。
+ */
+function skinKey(skin) {
+  if (!skin) return 'x';
+  var out = [skin.base, skin.hi, skin.sh, skin.dp];
+  for (var i = 0; i < out.length; i++) out[i] = out[i] === undefined || out[i] === null ? 'x' : String(out[i]);
+  return out.join('~');
+}
+
 S.playerBodySprite = function (charDef, opts) {
   if (typeof document === 'undefined') return null;
   opts = opts || {};
@@ -194,7 +212,7 @@ S.playerBodySprite = function (charDef, opts) {
   var sx = 1 / bucket;                    // 保持体积：sx·sy ≡ 1
   var key = 'atlas-' + charDef.id + '-' + (opts.seed | 0) + '-' + (opts.face | 0) + '-' +
     (opts.mood || 'idle') + '-' + (opts.eyeStyle || 'stern') + '-' + (opts.dots === false ? 0 : 1) +
-    '-' + bucket.toFixed(3);
+    '-' + bucket.toFixed(3) + '-' + skinKey(opts.skin);
   var rx = r * sx, ry = r * Bronana.RY_RATIO * bucket;
   var w = Math.ceil(rx * 2.6) + 2, h = Math.ceil(ry * 2.6) + 2;   // 盒子中心 = 身体中心
   return cached(key, w, h, function (x) {
@@ -698,8 +716,10 @@ S.enemySprite = function (def) {
     var eyeR = Math.max(2.4, R * 0.19);
     var eyeY = cy - R * (def.shape === 'jelly' ? 0.22 : 0.10);
     if (eyes === 1) {
+      /* `shape === 'eye'` 时**不画眼睛部件**：那颗眼白 + 虹膜 + 瞳孔就是它的眼睛。
+         `'none'` 是 `D.eye` 的一支真分支（见 draw2d.ts）—— 老实现没有它，
+         于是这里会落到 `else`（stern），表现是白眼球上多压一道半月形。 */
       D.eye(x, cx, eyeY, eyeR * 1.15, def.shape === 'eye' ? 'none' : 'dot', D.O.empty);
-      if (def.shape === 'eye') { /* 眼球本体已有瞳孔 */ }
     } else if (eyes === 2) {
       D.eye(x, cx - R * 0.36, eyeY, eyeR, 'round');
       D.eye(x, cx + R * 0.36, eyeY, eyeR, 'round');
@@ -729,11 +749,19 @@ S.enemySprite = function (def) {
 };
 
 /**
- * 怪物受击白闪剪影（纯白平涂，缓存生成）
+ * 把一张 shader 烘到**怪物贴图自己的像素**上，产出一张与本体同尺寸同锚点的覆盖层。
+ *
+ * 为什么"覆盖层"必须离屏烘一次，而不是在世界画布上现画：
+ * 这类效果的合成（`atop` / `in`）认的是**目标的 alpha**。在离屏画布上目标是这只怪的
+ * 剪影，于是效果精确地只落在轮廓内；在世界画布上目标是一整块不透明背景，
+ * 于是同一段代码会连同背景一起染色（实测：精英色老实现漏出一块 90×86 的金色矩形，
+ * 左上角还在怪的身体中心）。**一处烘焙、两条效果共用**，也就没有"某一个效果接错了地方"。
+ *
+ * @param prefix 缓存键前缀（`fl-` 白闪 / `el-` 精英色）—— 缓存账目按前缀分类核对
  */
-S.enemyFlash = function (def) {
+function bakeOverlay(prefix, def, shaderId, params) {
   if (typeof document === 'undefined') return null;
-  var key = 'fl-' + def.id;
+  var key = prefix + def.id;
   if (cache[key]) return cache[key];
   var spr = S.enemySprite(def);
   if (!spr) return null;
@@ -741,17 +769,25 @@ S.enemyFlash = function (def) {
   c.width = spr.canvas.width; c.height = spr.canvas.height;   // 设备像素：与本体同一倍率
   var x = c.getContext('2d');
   x.drawImage(spr.canvas, 0, 0);
-  /* 白闪走 **shader 库**（`art_shaders.ts` 的 `hitFlash`），不再在这里裸写
-     `source-in` —— 那是同一件事的第二个执行点：效果一共就这么几种，
-     每种的合成步骤应当只有一处出处，否则"把白闪改成暖白"要改两三个地方，
-     而漏掉的那个只会表现为"有一只怪闪的颜色不一样"。 */
-  ArtShaders.paint(x, 'hitFlash', c.width, c.height, { color: '#ffffff' });
-  // 逻辑尺寸与锚点都与本体一致 —— 白闪才能严丝合缝地叠在怪物身上
+  /* 效果本身走 **shader 库**（`art_shaders.ts`），不在这里裸写合成模式 ——
+     否则"把白闪改成暖白"要改两三个地方，而漏掉的那个只会表现为"有一只怪闪的颜色不一样"。 */
+  ArtShaders.paint(x, shaderId, c.width, c.height, params);
+  // 逻辑尺寸与锚点都与本体一致 —— 覆盖层才能严丝合缝地叠在怪物身上
   cache[key] = {
     canvas: c, width: spr.width, height: spr.height, scale: spr.scale,
     bodyY: spr.bodyY, foot: spr.foot, bodyR: spr.bodyR
   };
   return cache[key];
+}
+
+/** 怪物受击白闪剪影（纯白平涂，缓存生成） */
+S.enemyFlash = function (def) {
+  return bakeOverlay('fl-', def, 'hitFlash', { color: '#ffffff' });
+};
+
+/** 精英色覆盖层（薄金平涂，只落在轮廓内；缓存生成） */
+S.enemyElite = function (def) {
+  return bakeOverlay('el-', def, 'elite', { color: PAL.GOLD, alpha: 0.30 });
 };
 
 /**
@@ -762,7 +798,7 @@ S.drawEnemy = function (x, e, time, ox, oy) {
   var def = e.def;
   // 每实例的记忆：倍率变了就重取（否则换屏幕后手上的贴图还是旧的）
   var spr = e._spr;
-  if (!spr || spr.scale !== CACHE_SCALE) { spr = e._spr = S.enemySprite(def); e._fl = null; }
+  if (!spr || spr.scale !== CACHE_SCALE) { spr = e._spr = S.enemySprite(def); e._fl = null; e._el = null; }
   if (!spr) return;
   ox = ox || 0; oy = oy || 0;
   var ex = e.x + ox, ey = e.y + oy;
@@ -791,12 +827,15 @@ S.drawEnemy = function (x, e, time, ox, oy) {
       x.drawImage(fl.canvas, dx, dy, drawW, drawH);
     }
   }
-  /* 精英色（`elite` shader）：在**贴图自己的像素**上叠一层加色金光。
-     为什么用 shader 而不是再画一个形状：`atop` 让它精确地只落在怪物轮廓内，
-     于是"这只怪是精英"读起来是**这只怪本身在发光**，而不是套了个金圈。
-     一句话的代价，换来的是精英怪在任何背景下都认得出。 */
+  /* 精英色：blit 那张**烘好的**覆盖层（与白闪同一套路）。
+     为什么不再在这里调 `ArtShaders.paint`：`elite` 的合成认的是目标 alpha，
+     画在世界画布上就会连同背景一起染成一块金色矩形（那就是老实现的表现，
+     实测 90×86、左上角还落在怪的身体中心）。
+     烘到离屏画布之后，金色只落在这一只怪的轮廓内，于是"它是精英"读起来是
+     **这只怪本身泛金光**，而不是套了个金圈或贴了块色板。 */
   if (e.elite) {
-    ArtShaders.paint(x, 'elite', drawW, drawH, { color: PAL.GOLD, alpha: 0.30 });
+    var el = e._el || (e._el = S.enemyElite(def));
+    if (el) x.drawImage(el.canvas, dx, dy, drawW, drawH);
   }
   x.restore();
 
@@ -1023,19 +1062,22 @@ S.itemIcon = function (icon, tint, size) {
         });
         D.capsule(x, 0, 4, 2, 18, 4, PAL.E7, D.O.ink2);
         break;
-      case 'magnet':
-        D.arcRing(x, 0, 0, 14, Math.PI * 0.15, Math.PI * 0.85, 13, c1, D.O.empty);
-        D.arcRing(x, 0, 0, 14, Math.PI * 0.15, Math.PI * 0.85, 13, PAL.INK, D.O.empty);
-        x.save(); x.globalCompositeOperation = 'destination-out';
-        D.arcRing(x, 0, 0, 14, Math.PI * 0.15, Math.PI * 0.85, 7, '#000', D.O.empty);
-        x.restore();
-        D.rect(x, -20, 8, 12, 10, PAL.E3, D.O.ink2);
-        D.rect(x, 8, 8, 12, 10, PAL.E3, D.O.ink2);
-        D.rect(x, -20, 8, 12, 10, c1, D.O.ink2);
-        D.rect(x, 8, 8, 12, 10, c1, D.O.ink2);
-        D.rect(x, -18, 8, 8, 4, PAL.E5, D.O.none);
-        D.rect(x, 10, 8, 8, 4, PAL.E5, D.O.none);
+      case 'magnet': {
+        /* 马蹄形：本体一层 tint（13px 带宽）+ 内外两条 3px 墨线，两极一端红一端蓝。
+           老实现有 **5 笔同几何覆盖**：`:1027` 的 tint 弧被 `:1028` 同宽的 INK 弧完整盖住，
+           `:1032-1033` 的两块红极头又被 `:1034-1035` 同几何的 tint 块盖住 ——
+           于是 tint 完全不可见、两极也不分色，而它是 21 个图标里**唯一没有 3px 墨线**的
+           （实测线宽集 {13,7,2}，其余 20 个都是 {3}）。
+           所以这里保留 tint 本体、把墨线挪到内外边缘（同一条"平涂 + 粗黑描边"的语言），
+           并让两极分色 —— 磁铁的"两极"正是它一眼可辨的那两笔。 */
+        var ma0 = Math.PI * 0.15, ma1 = Math.PI * 0.85;
+        D.arcRing(x, 0, 0, 14, ma0, ma1, 13, c1, D.O.empty);       // 本体（tint）
+        D.arcRing(x, 0, 0, 21, ma0, ma1, 3, PAL.INK, D.O.empty);   // 外缘墨线（3px 基线）
+        D.arcRing(x, 0, 0, 7, ma0, ma1, 3, PAL.INK, D.O.empty);    // 内缘墨线
+        D.rect(x, -20, 8, 12, 10, PAL.E3, D.O.ink2);               // 红极
+        D.rect(x, 8, 8, 12, 10, PAL.E5, D.O.ink2);                 // 蓝极
         break;
+      }
       case 'stone':
         D.poly(x, [[-14, 12], [-16, -2], [-6, -12], [8, -13], [16, -2], [12, 12]], c1, D.O.ink3);
         D.poly(x, [[-6, -12], [8, -13], [16, -2], [2, -4]], PAL.WHITE, D.O.none);
@@ -1552,8 +1594,11 @@ Registry.family('enemyMouth', {
   values: function () { return ['none', 'flat', 'grin', 'open', 'wave', 'angry']; }
 });
 Registry.family('enemyEye', {
-  note: '眼睛画法（draw2d 的 eye 分派）', owner: 'sprites.ts',
-  values: function () { return ['none', 'dot', 'round', 'empty', 'stern', 'angry', 'dead']; }
+  note: '眼睛画法（draw2d 的 eye 分派；`none` = 不画，给"眼球本体就是眼睛"的怪用）', owner: 'sprites.ts',
+  /* ⚠ 这里**不列 `empty`**：它从来没有过画法，混进这张表是因为 `D.O.empty` 是
+     一个选项常量（"全部用默认参数"），被当成了眼型。声明一个画不出来的值
+     就是假声明 —— 而假声明的表现是"选了它，画的是另一张脸"。 */
+  values: function () { return ['none', 'dot', 'round', 'stern', 'angry', 'dead']; }
 });
 Registry.family('bulletKind', {
   note: '弹丸造型（我方 bullet / 敌方 ebullet 共用的 kind）', owner: 'sprites.ts',

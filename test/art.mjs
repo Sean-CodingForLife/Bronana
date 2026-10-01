@@ -316,14 +316,26 @@ console.log('\n[3] 2D 着色器：合成操作 / 步骤 / 美术宪法');
    ========================================================= */
 console.log('\n[4] 接进游戏：废墟铺装与白闪');
 {
-  /* 白闪真的走了 shader 库（而不是又一份裸写的 source-in） */
+  /* 贴图覆盖层（白闪 / 精英色）真的走了 shader 库，而且**只有一处**执行点。
+     这里查的是形状而不是行为：行为上"画错地方"看不出差别（老实现照样出图），
+     而错的地方正是"合成步骤被抄了第二份、或者在世界画布上现画"。 */
   const spritesSrc = fs.readFileSync(path.join(ROOT, 'src', 'sprites.ts'), 'utf8');
-  ok(/ArtShaders\.paint\(x, 'hitFlash'/.test(spritesSrc),
+  const paintCalls = spritesSrc.match(/ArtShaders\.paint\(/g) || [];
+  ok(paintCalls.length === 1 && /ArtShaders\.paint\(x, shaderId/.test(spritesSrc),
+    'shader 在贴图层只有一个执行点（`bakeOverlay` 按 id 执行，两条效果共用）', paintCalls.length + ' 处');
+  ok(/return bakeOverlay\('fl-', def, 'hitFlash'/.test(spritesSrc),
     'enemyFlash 走 shader 库的 hitFlash（效果的合成步骤只有一处出处）');
-  const flashFn = /S\.enemyFlash = function[\s\S]*?\n\};/.exec(spritesSrc);
-  const body = flashFn ? flashFn[0] : '';
-  ok(body.indexOf("globalCompositeOperation = 'source-in'") < 0,
-    'enemyFlash 里不再裸写 source-in（那是同一件事的第二个执行点）');
+  ok(/return bakeOverlay\('el-', def, 'elite'/.test(spritesSrc),
+    'enemyElite 走 shader 库的 elite —— **烘到贴图上**，而不是在世界画布上现铺一块金色矩形');
+  const overlayBody = /function bakeOverlay[\s\S]*?\n\}/.exec(spritesSrc);
+  ok(!!overlayBody && overlayBody[0].indexOf('globalCompositeOperation') < 0,
+    '覆盖层烘焙里不裸写合成模式（那是同一件事的第二个执行点）');
+  /* 精英色的那一步合成必须是 `atop`：`add`(=lighter) 不认目标 alpha，
+     在世界画布上会连同背景一起染成一块金色矩形（老实现就是那块 90×86 的矩形）。 */
+  const eliteDef = ArtShaders.get('elite');
+  ok(!!eliteDef && eliteDef.steps.every(s => s.op === 'atop'),
+    'elite 的合成步骤是 atop（认目标 alpha，才能"只落在轮廓内"）',
+    eliteDef ? eliteDef.steps.map(s => s.op).join(',') : 'null');
 
   /* 白闪贴图仍然出得来，且是**设备分辨率**（与本体同倍率） */
   const { Enemies } = globalThis;

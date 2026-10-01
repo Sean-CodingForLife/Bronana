@@ -11,6 +11,7 @@
 | [`../CODE_OF_CONDUCT.md`](../CODE_OF_CONDUCT.md) | 协作 | 行为准则（含 AI 生成内容约定） | 罕见 |
 | [`requirements.md`](requirements.md) | **需求账本** | 用户提的每一条需求 + 现状 + 证据；讨论在这里留痕 | 每次讨论 |
 | [`external-benchmarks.md`](external-benchmarks.md) | 外部参考 | 同类游戏的公开设计数字（带来源强度标注） | 做设计决策前 |
+| [`external-game-mechanics.md`](external-game-mechanics.md) | **外部参考·机制** | **20 款游戏的玩法机制档案**（核心循环 / 操作 / 分段 / 成长 / 失败代价 / 张力 / 取舍 / 独有机制 / 褒贬）+ 按三条轴的横向综合 + 来源强度分级 | **做设计决策前必读** |
 | [`scaling-benchmarks.md`](scaling-benchmarks.md) | **外部参考·数值** | **七款游戏的难度与成长曲线对照**（Brotato / Hades / Dead Cells / 以撒 / 地牢 / RoR2 / VS / StS）+ Bronana 站在哪 | 调数值前必读 |
 | [`scaling-isaac-gungeon.md`](scaling-isaac-gungeon.md) | 外部参考·明细 | 以撒的结合 / 挺进地牢的逐项数字（查不到即写「未取得」） | 同上 |
 | [`scaling-ror2-vs-sts.md`](scaling-ror2-vs-sts.md) | 外部参考·明细 | 雨中冒险 2 / 吸血鬼幸存者 / 杀戮尖塔的逐项数字 | 同上 |
