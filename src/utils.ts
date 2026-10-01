@@ -79,12 +79,24 @@ U.fmtNum = function (v) {
 /* ---------------- 加权随机 ----------------
    只留 pickWeighted：它是唯一有调用方的（武器/道具/怪物/升级卡四处）。
    `pick` 与 `shuffle` 没有任何调用方，而且它们的 `rnd` 参数缺省时会退化成
-   Math.random —— 这种"默认值破坏可复现性"的助手留在公共 API 里迟早会被误用。 */
+   Math.random —— 这种"默认值破坏可复现性"的助手留在公共 API 里迟早会被误用。
+
+   ⚠ **`rnd` 现在是必填的**（2026-10-01 收口）。原来写的是
+   `var r = (rnd || Math.random)() * total;` —— 一个**可选**参数 + 一个兜底
+   ⇒ **调用点漏传时会静默变成不可复现**。它的症状是"同一盘带子放出不同的结果"，
+   比崩掉难查得多；更坏的是它看起来**完全正常**。
+   这与 `U.shuffle` 被删掉的理由是**同一条**（见上面的注释）——
+   等于把同一个坑再挖一遍。
+   实测收口前**全部 6 个调用点都已经传了 `rnd`**（`Affixes.roll` / `I.rollShop` /
+   `I.rollPack` / `W.rollShop` / `E.buildWave` / `game.ts:1953` 的升级卡抽取走
+   `S.rnd`），所以这一次是**零行为变化**（指纹逐位未变可证）。
+   收口之后"喂进来的随机流必须是种子驱动的"这件事由**类型**看着，
+   而不是靠"下一个人记得传"。 */
 U.pickWeighted = function (entries, rnd) {
   // entries: [{w:number, ...}]
   var total = 0, i;
   for (i = 0; i < entries.length; i++) total += entries[i].w;
-  var r = (rnd || Math.random)() * total;
+  var r = rnd() * total;
   for (i = 0; i < entries.length; i++) { r -= entries[i].w; if (r <= 0) return entries[i]; }
   return entries[entries.length - 1];
 };

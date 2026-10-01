@@ -84,6 +84,7 @@
     "score": "node tools/score.mjs",
     "ui-text": "node tools/extract-ui-text.mjs",
     "fingerprint": "node tools/fingerprint.mjs",
+    "fp:repro": "node tools/fp-repro.mjs",
     "map": "node tools/map-audit.mjs",
     "shot": "electron tools/ui-shot.mjs",
     "ui-preview": "node tools/ui-serve.mjs",

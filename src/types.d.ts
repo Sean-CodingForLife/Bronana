@@ -2494,7 +2494,7 @@ interface UtilsApi {
   seedFromStr(str: string): number;
   plus(v: number): string;
   fmtNum(v: number): string;
-  pickWeighted<T extends { w: number }>(entries: T[], rnd?: () => number): T;
+  pickWeighted<T extends { w: number }>(entries: T[], rnd: () => number): T;
   cloneObj<T>(o: T): T;
   $(sel: string, root?: ParentNode): HTMLElement | null;
   $$(sel: string, root?: ParentNode): HTMLElement[];
