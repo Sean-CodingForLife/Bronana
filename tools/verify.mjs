@@ -201,6 +201,15 @@ const GATES = [
       + '分类必须在声明的 11 档里（分类 = 这份文档**写给谁看**）'
   },
   {
+    id: 'naming',
+    name: '命名边界（引擎前缀 vs 内容前缀）',
+    cmd: ['node', ['tools/naming.mjs']],
+    why: '用户的正式决定：引擎叫 **Teapot**、**Bronana 只指游戏内容**，而且他说了 **"不要混了"**。'
+      + '判据一句话：**引擎模块里不许出现内容的名字**。'
+      + '这条信息一度住在四处（R51 的 21 行表 / §八点六 / engine-first §九 / teapot-restructure §四）——'
+      + '所以这条门也顺手把"同一条信息有几份"这件事变成一个要处理的账。'
+  },
+  {
     id: 'color',
     name: '颜色宪法（同一个值不许有第二个出处）',
     cmd: ['node', ['tools/color-audit.mjs']],

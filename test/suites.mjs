@@ -82,6 +82,9 @@ export const SUITES = [
   ['RHI 渲染硬件接口 / 透明性与面完整性', 'rhi.mjs'],
   /* 开发工具：证明 	ools/dev-edit.mjs 能挡住 shell 的 6 类文本编辑失败 */
   ['开发工具 / 结构化文本编辑（挡住 shell 的 6 类）', 'dev-edit.mjs'],
+  /* 门 naming 的自证：它带一张**欠账表**，而豁免表天然会退化成永久豁免 —— */
+  /* 所以这套要证明三种注入都会红（新增 / 表对不上 / 文件名）。 */
+  ['命名边界门 / 三种注入都会红', 'naming-gate.mjs'],
   ['缓存 / 烘焙倍率 / 条目收敛', 'cache.mjs'],
   ['界面层 / DOM 流程', 'ui-check.mjs'],
   ['架构 / 系统分层与依赖方向', 'arch.mjs'],

@@ -31,8 +31,8 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | 模块格式 | 真 `import` / `export`（无 IIFE、无 `window.X`） | 依赖图能被静态校验，测试能直接 `import src/*.ts` |
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |
-| 测试 | **66 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
-| 验收门 | **24 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
+| 测试 | **67 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
+| 验收门 | **25 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
 
 三种运行形态共用同一份 `src/`：**web**（Vite）、**cli**（无头 `sim` / 静态 `serve`）、**desktop**（Electron 外壳）。
 
@@ -43,20 +43,20 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 ```bash
 pnpm i                 # 装依赖（只有 4 个 devDependencies）
 
-pnpm verify --list     # **先跑这个**：列出 24 道门、每道在挡什么
+pnpm verify --list     # **先跑这个**：列出 25 道门、每道在挡什么
 pnpm verify --quick    # 迭代用（约 20 秒）：跳过测试套件，并明说跳了什么
-pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 24 道门
+pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 25 道门
 ```
 
 > ⚠ **`pnpm verify` 是本项目的准绳。** 说"改好了"之前必须跑它，并附上真实输出。
-> 只跑 `--quick` 不算 —— 它跳过的恰好是"行为与数值的唯一真相"（66 套测试）。
+> 只跑 `--quick` 不算 —— 它跳过的恰好是"行为与数值的唯一真相"（67 套测试）。
 
 只跑某一道门时（门 = 命令 = 退出码，没有别的判据）：
 
 | 门 | 命令 | 挡什么 |
 | --- | --- | --- |
 | 类型 | `pnpm typecheck` | tsc ×2（浏览器侧 `types: []` + Node 侧），必须 **0 错** |
-| 测试 | `pnpm test` | 66 套无头套件的总入口 |
+| 测试 | `pnpm test` | 67 套无头套件的总入口 |
 | 指纹 | `pnpm fingerprint` | 纯重构必须**逐位不变**（见第五节） |
 | 分层 | `pnpm run audit` | 依赖环 / 死代码 / 未读字段 / 向上依赖未登记 |
 | 守卫 | `pnpm run guards` | 每个家族的值域要么有自检、要么被跨表引用守着 |
@@ -127,7 +127,7 @@ pnpm verify            # 提交前跑这一条（约 60~210 秒）：全部 24 �
 
 ### 2. `sim` 层及以下**不许碰 DOM，也不许碰 Node**
 
-这不是风格问题，是**"66 套测试能在 Node 里跑"的前提**，而且被两道机器守着：
+这不是风格问题，是**"67 套测试能在 Node 里跑"的前提**，而且被两道机器守着：
 
 - `tsconfig.json` 刻意 `types: []` → `src/` 里误用 `process` / `fs` / `Buffer` 直接**编译报错**；
 - `test/ui-check.mjs` 解析整张 import 图并断言：无环、模拟层不得依赖渲染/界面/输入/音频、
@@ -301,7 +301,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 ### 需求怎么走（五步，缺一步不算完）
 
 `1 提出（用户）→ 2 复述（AGENT：指认它属于哪个模块、跟已有的谁是同一类）→
-3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（24 道门全绿 + 行为指纹）`，
+3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（25 道门全绿 + 行为指纹）`，
 状态与证据都记在 `docs/requirements.md`。
 
 ### 用词纪律（**AGENT 必须遵守**，写在 `src/terms.ts` 里、由门 `name` 守）

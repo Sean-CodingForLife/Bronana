@@ -147,6 +147,9 @@ jobs:
       - name: 附加 · 颜色宪法
         run: pnpm run color:audit
 
+      - name: 附加 · 命名边界（引擎前缀 vs 内容前缀）
+        run: pnpm run naming:audit
+
       - name: 附加 · 跨进程可复现性
         run: pnpm run fp:repro
 
