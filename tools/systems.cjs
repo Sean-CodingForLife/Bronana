@@ -26,6 +26,14 @@ const SYSTEMS = [
     id: 'mech', name: '工具与机制', level: 0,
     note: '纯机制：不认识任何玩法概念，被所有人依赖。它们之间也是单向的（总账/自检登记处最底）',
     modules: ['utils.ts', 'registry.ts', 'selfcheck.ts',
+      /* `viewport.ts`（**窗口 / 视口 / 相机**，R56）坐在 L0 的理由：
+         它只 import `registry.ts` / `selfcheck.ts`（都是 L0），
+         而且它是**纯几何**：窗口多大 → 取景多大 → 两条互逆的变换。
+         它不认识 Game、不认识渲染层、不认识界面 —— 渲染层反过来 import 它。
+         ⚠ 三件事（Window / Viewport / Camera）改造前压缩在 `render.ts` 的
+           `R.cam` 里，而相机**属于 Viewport**（行业通行模型
+           `Window ⊃ Viewport ⊃ Layer ⊃ Item`）—— 所以它坐这里而不是 L7。 */
+      'viewport.ts',
       /* `fold.ts`（数值折叠：一张表四种折法）坐在 L0 的理由：它只 import
          `registry.ts` / `selfcheck.ts`（都是 L0），不认识任何一个玩法概念 ——
          而 data（1）/ dungeon（2）/ meta（3）/ sim（4）四层都要用它的折法。

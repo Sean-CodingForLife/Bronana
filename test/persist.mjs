@@ -101,6 +101,12 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
        两者都是**纯表现**：不进存档、不影响任何玩法数值 ——
        它们只回答"这一帧有几层被关掉了"。 */
     'depth.ts': ['pool', 'live', 'used', 'frameSeq', 'counts', 'bandCounts', 'pushes', 'TRACE', 'skipped'],
+    /* `viewport.ts`（R56）：`WIN` 是设备表面的当前尺寸（`Object.create` 式对象字面量，
+       不被 `isMutable` 认），所以这里登记的是那个**策略常量** `SCALE_POLICY`。
+       它与 `WIN` 都是**纯表现**：不进存档、不影响任何玩法数值 ——
+       它们只回答"屏幕多大、按哪一档缩放"。真正会影响玩法的只有"换成带缩放的策略"，
+       那是一次**行为变更**，要用户点头 + 指纹基线一起更新（`viewport.ts` 的注释里写了）。 */
+    'viewport.ts': ['SCALE_POLICY'],
     /* music.ts 的播放状态：**纯表现**（不进存档、不该进会话）。
        它同时暴露了这份盘点的一个盲点：`topLevelVars` 只认 `var x = …`，
        而挂在导出对象上的字段（`Music.current = ''`）**不是** `var` ——

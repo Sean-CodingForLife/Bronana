@@ -452,7 +452,8 @@ console.log('\n[6] 视口剔除');
     EmitSpawnHelper(i);
   }
   function EmitSpawnHelper(i) {
-    const g2 = globalThis.Emit;
+    const Viewport = globalThis.Viewport;   /* R56：视口契约那一节用 */
+const g2 = globalThis.Emit;
     g2.spawn({ kind: 'spark', x: 40 + (i * 149) % 1600, y: 40 + (i * 61) % 1200, vx: 0, vy: 0, r: 3, color: '#fff', life: 5 });
   }
 
@@ -629,6 +630,87 @@ console.log('\n[7] 摄像机抖动');
   for (let i = 0; i < 30; i++) R.addTrauma(0.2);
   ok(R.shake.trauma <= 0.2 + 1e-9, '高频小冲击不会累加顶满（max 语义）', R.shake.trauma);
   R.resetShake();
+}
+
+/* =========================================================
+   [7c] 视口契约（R56）：Window / Viewport / Camera 是**三件事**
+   ---------------------------------------------------------
+   调研六家引擎后的通行模型是 `Window ⊃ Viewport ⊃ Layer ⊃ Item`，
+   相机**属于 Viewport** —— 所以"屏幕多大"与"相机在哪"必须能分开回答。
+   这一节守四件事：
+
+     ① 三者的边界：`Window` 只答"多少物理像素"，`Camera` **不持有**屏幕尺寸
+     ② 变换的**唯一出处**：`worldToScreen` 与 `applyCamera` **互为逆**，
+        而且它们都由 `halfView()` 推导（改造前这两条公式各写一处，靠注释维持一致）
+     ③ 缩放策略是**声明**的，而且每档都写了"看到多少"与"代价"
+     ④ `fit-1x` 下 `stretch() === 1` —— 这正是"与改造前逐位等价"的**机器判据**
+   ========================================================= */
+console.log('\n[7c] 视口契约：Window / Viewport / Camera（R56）');
+{
+  /* ① Window 只答"多少物理像素" */
+  const w1 = Viewport.resize(1280, 720, 2);
+  ok(w1.cssW === 1280 && w1.cssH === 720 && w1.dpr === 2 && w1.bufW === 2560 && w1.bufH === 1440,
+    'Window 报的是 CSS 尺寸 + DPR + 像素缓冲尺寸（2× 屏 → 缓冲是 CSS 的两倍）',
+    JSON.stringify(w1));
+  const w2 = Viewport.resize(800, 600, 1);
+  ok(w2.bufW === 800 && Viewport.view().w === 800,
+    '换个窗口之后 Viewport 的取景尺寸跟着变（`fit-1x` = 屏幕多大看到多大）',
+    JSON.stringify(Viewport.view()));
+  ok(Viewport.stretch() === 1,
+    '`fit-1x` 的 stretch 恒为 1 —— **这就是"不缩放"的定义**，也是逐位等价的判据',
+    Viewport.stretch());
+
+  /* ② 两条变换互为逆（用真渲染层跑过之后的相机状态）
+     ⚠ **dpr 必须与渲染层当前那个一致**。第一版这里写死 `Viewport.resize(1280,720,2)`，
+     而 `R.dpr` 是 `R.resize()` 按真窗口算出来的 1 —— 于是 `worldToScreen` 用 2、
+     我的逆变换用 1，误差正好是差一个 dpr 的量级。
+     教训：`Viewport` 与 `R` 的 dpr 是**同一件事**，测试里不许各设一个。 */
+  Viewport.resize(1280, 720, R.dpr);
+  const cam = R.cam;
+  const SX = 300, SY = 200;
+  const s1 = Viewport.worldToScreen(cam, SX, SY);
+  /* 逆推：由屏幕点反解世界点，应当回到 (SX, SY)。
+     ⚠ **别再减 shake**。代数上它已经消掉了：
+         translate(t) 之后 world→canvas 是 (w - cam.x + half.w + shake) * k，
+         而 worldToScreen 就是同一条公式；由它反解 w 时 shake 出现在两边、自动约去。
+     第一版在这里又多减了一次 shake，误差正好是 shake 的量级（实测 100px）——
+     教训是**别手写逆变换，用 `s1` 自己的定义反解**。 */
+  const half = Viewport.halfView(cam);
+  const st = Viewport.stretch();
+  const sc = st * cam.zoom * R.dpr;
+  const back = {
+    x: (s1.x - half.w * sc) / sc + cam.x,
+    y: (s1.y - half.h * sc) / sc + cam.y
+  };
+  ok(Math.abs(back.x - SX) < 1e-9 && Math.abs(back.y - SY) < 1e-9,
+    'worldToScreen 的逆变换回到原点（±1e-9）—— 两条公式真的互为逆',
+    JSON.stringify(back));
+  ok(Math.abs(half.w - Viewport.view().w / 2 / cam.zoom) < 1e-9 &&
+     Math.abs(half.h - Viewport.view().h / 2 / cam.zoom) < 1e-9,
+    'halfView() 是"取景的一半"的唯一算法（`hardcode` 门逼着从三处收成一处）',
+    JSON.stringify(half));
+
+  /* ③ 策略是声明的，每档都有"看到多少"与"代价" */
+  const table = Viewport.policyTable();
+  ok(table.length >= 4 && table.filter(p => p.active).length === 1,
+    '缩放策略表有 ' + table.length + ' 档，其中恰好一档是**当前**的', Viewport.policy());
+  ok(table.every(p => p.note && p.note.length > 8 && p.cost && p.cost.length > 4),
+    '每一档都写了"看到多少"与"代价"（不写代价的选项看起来永远是免费的）',
+    table.map(p => p.id).join(' '));
+  ok(Viewport.reference().w > 0 && Viewport.reference().h > 0,
+    '参考分辨率有值（带缩放的策略才有意义）', JSON.stringify(Viewport.reference()));
+  ok(Viewport.audit().ok, '启动期自检认可这套策略', JSON.stringify(Viewport.audit().problems));
+
+  /* ④ 视口不认识玩法（它坐 L0 的理由） */
+  const vpSrc = fs.readFileSync(new URL('../src/viewport.ts', import.meta.url), 'utf8');
+  const vpImports = [...vpSrc.matchAll(/^import\s[^'"]*from\s*'\.\/([^']+)'/gm)].map(m => m[1]);
+  ok(vpImports.every(f => ['utils.ts', 'registry.ts', 'selfcheck.ts'].indexOf(f) >= 0),
+    'viewport.ts 只依赖 L0 的机制层（不认识 Game / 渲染 / 界面）', vpImports.join(','));
+  ok(!/\bGame\b|\bR\.cam\b|\bdocument\b/.test(vpSrc.replace(/^\s*\/\*[\s\S]*?\*\//gm, '')),
+    'viewport.ts 里没有玩法概念、没有渲染层引用、没有 DOM');
+
+  /* 复位成渲染层当前这一档，免得影响后面的断言 */
+  R.resize();
 }
 
 /* ---------------- 角色呼吸 / 走路律动 ---------------- */

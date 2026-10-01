@@ -27,7 +27,7 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | --- | --- | --- |
 | 运行时依赖 | **零**（`dependencies` 为空） | 这是**设计约束**，不是巧合。加之前必须先讨论 |
 | 素材文件 | **零**（无 `public/`、无 `assets/`） | 全部画面**程序化绘制**。擅自引入图片会牵动测试链路与调色板 |
-| 代码规模 | `src/` 94 个模块 · 约 4.40 万行（另 `types.d.ts` 约 5.2 千行） | 是一个真项目，不是玩具，改动要按工程规矩来 |
+| 代码规模 | `src/` 95 个模块 · 约 4.42 万行（另 `types.d.ts` 约 5.2 千行） | 是一个真项目，不是玩具，改动要按工程规矩来 |
 | 模块格式 | 真 `import` / `export`（无 IIFE、无 `window.X`） | 依赖图能被静态校验，测试能直接 `import src/*.ts` |
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |

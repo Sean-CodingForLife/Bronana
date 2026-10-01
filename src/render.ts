@@ -17,6 +17,7 @@ import { Bronana } from './bronana.ts';
 import { Scene } from './scene.ts';
 import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
+import { Viewport } from './viewport.ts';
 import { PAL, Perf, U } from './utils.ts';
 import { World } from './world.ts';
 
@@ -52,7 +53,10 @@ var w = window.innerWidth, h = window.innerHeight;
   R.dpr = dpr;
   R.canvas.width = Math.floor(w * dpr);
   R.canvas.height = Math.floor(h * dpr);
-  R.cam.w = w; R.cam.h = h;
+  var win = Viewport.resize(w, h, dpr);
+  var vw = Viewport.view();
+  R.cam.w = vw.w; R.cam.h = vw.h;
+  void win;
   // 分辨率变了：位图缓存（离屏贴图 + 两层烘焙）必须按新倍率重建，
   // 否则拖到另一个显示器上之后，缓存层还是旧倍率的那一份。
   if (changed) { S.setScale(dpr); R.invalidateBakes(); }
@@ -82,7 +86,8 @@ function updateCamera(dt) {
   cam.x = U.lerp(cam.x, tx, Math.min(1, dt * 7));
   cam.y = U.lerp(cam.y, ty, Math.min(1, dt * 7));
 
-  var halfW = cam.w / 2 / cam.zoom, halfH = cam.h / 2 / cam.zoom;
+  var half = Viewport.halfView(cam);
+  var halfW = half.w, halfH = half.h;
   cam.x = U.clamp(cam.x, Math.min(halfW, worldW / 2), Math.max(worldW - halfW, worldW / 2));
   cam.y = U.clamp(cam.y, Math.min(halfH, worldH / 2), Math.max(worldH - halfH, worldH / 2));
 
@@ -160,18 +165,11 @@ function updateShake(dt) {
  * ⚠ 相机与 dpr 都只有渲染层认识 —— 输入层拿到的是一个点，不是矩阵。
  */
 R.worldToScreen = function (wx, wy) {
-  var cam = R.cam;
-  var s = R.dpr * cam.zoom;
-  return {
-    x: (wx - cam.x) * s + cam.w / 2 * R.dpr,
-    y: (wy - cam.y) * s + cam.h / 2 * R.dpr
-  };
+  return Viewport.worldToScreen(R.cam, wx, wy);
 };
 
 function applyCamera(x) {
-  var cam = R.cam;
-  x.setTransform(R.dpr * cam.zoom, 0, 0, R.dpr * cam.zoom, 0, 0);
-  x.translate(-cam.x + cam.w / 2 / cam.zoom + cam.shakeX, -cam.y + cam.h / 2 / cam.zoom + cam.shakeY);
+  Viewport.applyCamera(x, R.cam);
 }
 
 /* =========================================================

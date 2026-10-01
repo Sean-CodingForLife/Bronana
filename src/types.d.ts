@@ -1619,6 +1619,40 @@ interface RegistryApi {
   describe(): string;
 }
 
+/* ---------------- 视口 / 窗口（viewport.ts，R56） ----------------
+   `Window ⊃ Viewport ⊃ Layer ⊃ Item`，相机**属于 Viewport** ——
+   所以"屏幕多大"与"相机在哪"是两件事，`Camera` 不持有前者。 */
+/** 一档缩放策略：**"看到多少"直接影响玩法**（视野即信息），所以它是声明出来的 */
+interface ViewportScaleDef {
+  id: string;
+  name: string;
+  /** 这一档看到多少 */
+  note: string;
+  /** 代价（不写代价的选项看起来永远是免费的） */
+  cost: string;
+  /** 是不是**当前**这一档（由 `policyTable()` 填） */
+  active?: boolean;
+}
+interface ViewportApi {
+  /** 收到窗口尺寸变化（**唯一**设置窗口尺寸的入口） */
+  resize(cssW: number, cssH: number, dpr: number): { cssW: number; cssH: number; dpr: number; bufW: number; bufH: number };
+  /** 设备表面：CSS 尺寸 + DPR + 像素缓冲尺寸 */
+  windowInfo(): { cssW: number; cssH: number; dpr: number; bufW: number; bufH: number };
+  /** 这一帧的取景尺寸（**设计单位**） */
+  view(): { w: number; h: number };
+  /** 设计单位 → CSS 像素的倍率（`fit-1x` 恒为 1 = 不缩放） */
+  stretch(): number;
+  policy(): string;
+  policyTable(): ViewportScaleDef[];
+  reference(): { w: number; h: number };
+  /** 世界坐标 → 画布像素（鼠标 → 世界方向） */
+  worldToScreen(cam: { x: number; y: number; zoom: number }, wx: number, wy: number): { x: number; y: number };
+  /** 把画布设成"世界 → 屏幕"的变换（与 `worldToScreen` 互为逆） */
+  applyCamera(x: any, cam: { x: number; y: number; zoom: number; shakeX: number; shakeY: number }): void;
+  /** 相机夹取用的一半取景尺寸（世界单位） */
+  halfView(cam: { zoom: number }): { w: number; h: number };
+  audit(): { ok: boolean; problems: string[] };
+}
 /* ---------------- Z 深度（depth.ts） ----------------
    层带 + 层内 y 排序 + 确定性 tie-break；sim 层不参与，实体由渲染层注册。
 
