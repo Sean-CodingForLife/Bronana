@@ -1,6 +1,7 @@
 ---
 title: "外部参考 · 工作区与项目清单 —— 主流引擎/构建系统怎么定义「一个项目」并管理它"
 category: 调研
+status: 现行
 scope: "Unity / Godot / Unreal / Bevy+Cargo / npm+pnpm / VS Code 六家的：清单文件 · 名字归属 · 发现与枚举 · 共享与隔离 · 改名与迁移；每条附出处与**强度**；末尾是「Teapot 能抄什么 / 不能抄什么」"
 source: "三路联网调研（2026-10-01/02，web_search + web_fetch 取原始页面与官方仓库源码）—— 每条结论附 URL 与强度（官方文档/官方仓库=**高**；官方博客/issue 追踪器=**中**；论坛/个人博客=**低**）。本文件是**唯一新增文件**，未改任何源码"
 links: ["workspace-spec.md", "teapot-restructure.md", "requirements.md"]

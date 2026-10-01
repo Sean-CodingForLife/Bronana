@@ -1,6 +1,7 @@
 ---
 title: "交付记录"
 category: 交付记录
+status: 现行
 scope: "逐轮交付记录的分卷索引 + 两条读前提醒"
 source: "各卷（01~11）；01~06 是从 `README.md` 搬出来的（内容一字未改）"
 links: ["../../README.md", "../requirements.md"]

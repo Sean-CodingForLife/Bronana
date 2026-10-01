@@ -1,6 +1,7 @@
 ---
 title: "引擎优先：为什么「内容用不上」不是否决引擎能力的理由"
 category: 决定
+status: 现行
 scope: "**判据文档**：面对一条「某某引擎都有」的能力，该用什么判据决定做不做。它明令禁用「现在的游戏内容用不用得上」这条判据，并给出替代的三问、唯一真约束（抽象不能是死代码）、以及「引擎能力包」这个落地形态"
 source: "用户在 2026-10-01 反复强调三次的原则（先有引擎再有内容 / 引擎与内容解耦 / 查漏补缺为未来铺路 / 抽象化 + SOLID + 工程化模块化系统化 / 自研工具框架模块是地基）。与 `tools/engine-boundary.mjs`（门 `engine-boundary`）互为表里：那个管**边**，本文管**判据**"
 links: ["requirements.md", "techstack-upgrade-decision.md", "../AGENTS.md", "../CONTRIBUTING.md"]

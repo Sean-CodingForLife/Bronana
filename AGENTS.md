@@ -1,6 +1,7 @@
 ---
 title: "AGENTS.md — 给 AI 编码助手的项目须知"
 category: 协作
+status: 现行
 scope: "AI 在本仓库里**怎么正确地动手**（最短上手路径 · 四步齐全 · 四条硬约束 · 用词纪律 · 十条坑）"
 source: "本文是 `CONTRIBUTING.md` 的\"AI 快速上手版\"；数量一律从清单算（`test/suites.mjs` / `tools/verify.mjs`）"
 links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]

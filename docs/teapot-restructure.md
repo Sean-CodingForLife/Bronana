@@ -1,6 +1,7 @@
 ---
 title: "Teapot Engine 战略重构 —— 从『一个游戏』到『一台引擎』"
 category: 决定
+status: 现行
 scope: "引擎与内容的定位、术语、目标目录、模块与插件机制、八项引擎能力、E1~E10 批次与每批判据"
 source: "用户 2026-10-01 正式决定（本阶段只做引擎、停止扩张内容）"
 links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]

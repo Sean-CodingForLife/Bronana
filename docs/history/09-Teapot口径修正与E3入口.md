@@ -1,6 +1,7 @@
 ---
 title: "09 · Teapot 口径修正与 E3 入口"
 category: 交付记录
+status: 现行
 scope: "E3 的口径修正：把「13 处 / 2 个文件」这个错了很久的数删掉 · 量出命名门的真实覆盖范围（23/97）· 把门外六类并进 E3 入口 · 定下「内容命名空间由工作区注入」"
 source: "**当时**的数字与结论（现在的看 `../README.md` 的「当前状态」或跑 `pnpm verify`）"
 links: ["README.md", "../requirements.md", "../teapot-restructure.md"]

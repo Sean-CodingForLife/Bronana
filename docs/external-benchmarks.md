@@ -1,6 +1,7 @@
 ---
 title: "外部基准：2D 俯视竞技场 Roguelite 的公开设计数字"
 category: 外部参考
+status: 现行
 scope: "同类游戏的**公开设计数字**（单局时长 / 首胜局数 / 难度公式 / 元进度成本 / 敌人涨幅），每条带来源强度"
 source: "外部来源逐条标注 `[实取]` / `[摘要]` / `未取得`；**取不到就写取不到**"
 links: ["external-game-mechanics.md", "scaling-benchmarks.md"]

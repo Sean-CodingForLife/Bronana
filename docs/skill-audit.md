@@ -1,6 +1,7 @@
 ---
 title: "行业判据自检清单（skill 体检）"
 category: 自检
+status: 现行
 scope: "按行业判据逐条体检本作，附\"影响 ÷ 代价\"排序"
 source: "判据清单 + 本作实测；产物是\"该补什么\"的排序，不是门"
 links: ["requirements.md", "external-game-mechanics.md"]

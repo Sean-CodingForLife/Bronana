@@ -1,6 +1,7 @@
 ---
 title: "难度与成长曲线的外部基准（七款游戏对照）"
 category: 外部参考
+status: 现行
 scope: "七款同类游戏的**曲线对照** + 本作站在哪 —— 调数值前必读"
 source: "外部来源带强度标注；本作那一列由 `pnpm run curves` 与 `tools/balance.mjs` 量"
 links: ["scaling-isaac-gungeon.md", "scaling-ror2-vs-sts.md", "external-benchmarks.md"]

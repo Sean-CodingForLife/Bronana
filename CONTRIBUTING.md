@@ -1,6 +1,7 @@
 ---
 title: "参与开发"
 category: 协作
+status: 现行
 scope: "**家法正本**：声明 · 注册 · 自检 · 测试 · 行为指纹 · 分层纪律 · 怎么加门"
 source: "门与套件数从 `tools/verify.mjs` 的 `GATES` / `test/suites.mjs` 算"
 links: ["AGENTS.md", "docs/requirements.md"]

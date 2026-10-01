@@ -1,6 +1,7 @@
 ---
 title: "决定：渲染后端升级到 WebGL2（WebGPU 为目标态）"
 category: 决定
+status: 现行
 scope: "用户 2026-10-01 拍板 —— **换 WebGL2，shader 是一等能力，不是可选收益**；引擎与内容分离为硬约束"
 source: "用户原话（本轮）＋ 仓库现场实测（`test/modes.mjs` / `src/draw2d.ts` / `src/*.ts` 的 `D.*` 普查）"
 links: ["docs/techstack-upgrade-research.md", "docs/requirements.md", "AGENTS.md"]

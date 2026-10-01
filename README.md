@@ -1,6 +1,7 @@
 ---
 title: "Bronana"
 category: 门面
+status: 现行
 scope: "玩法 / 操作 / 引擎与架构参考 / 性能 / 已知取舍 —— **只讲现在是什么样、为什么是这样**"
 source: "与代码同步（存量表由 `pnpm run readme:check` 对账）"
 links: ["CONTRIBUTING.md", "docs/README.md", "CHANGELOG.md"]

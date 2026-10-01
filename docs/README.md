@@ -1,6 +1,7 @@
 ---
 title: "文档索引"
 category: 门面
+status: 现行
 scope: "仓库全部文档**按读者分类**的索引 + 三条硬约定"
 source: "盘上的 `*.md`（漏登记的文档由评审与这里对账）"
 links: ["../README.md", "../AGENTS.md", "requirements.md"]

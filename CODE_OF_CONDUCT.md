@@ -1,6 +1,7 @@
 ---
 title: "行为准则"
 category: 协作
+status: 现行
 scope: "协作规范（含 **AI 生成内容**的约定）"
 source: "—"
 links: ["AGENTS.md", "CONTRIBUTING.md"]

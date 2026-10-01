@@ -1,6 +1,7 @@
 ---
 title: "安全策略"
 category: 安全
+status: 现行
 scope: "威胁模型与漏洞报告方式"
 source: "设计约束来自 `AGENTS.md` 第一节（零依赖 / 零素材 / 纯单机）；本文件是 **Teapot 引擎**的安全策略"
 links: ["README.md", "CODE_OF_CONDUCT.md"]

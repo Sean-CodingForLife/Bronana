@@ -49,7 +49,34 @@ const CATEGORIES = {
   '自检': '想知道"本项目按行业判据缺什么"的人',
   '模板': '提 PR / 提 issue 的人'
 };
-const REQUIRED = ['title', 'category', 'scope', 'source', 'links'];
+const REQUIRED = ['title', 'category', 'scope', 'source', 'links', 'status'];
+
+/* =========================================================
+   `status` —— **文档的生命周期**（2026-10-02 加，取证见
+   `docs/external-workspace-conventions.md` 的同批调研：ADR / MADR / PEP 1 / boxer / RFC）
+   ---------------------------------------------------------
+   为什么加它：这个仓库**已经在用手写作废横幅**了 ——
+   `docs/techstack-upgrade-research.md` 顶部那句「⚠️ 已拍板：换 WebGL2」，
+   而 `docs/README.md` 的索引里还专门备注了"结论不要再用，取证仍然有效"。
+   也就是说：**意识有了，机制没有** —— 状态只住在**正文的一句话**里，
+   **索引与门都看不见它**，于是"过期文档继续骗人"只靠人记得读开头。
+   这一档把状态变成**字段**，并让门按状态**分别要求**别的东西。
+
+   ⚠ **为什么不加 `last-reviewed`（本轮刻意不做，不是漏）**：
+   调研（Grafana "Last reviewed" / boxer 的 `reviewed-date` / Homebrew）确实推荐它，
+   但**给 30 份文档填一个"复核日期"，而其中大多数我并没有真复核** —— 那正是
+   `owner` 字段被否掉的理由（"小团队会退化成永远同一个人的假信息"）。
+   **宁可暂时不要这个字段，也不要一个靠伪造填满的字段。**
+   等有**真实的复核节奏**（谁在什么时候按什么判据复核）再加，那时它才有信息量。
+   ========================================================= */
+const STATUS = {
+  '草案': '还没定稿（**必须有可见横幅**，人一眼能看到"别照它施工"）',
+  '现行': '当前有效（索引里默认读这一档）',
+  '已取代': '被另一份取代（**必须写 `superseded-by`，且目标文件要存在** —— 抄 PEP 1 的 `Superseded-By`）',
+  '已作废': '结论不成立了，且没有替代者（**必须有可见横幅**；与"已取代"的区别就是有没有接班人）'
+};
+/** 不是"现行"的状态，都必须有一眼可见的横幅（抄 boxer 的"横幅 iff draft"） */
+const NEEDS_BANNER = ['草案', '已取代', '已作废'];
 
 /* ---------------- 收集全部 .md（与 `eol-audit` 同一条路：不用 git，避开中文名的转义） ---------------- */
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'research', '.tmp-npm-cache']);
@@ -67,6 +94,7 @@ function walk(dir, out = []) {
 const files = walk(ROOT).map(p => path.relative(ROOT, p).split(path.sep).join('/')).sort();
 const problems = [];
 const rows = [];
+const statusRows = [];
 
 for (const f of files) {
   const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -95,6 +123,38 @@ for (const f of files) {
       rows.push({ file: f, category: cat });
     }
   }
+
+  /* ---- 状态机（不是"值合法"就完事：状态**决定**别的东西必须怎么写）---- */
+  const st = fields.status ? fields.status.replace(/^["']|["']$/g, '') : '';
+  if (st && !STATUS[st]) {
+    problems.push(f + '：`status: ' + st + '` 不在合法状态里（合法：' +
+      Object.keys(STATUS).join(' / ') + '）');
+  } else if (st) {
+    /* ① 已取代 ⇒ 必须写接班人，且**接班人真的在**（单向会漏，这是 PEP 1 的判据） */
+    if (st === '已取代') {
+      const sb = (fields['superseded-by'] || '').replace(/^["']|["']$/g, '');
+      if (!sb) {
+        problems.push(f + '：状态是「已取代」却**没写 `superseded-by`** —— ' +
+          '没有接班人的话该是「已作废」（这两档的区别就是这个）');
+      } else {
+        const fromDoc = path.resolve(path.dirname(path.join(ROOT, f)), sb);
+        if (!fs.existsSync(fromDoc) && !fs.existsSync(path.join(ROOT, sb))) {
+          problems.push(f + '：`superseded-by: ' + sb + '` **指向的文件不存在** —— ' +
+            '指针指空比没有指针更糟（读的人会以为有人接手了）');
+        }
+      }
+    }
+    /* ② 不是"现行"的 ⇒ 必须有一眼可见的横幅（正文前 25 行里以 `>` 开头且含 ⚠ 的行） */
+    if (NEEDS_BANNER.includes(st)) {
+      const body = lines.slice(end + 1, end + 26);
+      const hasBanner = body.some(l => /^\s*>/.test(l) && l.includes('⚠'));
+      if (!hasBanner) {
+        problems.push(f + '：状态是「' + st + '」却**没有可见横幅** —— ' +
+          '正文前 25 行里要有一行以 `>` 开头且含 ⚠（人扫一眼就知道"别照它施工"）');
+      }
+    }
+    statusRows.push({ file: f, status: st });
+  }
 }
 
 /* 分类分布 —— 顺带回答"索引是不是真的按读者分了" */
@@ -121,6 +181,16 @@ for (const cat of Object.keys(CATEGORIES)) {
   if (!list.length) continue;
   console.log('    ' + cat.padEnd(6) + ' ×' + String(list.length).padEnd(3) + ' ' + CATEGORIES[cat]);
 }
+
+console.log('\n[3] 状态分布（**状态决定还能不能照它施工**）');
+for (const st of Object.keys(STATUS)) {
+  const list = statusRows.filter(r => r.status === st).map(r => r.file);
+  if (!list.length) continue;
+  console.log('    ' + st.padEnd(4) + ' ×' + String(list.length).padEnd(3) + ' ' + STATUS[st]);
+  if (st !== '现行') for (const f of list) console.log('         · ' + f);
+}
+console.log('    ⚠ `last-reviewed` **本轮刻意没加** —— 理由写在 `tools/doc-front-matter.mjs` 的注释里：' +
+  '\n      宁可暂时不要，也不填一堆我没真复核过的日期（那与 `owner` 被否掉是同一个理由）。');
 
 console.log('\n=== 结果 ===');
 if (problems.length) {

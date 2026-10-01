@@ -1,6 +1,7 @@
 ---
 title: "外部游戏机制档案（20 款）"
 category: 外部参考
+status: 现行
 scope: "20 款游戏的**玩法机制**（核心循环 / 每分钟在做什么 / 分段 / 成长 / 失败代价 / 张力 / 核心取舍 / 独有机制 / 褒贬）+ 按三条轴的横向综合"
 source: "名单以**本仓库自己的引用**为据（不凭印象）；来源强度分级标注"
 links: ["external-benchmarks.md", "scaling-benchmarks.md"]

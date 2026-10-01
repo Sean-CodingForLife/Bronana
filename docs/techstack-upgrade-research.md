@@ -1,6 +1,8 @@
 ---
 title: "技术栈升级调研 —— Canvas2D → WebGL/WebGPU · 渲染抽象层 · 引擎与内容分离"
 category: 调研
+status: 已取代
+superseded-by: techstack-upgrade-decision.md
 scope: "对「要不要上 WebGL / 要不要把引擎与内容分开」的联网取证 + 可核对的数字 + 分阶段建议"
 source: "联网调研（web_search / web_fetch）＋ 仓库现场读数（本次调研**未改任何源码**；本文件是唯一新增文件）"
 links: ["README.md", "AGENTS.md", "docs/requirements.md"]

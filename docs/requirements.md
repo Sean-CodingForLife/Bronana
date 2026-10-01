@@ -1,6 +1,7 @@
 ---
 title: "Bronana 需求清单"
 category: 需求账本
+status: 现行
 scope: "用户提的每一条需求 + 现状 + 证据；**讨论在这里留痕**。未结条目看 §6.0 的四象限"
 source: "状态与证据都必须是**能被机器复现**的（测试名 / 门名 / 文件路径 / 提交）"
 links: ["../AGENTS.md", "README.md", "history/README.md"]
