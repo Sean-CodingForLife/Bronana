@@ -494,7 +494,37 @@ console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一�
   ok(/sourcemap:\s*\(process\.env\.TEAPOT_SOURCEMAP \|\| process\.env\.BRONANA_SOURCEMAP\)/.test(cfg),
     'sourcemap 默认不发（要它得显式开 TEAPOT_SOURCEMAP=1），且**旧名 BRONANA_SOURCEMAP 仍被读**');
 
+  /* ⚠ **判据必须量「新鲜构建」**（2026-10-01 查出的洞）：
+     `dist/` 是 gitignore 的**构建产物**，而这条判据读的正是它 —— 于是
+     **本地量到的是上一次构建留下的旧包**（绿），**CI 先 `pnpm run build` 再跑测试**（红）。
+     实测后果：CI 从 #51 起连红 8 轮，本地却一路"全绿"，没人发现体积早就超了。
+     ⇒ 这里**自己保证新鲜**：产物比任一输入旧（或根本不在）就先构建一次。
+     **判据的结论不许取决于一个陈旧产物** —— 那与"一条不会失败的审计"是同一个形状，
+     只是方向反了：它不会**失败**，而不是不会成功。 */
+  const newestMtime = (p) => {
+    const s = fs.statSync(p);
+    if (!s.isDirectory()) return s.mtimeMs;
+    let t = 0;
+    for (const e of fs.readdirSync(p, { withFileTypes: true })) {
+      t = Math.max(t, newestMtime(path.join(p, e.name)));
+    }
+    return t;
+  };
+  const inputs = ['src', 'server', 'desktop', 'index.html', 'styles.css', 'vite.config.ts',
+    'package.json'].map(p => path.join(ROOT, p)).filter(p => fs.existsSync(p));
+  const inputsNewest = Math.max.apply(null, inputs.map(newestMtime));
   const assetsDir = path.join(DIST, 'assets');
+  const jsOnDisk = fs.existsSync(assetsDir)
+    ? fs.readdirSync(assetsDir).find(f => f.endsWith('.js')) : null;
+  const distTime = jsOnDisk ? fs.statSync(path.join(assetsDir, jsOnDisk)).mtimeMs : 0;
+  if (distTime < inputsNewest) {
+    console.log('      （产物不新鲜或缺失 —— 先构建一次；**判据只认新鲜构建**）');
+    const vitePkg = JSON.parse(readSrc('node_modules/vite/package.json'));
+    const binRel = typeof vitePkg.bin === 'string' ? vitePkg.bin : vitePkg.bin.vite;
+    const b = spawnSync(process.execPath, [path.join(ROOT, 'node_modules', 'vite', binRel), 'build'],
+      { cwd: ROOT, encoding: 'utf8' });
+    if (b.status !== 0) console.log('      构建失败：' + String(b.stderr || b.stdout || '').slice(-400));
+  }
   const files = fs.existsSync(assetsDir) ? fs.readdirSync(assetsDir) : [];
   const jsName = files.find(f => f.endsWith('.js'));
   const cssName = files.find(f => f.endsWith('.css'));
@@ -512,7 +542,7 @@ console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一�
       kb(css.length) + ' kB（gzip ' + kb(gz(css)) + '）· html ' + kb(html.length) +
       ' kB（gzip ' + kb(gz(html)) + '）· **全站 gzip ' + kb(gzAll) + ' kB**');
     ok(js.length <= rawCap * 1000,
-      '未压缩 JS 在配置的上限内（' + kb(js.length) + ' ≤ ' + rawCap + ' kB）');
+      '未压缩 JS 在事故探测器之内（' + kb(js.length) + ' kB ≤ 上限 ' + kb(rawCap * 1000) + ' kB）');
     /* 真正要紧的那一条。**275 是 R41 第二批钉的数，第三批动到 280，
        这一轮（R50 第 10 条：状态系统）动到 285** ——
        实测 273.8（上一批是 272.6），而这一轮加了 `status.ts`
@@ -521,9 +551,19 @@ console.log('\n[9] 构建产物的体积预算（玩家真正要下载的那一�
        所以这个读数不是本批单独的账 —— 两边都写在 CHANGELOG 的同一节里。
        按前两批自己写下的规矩（"要再涨，先回来看这一节的理由还在不在"）：
        **理由还在** —— 加的是功能与系统，不是依赖。 */
-    ok(gz(js) <= 285 * 1000, 'gzip 后的 JS ≤ 285 kB（现在 ' + kb(gz(js)) + '）');
-    ok(gzAll <= 300 * 1000,
-      '全站 gzip ≤ 300 kB —— 玩家真正下载的那一份（现在 ' + kb(gzAll) + '）');
+    /* ⚠ **2026-10-01 用户改的是口径**：上面那几笔是"贴着实测 +几 kB"调的，
+       而用户的要求是「**直接先预判最终大小**再去检查和重新设置」—— 体量只会继续长。
+       所以这两条改成**按最终体量的容量规划值**：
+         · gzip JS ≤ **3 MB** · 全站 gzip ≤ **4 MB**（今天实测 282.2 / 298.2，约 13 倍余量）
+       为什么仍然看 gzip：**玩家下载的就是这一份**；
+       而"解析 / 编译要花多少"由 `vite.config.ts` 那个**未压缩事故探测器**管
+       （它同时抓 gzip 看不见的那一类：高度可压缩的巨物，gzip 后合规而未压缩已爆）。
+       ⚠ 读数**每一次都打印**（上面那行"产物："）—— "长没长"始终看得见；
+         这两条判据管的是"**有没有越过预判的最终体量**"。 */
+    ok(gz(js) <= 3 * 1000 * 1000,
+      'gzip 后的 JS 在容量规划内（现在 ' + kb(gz(js)) + ' kB / 上限 3 MB）');
+    ok(gzAll <= 4 * 1000 * 1000,
+      '全站 gzip 在容量规划内（现在 ' + kb(gzAll) + ' kB / 上限 4 MB）—— 玩家真正下载的那一份');
   }
 }
 
