@@ -874,6 +874,23 @@ html[data-touch="1"] .layer{touch-action:pinch-zoom;}
 .hall-read .tx-log-row b{letter-spacing:.06em;}
 .hall-read .tx-log-row.said{opacity:.72;}
 
+/* R41 · NPC 交易面板：一档一行（给什么 / 要什么 / 为什么不能换） */
+.hall-read .tx-trade{
+  margin-top:8px;border-top:2px dashed rgba(0,0,0,.2);padding-top:7px;
+  display:flex;flex-direction:column;gap:6px;max-height:32vh;overflow-y:auto;
+}
+.hall-read .trade-row{
+  border:2px solid var(--ink);border-radius:8px;background:var(--cream);
+  padding:6px 9px;font-size:13px;line-height:1.5;
+}
+.hall-read .trade-row.off{opacity:.62;}
+.hall-read .trade-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;}
+.hall-read .trade-name{font-size:13.5px;letter-spacing:.06em;}
+.hall-read .trade-give{color:#2f6b45;font-weight:700;}
+.hall-read .trade-note{opacity:.78;font-size:12.5px;}
+.hall-read .trade-foot{display:flex;align-items:center;gap:9px;margin-top:4px;flex-wrap:wrap;}
+.hall-read .trade-ask{font-weight:700;}
+
 /* 战斗短句（barks）：屏幕上方飘一下就没。`pointer-events:none` —— 它不吃点击。
    ⚠ 动画挂在 `.on`（不是 `.bark-line` 本身）：同一个元素连续说两句时，
      "摘掉类 → 强制重排 → 挂回去"才会重播动画。挂在基类上第二句就不动了。 */

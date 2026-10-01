@@ -206,7 +206,10 @@ const DYNAMIC_CLASSES = new Set([
   /* R41 · 对话补完的那几块（按台词与分支动态生成，不在 HTML 里）：
      玩家侧那一行、打字光标、选项、读法工具条、对话历史。 */
   'tx-row', 'tx-me', 'tx-caret', 'tx-choices', 'tx-choice', 'tx-tools', 'tx-hint',
-  'tx-log', 'tx-log-row'
+  'tx-log', 'tx-log-row',
+  /* R41 · NPC 交易面板（按报价表动态生成） */
+  'tx-trade', 'trade-row', 'trade-head', 'trade-name', 'trade-give', 'trade-note',
+  'trade-foot', 'trade-ask', 'off'
 ]);
 
 const missingId = [...cssIds].filter(id => !htmlIds.has(id));
@@ -275,7 +278,15 @@ function matches(el, sel) {
   // 支持逗号选择器列表（focusables() 用的就是 ".card, .btn, .char-card"）
   if (sel.indexOf(',') >= 0) return sel.split(',').some(s => matches(el, s));
   if (sel[0] === '#') return el.id === sel.slice(1);
-  if (sel[0] === '.') return el._classes && el._classes.has(sel.slice(1));
+  if (sel[0] === '.') {
+    /* ⚠ **复合类选择器**（`.trade-row.off` 这种）也要支持。
+       只取 `sel.slice(1)` 的话，`.trade-row.off` 会被当成"类名是
+       `trade-row.off`"—— 于是**永远匹配不上**，而报出来的是
+       "有 0 行标成了不可做"，看起来像界面的问题、其实是量尺的。
+       R41 的交易面板就是这么踩到的。 */
+    const classes = sel.split('.').filter(Boolean);
+    return !!el._classes && classes.every(c => el._classes.has(c));
+  }
   // 属性选择器（事件委托用的 `closest('[data-act]')` 就是它）。
   // 不支持它的话，桩里的委托点击永远找不到按钮 —— 那是检查的盲区。
   if (sel[0] === '[') {
@@ -1338,6 +1349,83 @@ ok(!shopErr, '商店满槽 / 购买被拒 / 卖出 分支渲染正常', shopErr)
   clickAct('hub');
   until(0, 1, () => Game.state !== 'hub', 240);
   ok(Game.state === 'talents', '走上去就进镜面（天赋）——设施自己声明去处', Game.state);
+
+  /* =========================================================
+     R41 · NPC 交易（普查里"完全没有"的那一栏）
+     ---------------------------------------------------------
+     守三件事：
+       · 走到**商人**面前时对话框多一个「交易」入口，而**不是**商人的没有
+       · 摊开之后看到的是"给什么 / 要什么"，而且不可做的那几档**列出来但禁用**
+       · 点一下**真的换到了**（余额变了、货进了"下一局的开局条件"）
+     ========================================================= */
+  Game.setState('title', true);
+  Profile.reset();
+  Profile.saveCharacter({ name: '买主' }, 'ranger');
+  Game.setState('title', true);
+  UI.refresh();
+  clickAct('start');
+  clickAct('slot-continue');
+  ok(Game.state === 'station', '进了大厅（用这个档的人）', Game.state);
+  clickAct('hub');
+  /* 走到拾荒者面前：出生点贴左墙下行（与 test/trade.mjs 同一条量出来的路） */
+  until(-1, 0, () => Game.hall().x <= 305);
+  until(0, 1, () => !!(Game.hall().near && Game.hall().near.npc === 'picker'), 900);
+  ok(!!(Game.hall().near && Game.hall().near.npc === 'picker'), '走到拾荒者面前',
+    Game.hall().near && (Game.hall().near.npc || Game.hall().near.id));
+  Game.hallAct();                                  // 按 E：他开口（走的是玩家真走的那条路）
+  UI.refresh();
+  const tradeEntry = () => registry['hub-talk'].querySelectorAll('[data-act="hub-trade"]');
+  ok(tradeEntry().length === 1, '商人的对话框里多一个「交易」入口');
+  /* **不是商人的没有**：走到菌母面前（她只有对话）。
+     ⚠ 中间要**回一趟大厅**（`hub-back`）：`renderHub` 换到别的人时那个交易面板
+       可能还摊着，而这一条要量的是"菌母的对话框里有没有那个入口" ——
+       不清干净就会量到上一个商人的残留（第一版就是这么红的）。 */
+  clickAct('hub-back');
+  ok(Game.state === 'station', '回大厅（为下面的"换个人"清一次场）', Game.state);
+  clickAct('hub');
+  /* ⚠ 用 `_internals.placeHall` 把人**摆到**菌母跟前，而不是再走一遍：
+     "走过去真的能到"已经由上面那条（走到拾荒者）与 `hall.ts` 的连通性自检守着，
+     这一节要量的是"她那一屏有没有交易入口" —— 让走位来决定它只会让断言更脆。
+     第一版就是靠走位，结果人走到了拾荒者那儿，量到的是**他**的对话框。 */
+  Game._internals.placeHall(300, 330);
+  Game.step(Game.cfg.fixedDt, { x: 0, y: 0 });
+  ok(!!(Game.hall().near && Game.hall().near.npc === 'mother'), '站在菌母面前',
+    Game.hall().near && (Game.hall().near.npc || Game.hall().near.id));
+  Game.hallAct();
+  UI.refresh();
+  ok(tradeEntry().length === 0, '不是商人的人（菌母）没有「交易」入口',
+    talkText().slice(0, 40));
+  /* 回拾荒者面前，摊开交易面板 */
+  Game._internals.placeHall(300, 830);
+  Game.step(Game.cfg.fixedDt, { x: 0, y: 0 });
+  Game.hallAct();
+  UI.refresh();
+  ok(tradeEntry().length === 1, '回到拾荒者面前，「交易」入口又在了', tradeEntry().length);
+  clickEl(tradeEntry()[0]);
+  const rows = registry['hub-talk'].querySelectorAll('.trade-row');
+  const views = Game.tradeOffers('picker');
+  ok(rows.length === views.length, '报价表铺了 ' + views.length + ' 档（表里几档就几行）', rows.length);
+  ok(registry['hub-talk'].querySelectorAll('.trade-give').length === views.length,
+    '每一行都写着"给什么"（不给东西的报价有自检拦着）');
+  const offRows = registry['hub-talk'].querySelectorAll('.trade-row.off').length;
+  ok(offRows === views.filter(v => !v.ok).length,
+    '做不了的那 ' + offRows + ' 档**列出来但标成不可做**（不是藏起来）', offRows);
+  /* 点一下能换的那一档 */
+  const buyable = registry['hub-talk'].querySelectorAll('[data-act="trade-buy"]');
+  ok(buyable.length >= 1, '至少有一档现在换得起（不然这条线开局就是死的）', buyable.length);
+  if (buyable.length) {
+    const before = Game.tradeOffers('picker').find(v => v.ok);
+    Game.addMaterial(200);
+    const scrapInBag = Game.getSession().player.scrap;
+    clickEl(buyable[0]);
+    ok(Game.getSession().starterScrap + Game.getSession().starterWeapons.length +
+      Game.getSession().starterItems.length > 0,
+      '点一下**真的换到了**（货进了下一局的开局条件）',
+      JSON.stringify({ s: Game.getSession().starterScrap, w: Game.getSession().starterWeapons, i: Game.getSession().starterItems }));
+    ok(Game.getSession().player.scrap === scrapInBag,
+      '而**没有**进这一局的背包（那是商店的事，不是交易的）');
+    void before;
+  }
   Game.setState('title', true);
   UI.refresh();
 }

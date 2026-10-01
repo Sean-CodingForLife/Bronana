@@ -60,6 +60,32 @@ function localeOf(id) {
    ========================================================= */
 var MESSAGES: Record<string, Record<string, string>> = Object.create(null);
 
+/* =========================================================
+   2a. **首局引导的文案**（唯一出处）
+   ---------------------------------------------------------
+   这八句以前**写了两遍**：`tutorial.ts` 的表里一份（玩家看到的那一份），
+   下面 `MESSAGES.en` 里再抄一份中文当**翻译表的键**。
+   两处一份的下场是"改了一处忘了另一处"，而那**不会报错** ——
+   英文界面下会拿一份已经改过的中文去查一个查不到的键，
+   于是回退成原文（也就是"这条没翻"），看起来像翻译没做完。
+
+   现在：文案住在这里、`tutorial.ts` import 它。
+   ⚠ 为什么不是反过来（i18n 读 tutorial）：i18n 是**文案表**，
+     tutorial 是**什么时候说** —— 后者依赖前者是天经地义的，
+     反过来会让"文案表"依赖一个玩法模块。
+   ========================================================= */
+var TUTORIAL_TEXT: Record<string, string> = {
+  move: 'WASD 移动 —— 武器会自己开火，你只管走位',
+  shop: '这里是商店：花废料买武器与道具。同名同档的两把可以合并成高一档',
+  doors: '清完一间就能选下一扇门 —— 门上的图标告诉你会遇到什么',
+  levelup: '升级了：四张卡挑一张。带「防」字的是防御向，等级越高越常出现',
+  lowhp: '血量过半了 —— 血到 0 就是这一局结束，但打到的材料会带出局（那是经营的本钱）',
+  boss: '关底 Boss：打倒它掉核心材料 —— 局外的据点与图纸都要它',
+  craft: '工坊能自己造：花废料 + 占一条产线。设施位与产线是可以经营的',
+  meta: '这里是枢纽：据点是经营（产能与容量），天赋是养成（永久成长）'
+};
+I18n.TUTORIAL_TEXT = TUTORIAL_TEXT;
+
 MESSAGES.en = {
   /* ---- 标题与主菜单 ---- */
   '开 始 游 戏': 'START',
@@ -133,22 +159,24 @@ MESSAGES.en = {
   '从文本导入': 'Import from text',
   '重置本槽位': 'Reset this slot',
 
-  /* ---- 首局引导（`tutorial.ts` 的文案；键就是那几句中文原文） ---- */
-  'WASD 移动 —— 武器会自己开火，你只管走位':
+  /* ---- 首局引导（`tutorial.ts` 的文案；键就是那几句中文原文） ----
+     ⚠ 键取自 `I18n.TUTORIAL_TEXT`（上面那份**唯一出处**）——
+       直接写中文字面量就会回到"同一句话两处各一份"的老样子。 */
+  [TUTORIAL_TEXT.move]:
     'WASD to move — your weapons fire by themselves, just keep moving',
-  '这里是商店：花废料买武器与道具。同名同档的两把可以合并成高一档':
+  [TUTORIAL_TEXT.shop]:
     'This is the shop: spend scrap on weapons and items. Two of the same name and tier merge into the next tier',
-  '清完一间就能选下一扇门 —— 门上的图标告诉你会遇到什么':
+  [TUTORIAL_TEXT.doors]:
     'Clear a room to pick the next door — the icon on it tells you what you will find',
-  '升级了：四张卡挑一张。带「防」字的是防御向，等级越高越常出现':
+  [TUTORIAL_TEXT.levelup]:
     'Level up: pick one of four cards. Cards marked DEF are defensive — they show up more often at higher levels',
-  '血量过半了 —— 血到 0 就是这一局结束，但打到的材料会带出局（那是经营的本钱）':
+  [TUTORIAL_TEXT.lowhp]:
     'Past half HP — at 0 this run ends, but the materials you gather come out with you',
-  '关底 Boss：打倒它掉**核心材料** —— 局外的据点与图纸都要它':
+  [TUTORIAL_TEXT.boss]:
     'Floor boss: beating it drops CORE MATERIAL — the stronghold and blueprints both need it',
-  '工坊能自己造：花废料 + 占一条产线。设施位与产线是可以经营的':
+  [TUTORIAL_TEXT.craft]:
     'The workshop crafts things: costs scrap and takes a production line. Both lines and slots are yours to manage',
-  '这里是枢纽：据点是经营（产能与容量），天赋是养成（永久成长）':
+  [TUTORIAL_TEXT.meta]:
     'This is the hub: the Stronghold is Management (capacity), Talents are Growth (permanent power)',
 
   /* ---- 存档与错误兜底 ---- */

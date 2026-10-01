@@ -41,6 +41,7 @@ import { S } from './sprites.ts';
 import { Stats } from './stats.ts';
 import { Station } from './station.ts';
 import { Story } from './story.ts';
+import { Trade } from './trade.ts';
 import { Synergy } from './synergy.ts';
 import { Skills } from './skills.ts';
 import { Talent } from './talents.ts';
@@ -753,12 +754,13 @@ var _talkLine = '';        // 当前这一句的 id（换了就重置 `_talkLine
 var _talkBranch: StoryLineDef | null = null;   // 选了分支之后正在看的那一句
 var _talkLog: DialogueHistoryEntry[] = [];     // 对话历史（上限在 dialogue.ts）
 var _talkLogOpen = false;  // 历史摊开没有
+var _tradeOpen = false;    // 交易面板摊开没有（R41；同一个"走到跟前才有"的形状）
 var _barkTimer: number | null = null;          // 短句那条动画的复位句柄
 
 /** 把"当前正在看的那一句"清干净（换人、走开、重进都要它） */
 function talkReset() {
   _talkIdx = 0; _talkLineT = 0; _talkSkip = false;
-  _talkLine = ''; _talkBranch = null; _talkLogOpen = false;
+  _talkLine = ''; _talkBranch = null; _talkLogOpen = false; _tradeOpen = false;
   /* ⚠ `_talkAuto` **不在这里清**：它是"读法"（一个模式），不是"这一句的状态"——
      走开再回来还得是自动模式，否则玩家每换一个人都要再按一次。 */
 }
@@ -931,7 +933,10 @@ function renderHub() {
         meRow.appendChild(meBody);
         body.appendChild(meRow);
 
-        /* 读法工具条：跳过（这一句）/ 自动（之后每一句）/ 历史（回看） */
+        /* 读法工具条：跳过（这一句）/ 自动（之后每一句）/ 历史（回看）
+           + **交易**（R41：他要是商人，这里多一个入口）。
+           ⚠ 交易**不换屏**：它是这一间屋里、站在他跟前能做的一件事 ——
+             换一屏就等于"走开去商店"，而这一屏的全部意义正是"你在跟人说话"。 */
         var tools = U.el('div', 'tx-tools');
         var skipBtn = U.el('button', 'btn tiny' + (_talkSkip ? ' sel' : ''), '跳过');
         skipBtn.dataset.act = 'hub-skip';
@@ -942,9 +947,51 @@ function renderHub() {
         var logBtn = U.el('button', 'btn tiny' + (_talkLogOpen ? ' sel' : ''), '历史');
         logBtn.dataset.act = 'hub-log';
         tools.appendChild(logBtn);
+        if (Game.isTrader(_hubNpc)) {
+          var tradeBtn = U.el('button', 'btn tiny' + (_tradeOpen ? ' sel' : ''), '交易');
+          tradeBtn.dataset.act = 'hub-trade';
+          tools.appendChild(tradeBtn);
+        }
         tools.appendChild(U.el('span', 'tx-hint',
           _talkAuto ? '自动：说完就往下走' : '点这一句跳到整句'));
         body.appendChild(tools);
+
+        /* **交易面板**（R41）：摆着他现在能给的东西 + 要什么。
+           每一档单独一行 —— "给什么 / 要什么 / 为什么不能换" 三样都要看得见，
+           否则玩家只会看到一片按钮而不知道哪一个买得起。 */
+        if (_tradeOpen && Game.isTrader(_hubNpc)) {
+          var tradeBox = U.el('div', 'tx-trade');
+          var offers = Game.tradeOffers(_hubNpc);
+          if (!offers.length) {
+            tradeBox.appendChild(U.el('div', 'tx-quiet', '……他现在没什么可跟你换的。'));
+          }
+          offers.forEach(function (o) {
+            var row = U.el('div', 'trade-row' + (o.ok ? '' : ' off'));
+            var head = U.el('div', 'trade-head');
+            head.appendChild(U.el('b', 'trade-name', o.name));
+            head.appendChild(U.el('span', 'trade-give', '给：' + o.give));
+            row.appendChild(head);
+            row.appendChild(U.el('div', 'trade-note', o.note));
+            var foot = U.el('div', 'trade-foot');
+            foot.appendChild(U.el('span', 'trade-ask', '要：' + o.ask));
+            if (o.ok) {
+              var b = U.el('button', 'btn tiny', '换 一 个（这一波还剩 ' + o.left + ' 次）');
+              b.dataset.act = 'trade-buy';
+              b.dataset.offer = o.id;
+              foot.appendChild(b);
+            } else {
+              foot.appendChild(U.el('span', 'set-note', o.reason));
+            }
+            row.appendChild(foot);
+            tradeBox.appendChild(row);
+          });
+          /* 说明它换的是**下一局**的开局条件 —— 不说清楚玩家会以为东西没到账。
+             ⚠ 这行文案**不许写 markdown**（`ui-check` 有一条判据查"渲染出来的 DOM
+               里还有没有 `**`"）—— 想强调就写中文引号。 */
+          tradeBox.appendChild(U.el('div', 'tx-hint',
+            '换到的东西进的是下一局的开局携带；商店才是这一局的战力'));
+          body.appendChild(tradeBox);
+        }
 
         /* 历史：倒序（最新的在最上面） */
         if (_talkLogOpen) {
@@ -2606,6 +2653,23 @@ var ACT_HUB: ActMap = {
     renderHub();
   },
   'hub-log': function () { _talkLogOpen = !_talkLogOpen; renderHub(); },
+  /* ---- R41 · NPC 交易：**完全没有** → 有 ---- */
+  'hub-trade': function () {
+    _tradeOpen = !_tradeOpen;
+    if (_tradeOpen) {
+      /* 摊开的时候把"换的是下一局"讲一次 —— 这是它与商店最容易混的一处 */
+      UI.toast('换到的东西进**下一局**的开局携带（商店才是这一局的战力）', '');
+    }
+    renderHub();
+  },
+  'trade-buy': function (t) {
+    var id = (t.dataset && t.dataset.offer) || '';
+    var r = Game.trade(id);
+    if (!r.ok) { UI.toast(r.reason, 'warn'); renderHub(); return; }
+    var o = Trade.byId(id);
+    UI.toast('换到：' + r.got + (o ? '（' + o.name + '）' : '') + ' —— 下一局开局带上', 'good');
+    renderHub();
+  },
 };
 
 var ACT_CODEX: ActMap = {

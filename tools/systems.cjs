@@ -149,6 +149,14 @@ const SYSTEMS = [
         'bonds.ts', 'exchange.ts', 'guide.ts', 'boons.ts',
       'synergy.ts', 'challenges.ts', 'profile.ts', 'daily.ts', 'season.ts', 'danger.ts',
       'offline.ts', 'settings.ts', 'storage.ts',
+      /* `trade.ts`（NPC 交易，R41）：一张报价表 + 几条纯判定。
+         ⚠ 它**没坐在 L0**，虽然它"看起来像一张数据表"：它 import `bonds.ts`
+           （关系阶段门槛）与 `ledger.ts`（收的钱是不是一笔真代币）——
+           两者都在这里。决定一个模块坐哪的**不是它的性质，是它的依赖**
+           （`run_save.ts` 与 `stats.ts` 那两次都是这条）。
+           放 L0 会多出 `mech→meta` 与 `mech→data` 两条向上边，
+           架构门当场抓住（实测：它报的就是这一条）。 */
+      'trade.ts',
       /* `slots.ts` 与 `storage.ts` 同层：它只认识"键名与一段文本"，
          不认识账号档案里有什么字段 —— 所以 profile / save 都能用它做键重定向，
          而它不会因为档案改字段而失效。 */

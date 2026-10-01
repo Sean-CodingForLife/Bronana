@@ -346,6 +346,9 @@ src/                  ← 全部是真正的 ES 模块：import / export，没�
                       "这个档里有没有人"就是**选存档**那一步的判据 ★
   dialogue.ts         **对话引擎**（R41 补的那一半）：打字机 / 跳到整句 / 自动 /
                       对话历史（有上限）/ 战斗短句（**不用随机** —— 回放才可复现）★
+  trade.ts            **NPC 交易**（R41 普查里"完全没有"的那一栏）：12 档报价 × 3 位商人，
+                      收 **growth / material**（§6.5：不许收 scrap / capacity），
+                      换到的是**下一局的开局条件** —— 与商店的分界线就在这里 ★
   data_tiers.ts       品级表（T1–T5，**唯一**的一张：合成台阶 + 词条上限 + 界面颜色）★
   data_elems.ts       元素表（4 种元素的名字 + 附带效果的机制名；武器 element 的值域）★
   curves.ts           数值曲线表（角色 / 怪物 / 刷怪节奏的成长：形状 + 常量 + 逐点表）★
@@ -852,11 +855,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 91 个 · 42296 行（另有 `types.d.ts` 5029 行） |
+| 模块 | 92 个 · 43026 行（另有 `types.d.ts` 5150 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 62 · `selfcheck.ts` 58 · `utils.ts` 31 |
-| 依赖最重的模块 | `game.ts` 45 · `ui.ts` 43 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 5141 · `ui.ts` 4075 · `profile.ts` 1830 · `render.ts` 1685 · `sprites.ts` 1642 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
+| 扇入最高的模块 | `registry.ts` 63 · `selfcheck.ts` 59 · `utils.ts` 31 |
+| 依赖最重的模块 | `game.ts` 47 · `ui.ts` 44 · `main.ts` 30 |
+| 超过 700 行的模块 | `game.ts` 5313 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1685 · `sprites.ts` 1642 · `main.ts` 1017 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -1748,9 +1751,9 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 | 维度 | 现状 |
 | --- | --- |
 | 门 | **17 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
-| 测试套件 | **61 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
+| 测试套件 | **62 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
-| 模块 | 91 个 · 42k 行（另有 `types.d.ts` 5.0k 行） |
+| 模块 | 92 个 · 43k 行（另有 `types.d.ts` 5.1k 行） |
 | 依赖环 | **0** |
 | 向上的边（低层认识高层） | **2 条**，都已逐条登记理由 |
 | 模块级可变状态 | 全部登记在 `test/persist.mjs` 的清单里（新增必须显式登记） |

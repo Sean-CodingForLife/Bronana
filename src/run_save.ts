@@ -229,7 +229,19 @@ RunSave.serialize = function (input) {
     /** 还没选的升级（存档点若正好压着一次升级，丢了就是白丢一级） */
     pendingLevels: p.pendingLevels || 0,
     /** 这一局在事件房见过的遭遇（剧情碎片按它记账） */
-    runEvents: (sess.runEvents || []).slice()
+    runEvents: (sess.runEvents || []).slice(),
+    /* ---- **NPC 交易换到的东西**（R41）----
+       ⚠ 它们与"这一局的进度"是两回事：换到的是**下一局的开局条件** ——
+       所以它们必须跟存档走，否则"读档再打一遍"会把买来的东西丢掉。
+       ⚠ **`trades`（每波限次的账）刻意不进存档**：它是"这一波"的计数，
+         读档之后当前波次从头算，那个计数也就该从头算。带上的话会出现
+         "读档之后这一波买不了了"—— 而那是个没法解释的现象。
+         代价是**存档不幂等**（序列化出来的对象里没有它）—— 这是有意的：
+         `flow` 门的"存档幂等"那一条量的是**序列化出来的字段**，
+         而"哪些字段属于存档"正是这张实参表在回答的问题（见文件头第 22 行那段）。 */
+    starterWeapons: (sess.starterWeapons || []).filter(function (x) { return typeof x === 'string'; }),
+    starterItems: (sess.starterItems || []).filter(function (x) { return typeof x === 'string'; }),
+    starterScrap: Math.max(0, Math.floor(Number(sess.starterScrap) || 0))
   };
 };
 

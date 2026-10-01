@@ -155,7 +155,9 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
          跨局、跨存档带着走）—— 与 `_hubNpc` / `_boardOn` 同一条纪律。 */
       '_talkIdx', '_talkLineT', '_talkSkip', '_talkAuto', '_talkLine', '_talkBranch', '_talkLog', '_talkLogOpen',
       /* 战斗短句那条动画的复位句柄（表现层；不登记的话它是个"没人看得见的状态"） */
-      '_barkTimer'],
+      '_barkTimer',
+      /* R41 · NPC 交易面板摊开没有（同一个"走到跟前才有"的形状） */
+      '_tradeOpen'],
     // 惰性解析出来的摇杆 DOM 引用（缓存）+ 手柄按键的复用缓冲 + 改键回调 + 一次性的"已解析"标记
     // `_padHeld`：上一帧手柄有没有按住键（只在"有→无"时清一次缓冲，避免每帧分配两个对象）
     'input.ts': ['hasDOM', '_capture', '_padKeys', '_padOnce', '_padHeld', '_stickEl', '_knobEl', '_stickReady'],

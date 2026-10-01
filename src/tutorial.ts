@@ -20,6 +20,7 @@
    tutorial 是"你现在该知道什么"（一次性知识）。两者都用飘字，
    但**判据完全不同** —— 所以是两个系统，不是同一个的两种用法。
    ========================================================= */
+import { I18n } from './i18n.ts';
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
 
@@ -40,45 +41,55 @@ var WHEN = {
   'first-meta': '第一次到枢纽（这一局的家）'
 };
 
+/**
+ * 这八句文案的**唯一出处**在 `i18n.ts`（`I18n.TUTORIAL_TEXT`）。
+ *
+ * 为什么不在本文件里写：它们以前写了两遍 —— 这里一份（玩家看到的那份），
+ * `i18n.ts` 的英文表里再抄一份中文当**键**。两处一份的下场是
+ * "改了一处忘了另一处"，而那一句会**静默退回中文**（看着像没翻完），
+ * 恰恰因为查不到那个键。短别名 `T` 是为了让下面那张表读起来还是一句句中文。
+ */
+var T = I18n.TUTORIAL_TEXT;
+
 var LIST: TutorialHintDef[] = [
   {
     id: 'move', when: 'run-start',
-    text: 'WASD 移动 —— 武器会自己开火，你只管走位',
+    text: T.move,
     note: '第一条必须回答"我该按什么"，否则玩家会在原地等'
   },
   {
     id: 'shop', when: 'first-shop',
-    text: '这里是商店：花废料买武器与道具。同名同档的两把可以合并成高一档',
+    text: T.shop,
     note: '"合并"是本作最容易漏掉的机制，而它是成长的第二条轴'
   },
   {
     id: 'doors', when: 'first-wave-cleared',
-    text: '清完一间就能选下一扇门 —— 门上的图标告诉你会遇到什么',
+    text: T.doors,
     note: '房间制之下"选哪扇门"是每回合的主决策'
   },
   {
     id: 'levelup', when: 'first-levelup',
-    text: '升级了：四张卡挑一张。带「防」字的是防御向，等级越高越常出现',
+    text: T.levelup,
     note: '升级池的权重随等级变化（`player.cardPool`），说清楚它才不是玄学'
   },
   {
     id: 'lowhp', when: 'low-hp',
-    text: '血量过半了 —— 血到 0 就是这一局结束，但打到的材料会带出局（那是经营的本钱）',
+    text: T.lowhp,
     note: '同时给出"失败也有产出"这条安全感，否则玩家不敢冒险'
   },
   {
     id: 'boss', when: 'first-boss',
-    text: '关底 Boss：打倒它掉**核心材料** —— 局外的据点与图纸都要它',
+    text: T.boss,
     note: '把"为什么值得打 Boss"与三模块循环接上'
   },
   {
     id: 'craft', when: 'first-craft',
-    text: '工坊能自己造：花废料 + 占一条产线。设施位与产线是可以经营的',
+    text: T.craft,
     note: '把局内营地（经营）的存在告诉玩家'
   },
   {
     id: 'meta', when: 'first-meta',
-    text: '这里是枢纽：据点是经营（产能与容量），天赋是养成（永久成长）',
+    text: T.meta,
     note: '两块的名字必须在这里出现（枢纽是这一局的家，从这里能走到那两块）'
   }
 ];

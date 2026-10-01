@@ -48,10 +48,13 @@ import { Ledger } from './ledger.ts';
 import { Talent } from './talents.ts';
 /* NPC 关系状态（v3 §8-3 的「共享关系状态」）：叙事与养成**都读它** —— 见 `bonds.ts`。 */
 import { Bonds } from './bonds.ts';
+/* **NPC 交易**（R41）：规则表在那边，钱与货在这边 —— 见下方"NPC 交易"那一节。 */
+import { Trade } from './trade.ts';
 import { Craft } from './craft.ts';
 import { Market } from './market.ts';
 import { Pool } from './levelup.ts';
 import { Profile } from './profile.ts';
+import { Story } from './story.ts';
 import { RunSave } from './run_save.ts';
 import { Skills } from './skills.ts';
 import { Stats } from './stats.ts';
@@ -538,6 +541,17 @@ function newSession(charDef, seed, danger, opening, smods, skillBuild) {
     bonds: {},
     /** NPC id → **这一波**相处了几次（模块内的时间感；每波重置） */
     talks: {},
+    /* ---- NPC 交易（R41，"跟人做买卖"）----
+       ⚠ 它换的是**下一局的开局条件**，不是这一局的背包 —— 这是它与商店的分界线。
+       三样一起才成立：`trades` 是每波限次的账，另两样是"已经换到手的东西"。 */
+    /** 报价 id → **这一波**买了几次（每波重置，与相处同一形状） */
+    trades: {},
+    /** 换到的**起始武器**（下一局开局自带；结算时并进 `openingOf`） */
+    starterWeapons: [],
+    /** 换到的**起始道具**（同上） */
+    starterItems: [],
+    /** 换到的**起始废料**（同上） */
+    starterScrap: 0,
     /* ---- 产能（`capacity`）：**局内**（M2，2026-09）----
        v3 §5.1：模块代币"产出在本模块、消费在本模块"；§二：三个模块全在局内。
        产出 = 每波据点运转；消费 = 建造子模块盖设施。 */
@@ -3955,6 +3969,12 @@ function buildSummary(win) {
     coreEarned: Math.max(0, Math.round(S.coreEarned || 0)),
     secrets: S.secretsFound || 0,
     events: (S.runEvents || []).slice(),
+    /* ---- **NPC 交易换到的东西**（R41）----
+       与 `keep` 同一性质：它是**跨局**的一份记录（下一局的开局条件），
+       而结算那一刻正好是"这一局结束"的边界 —— 所以在这里交给档案层。 */
+    starterWeapons: (S.starterWeapons || []).slice(),
+    starterItems: (S.starterItems || []).slice(),
+    starterScrap: Math.max(0, Math.round(S.starterScrap || 0)),
     stats: S.stats
   };
 }
@@ -4224,6 +4244,42 @@ Game.importRun = function (data) {
     : Math.max(0, Math.round(Number(data.material) || 0));
   S.runEvents = Array.isArray(data.runEvents)
     ? data.runEvents.filter(function (e) { return typeof e === 'string'; }).slice(0, 32) : [];
+  /* ---- **NPC 关系与交易**（M3 / R41）从存档贴回来 ----
+     ⚠ 这一段是 **R41 排查时抓出来的一个真 bug**：`run_save.ts` 一直在**写**
+       `bonds` 与 `talks`，而这里**从来没有读** —— 于是"读档之后跟谁聊过、
+       信任多少"全部归零。表现是：你刚跟菌母聊到「信赖」，读一次档回到「生人」，
+       而**没有任何东西会报错**（`flow` 门量的是"写进去的字段读回来还对不对"，
+       它没覆盖这两个 —— 它们不在那份登记的字段表里）。
+     这就是"只写不读"那一类：两边各自看着都对，中间那根线断了。
+     ⚠ 收口按本仓范式：只收**真实的 NPC 与正整数信任**（坏档防线与别处一致）。 */
+  var npcIds: Record<string, boolean> = Object.create(null);
+  for (var ni = 0; ni < Story.NPCS.length; ni++) npcIds[Story.NPCS[ni].id] = true;  S.bonds = {};
+  if (data.bonds && typeof data.bonds === 'object') {
+    for (var bk in data.bonds) {
+      if (!Object.prototype.hasOwnProperty.call(data.bonds, bk)) continue;
+      if (!npcIds[bk]) continue;                       // 认不出的 NPC id 丢掉
+      var bv = Math.max(0, Math.floor(Number(data.bonds[bk]) || 0));
+      if (bv > 0) S.bonds[bk] = bv;
+    }
+  }
+  S.talks = {};
+  if (data.talks && typeof data.talks === 'object') {
+    for (var tk in data.talks) {
+      if (!Object.prototype.hasOwnProperty.call(data.talks, tk)) continue;
+      if (!npcIds[tk]) continue;
+      var tv = Math.max(0, Math.floor(Number(data.talks[tk]) || 0));
+      if (tv > 0) S.talks[tk] = tv;
+    }
+  }
+  /* **交易换到的东西**（R41）：它们进的是**下一局的开局条件**，
+     与 `bonds` 同一组 —— 只写不读会让"读档再打一遍"把买来的东西丢掉。 */
+  S.starterWeapons = Array.isArray(data.starterWeapons)
+    ? data.starterWeapons.filter(function (x) { return typeof x === 'string' && !!Weapons.BY_ID[x]; })
+      .slice(0, 8) : [];
+  S.starterItems = Array.isArray(data.starterItems)
+    ? data.starterItems.filter(function (x) { return typeof x === 'string' && !!Items.BY_ID[x]; })
+      .slice(0, 8) : [];
+  S.starterScrap = Math.max(0, Math.floor(Number(data.starterScrap) || 0));
   p.pendingLevels = Math.max(0, Math.round(Number(data.pendingLevels) || 0));
   var restoredOffers = false;
   if (Array.isArray(data.offers) && data.offers.length) {
@@ -4997,9 +5053,106 @@ Game.talkTo = function (npcId) {
   return { ok: true, reason: '', gain: gain, stage: Bonds.stageOf(after).id };
 };
 
-/** 界面铺一屏训练科目 */
-Game.trainingOptions = function () {
+/* =========================================================
+   **NPC 交易**（R41 普查里"完全没有"的那一栏）
+   ---------------------------------------------------------
+   规则全在 `trade.ts`（纯表 + 纯函数），这里只做三件事：
+     ① 问句：这位商人现在摆着什么（把**结算要用到的余额**一并算好）
+     ② 判定：状态对不对、关系够不够、这一波买够了没有、钱够不够
+     ③ 落账：扣钱、货进 **`S.starter*`（下一局的开局条件）**
+
+   ⚠ **与商店的分工**（这是最要紧的一条）：商店花 `scrap`、换这一局的战力；
+     交易花 `growth` / `material`、换**下一局的开局条件**。换这一局的战力会与商店
+     重复（同一个功能两条路，便宜的那条会废掉另一条）；换下一局才是养成模块该干的事。
+   ⚠ §6.5：`ask` 只许是 `growth` / `material` —— 那一条由 `Trade.audit` 守着，
+     这里**再兜一次**（运行期来的报价不该绕过自检）。
+   ========================================================= */
+/** 这位 NPC 是不是商人（界面据此决定要不要画「交易」那个入口） */
+Game.isTrader = function (npcId) { return Trade.isTrader(npcId); };
+
+/** 这一位商人现在摆着的报价（关系不够的**也列出来**，标成不可做） */
+Game.tradeOffers = function (npcId) {
   if (!S) return [];
+  return Trade.offersFor(String(npcId || ''), {
+    stage: Bonds.stageOf(bondTrust(npcId)).id,
+    used: S.trades
+  });
+};
+
+/**
+ * 做一笔交易。
+ *
+ * @returns `{ ok, reason, got }` —— `got` 是拿到的东西给人看的那一句
+ *
+ * ⚠ 它**只改落账**，不碰 `S.player`（那件武器/道具不在这一局里）——
+ *   货进的是 `S.starterWeapons` / `S.starterItems`，由结算带进下一局的开局条件。
+ *   这条是"交易换开局条件"在代码里的唯一形式，也是它与商店的分界线。
+ */
+Game.trade = function (offerId) {
+  if (!S) return { ok: false, reason: '还没开局', got: '' };
+  var o = Trade.byId(String(offerId || ''));
+  if (!o) return { ok: false, reason: '没有这一档报价', got: '' };
+  if (!S.trades) S.trades = Object.create(null);
+  /* ① 位置：只有**站在那位商人面前**才能跟他做买卖 ——
+     与"走到人面前按 E 说话"同一条纪律：交易是**走过去**做的事，不是菜单里的一行。
+     ⚠ 判据用 `hallRoom` / 那一站的位置（`Game.hall()`），**不**信界面传进来的东西：
+        界面能传错，而"人不在跟前"这件事只有模拟层算得准。 */
+  var h = Game.hall();
+  if (!h || h.room !== 'hub') return { ok: false, reason: '得在枢纽里、走到他面前才能做买卖', got: '' };
+  if (!(h.near && h.near.npc === o.npc)) {
+    return { ok: false, reason: '得走到他面前才行（现在面前是 ' + ((h.near && (h.near.npc || h.near.id)) || '空的') + '）', got: '' };
+  }
+  /* ② 报价本身合法吗（§6.5 再兜一次 —— 运行期来的报价不该绕过自检） */
+  var bad = Trade.illegalAsks(o);
+  if (bad.length) return { ok: false, reason: '这一档报价收 ' + bad.join('/') + '（不合法）', got: '' };
+  if (Trade.isEmpty(o)) return { ok: false, reason: '这一档什么都不给', got: '' };
+  /* ③ 关系阶段 */
+  var chk = Trade.check(o, { stage: Bonds.stageOf(bondTrust(o.npc)).id, used: S.trades });
+  if (!chk.ok) return { ok: false, reason: chk.reason, got: '' };
+  /* ④ 这一波买够了没有 */
+  var per = Math.max(1, Math.floor(Number(o.perWave) || Trade.PER_WAVE));
+  var used = Math.max(0, Math.floor(Number(S.trades[o.id]) || 0));
+  if (used >= per) return { ok: false, reason: '这一波买够了（每波 ' + per + ' 次）', got: '' };
+  /* ⑤ 钱够不够（两笔可以同时要 —— 缺哪一样都要在按钮之前讲清楚） */
+  var askM = Math.max(0, Math.floor(Number(o.ask.material) || 0));
+  var askG = Math.max(0, Math.floor(Number(o.ask.growth) || 0));
+  if (askM > 0 && material() < askM) {
+    return { ok: false, reason: '材料不够（要 ' + askM + '，有 ' + material() + '）', got: '' };
+  }
+  if (askG > 0 && growth() < askG) {
+    return { ok: false, reason: '成长点不够（要 ' + askG + '，有 ' + growth() + '）', got: '' };
+  }
+  /* ⑥ 扣钱（`spendMaterial` / `spendGrowth` 各自"不够就不扣"，所以上面查过之后这里必定成功） */
+  if (askM > 0 && !spendMaterial(askM)) return { ok: false, reason: '材料扣不动', got: '' };
+  if (askG > 0 && !spendGrowth(askG)) {
+    if (askM > 0) addMaterial(askM);          // 一半成功要退回去（**不能留下半笔交易**）
+    return { ok: false, reason: '成长点扣不动', got: '' };
+  }
+  /* ⑦ 交货 —— 进的是**下一局的开局条件**，不是这一局的背包 */
+  var got: string[] = [];
+  var g = o.give;
+  if (Number(g.scrap) > 0) {
+    S.starterScrap = Math.max(0, Math.floor(Number(S.starterScrap) || 0)) + Math.floor(Number(g.scrap));
+    got.push(g.scrap + ' 废料');
+  }
+  if (g.weapon) {
+    if (!S.starterWeapons) S.starterWeapons = [];
+    S.starterWeapons.push(String(g.weapon));
+    got.push('武器 ' + String(g.weapon));
+  }
+  if (g.item) {
+    if (!S.starterItems) S.starterItems = [];
+    S.starterItems.push(String(g.item));
+    got.push('道具 ' + String(g.item));
+  }
+  S.trades[o.id] = used + 1;
+  var text = got.join(' + ');
+  Game.events.emit('trade', { id: o.id, npc: o.npc, name: o.name, got: text });
+  return { ok: true, reason: '', got: text };
+};
+
+/** 界面铺一屏训练科目 */
+Game.trainingOptions = function () {  if (!S) return [];
   return Train.options(trainUsed(), material());
 };
 /** 这一波还能训练几次 */
@@ -5087,6 +5240,25 @@ Game._internals = {
   startWave: startWave,
   /** 直接翻到某一层（测试/实验台用：层的深度回报与主题倍率都在它里面算） */
   enterFloor: enterFloor,
+  /**
+   * **把人放在屋里某个位置**（只给测试）。
+   *
+   * 为什么需要它：屋里是**真能走**的（`stepHall` + 碰撞 + 连通性），
+   * 所以"从出生点走到某一站"是一条**要靠走位**的路 —— 而"交易要站在他面前"
+   * 这条判据不该由"测试会不会走位"来决定。有了这个口，测试可以直接摆好位置，
+   * 然后量真正要量的东西（钱扣没扣、货进没进下一局）。
+   *
+   * ⚠ 它**不改任何玩法状态**：只挪一下坐标（`near` 会在下一步算出来）。
+   *   "走过去真的能到"由 `hall.ts` 的连通性自检与 `test/trade.mjs` 里
+   *   一条真的走位断言各自守着 —— 两条路分开量，各自才说得清。
+   */
+  placeHall: function (x: number, y: number) {
+    var h = hallRoom;
+    if (!h) return null;
+    h.x = Number(x) || 0; h.y = Number(y) || 0;
+    h.px = h.x; h.py = h.y; h.vx = 0; h.vy = 0;
+    return h;
+  },
   endWave: endWave,
   openShop: market.openShop,
   /* 武器数值的两个出口（**只给实验台与测试用**）：品级台阶是不是真的接在伤害公式上，

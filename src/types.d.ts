@@ -1274,6 +1274,12 @@ interface CharacterDef {
   look: CharacterLook;
   /** 入门三选（捏人最后一步）：选了哪一项，不是数值 */
   init: { entry: CharacterEntryPick };
+  /** **交易换到的起始武器**（R41）：下一局开局自带。空 = 没换过 */
+  starterWeapons?: string[];
+  /** **交易换到的起始道具**（同上） */
+  starterItems?: string[];
+  /** **交易换到的起始废料**（同上） */
+  starterScrap?: number;
 }
 interface CharacterRenderLook { skin: ReturnType<AppearanceApi['skinFor']>; eyeStyle: string; accessory: string }
 interface CharacterApi {
@@ -2071,6 +2077,16 @@ interface SessionCraft {
   bonds: Record<string, number>;
   /** NPC id → **这一波**相处了几次（模块内的时间感；每波重置） */
   talks: Record<string, number>;
+  /* ---- NPC 交易（R41，"跟人做买卖"）----
+     ⚠ 它换的是**下一局的开局条件**，不是这一局的背包 —— 这是它与商店的分界线。 */
+  /** 报价 id → **这一波**买了几次（每波重置，与相处同一形状） */
+  trades: Record<string, number>;
+  /** 换到的**起始武器**（下一局开局自带；结算时并进 `openingOf`） */
+  starterWeapons: string[];
+  /** 换到的**起始道具**（同上） */
+  starterItems: string[];
+  /** 换到的**起始废料**（同上） */
+  starterScrap: number;
   /** **经营代币余额**（局内）：每波由据点产出，盖设施时花掉（M2） */
   capacity: number;
   /* ---- **核心素材**（跨模块，M4）----
@@ -2316,6 +2332,13 @@ interface RunSummary {
   secrets: number;
   /** 这一局在事件房见过的遭遇 id */
   events: string[];
+  /* ---- NPC 交易换到的东西（R41）：它们是**下一局的开局条件** ---- */
+  /** 换到的起始武器 id（结算时并进开局条件） */
+  starterWeapons?: string[];
+  /** 换到的起始道具 id（同上） */
+  starterItems?: string[];
+  /** 换到的起始废料（同上） */
+  starterScrap?: number;
 }
 
 interface BusStats {
@@ -2621,6 +2644,8 @@ interface I18nCoverage {
   total: number; translated: number; missing: number; ratio: number;
 }
 interface I18nApi {
+  /** 首局引导那八句文案的**唯一出处**（`tutorial.ts` import 它 —— 见 i18n.ts 的说明） */
+  TUTORIAL_TEXT: Record<string, string>;
   LOCALES: LocaleDef[];
   DEFAULT: string;
   has(id: string): boolean;
@@ -2816,6 +2841,10 @@ interface ProfileRunInput {
   events?: string[];
   /** **这一局结束时的据点快照**（离线产出读它 —— 据点本身是局内的，局外读不到） */
   keep?: Record<string, number>;
+  /* ---- NPC 交易换到的东西（R41）：它们是**这个档的下一局**的开局条件 ---- */
+  starterWeapons?: string[];
+  starterItems?: string[];
+  starterScrap?: number;
 }
 interface ProfileApi {
   CODEX_SEEN: number; CODEX_USED: number; CODEX_MASTERED: number;
@@ -3438,6 +3467,78 @@ interface DialogueApi {
   /** 某个事件该说哪一句（`nth` = 这一局里第几次触发；确定，一轮内不重复） */
   barkFor(when: string, nth: number): BarkDef | null;
   byId(id: string): BarkDef | null;
+  audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
+}
+
+/* ---------------- NPC 交易（trade.ts，R41 普查里"完全没有"的那一栏） ----------------
+   与 `market.ts` 的商店**不是一回事**：商店在战斗模块内部、花 `scrap`、换这一局的战力；
+   交易在枢纽里、花 `growth` / `material`、换**下一局的开局条件**。
+   ⚠ §6.5 的硬约束：`ask` 只许是 `growth` 或 `material` —— `scrap`（战斗）与
+     `capacity`（经营）一律不许（自检里那条判据反证过）。 */
+interface TradeSide {
+  /** 收 / 给的**全局货币**（材料） */
+  material?: number;
+  /** 收 / 给的**养成代币**（成长点） */
+  growth?: number;
+  /** 给出去的**战斗代币**（废料）—— 只在 `give` 那一侧合法 */
+  scrap?: number;
+  /** 给出去的武器 id（进的是**下一局的起始携带**） */
+  weapon?: string;
+  /** 给出去的道具 id（同上） */
+  item?: string;
+}
+interface TradeOfferDef {
+  id: string;
+  /** 归属哪一位商人（`story.ts` 的 NPC id） */
+  npc: string;
+  name: string;
+  note: string;
+  ask: TradeSide;
+  give: TradeSide;
+  /** 关系阶段门槛（`bonds.ts` 的阶段 id；缺省 = 一开始就能换） */
+  needStage?: string;
+  /** 这一档每波能做几次（缺省 = `Trade.PER_WAVE`） */
+  perWave?: number;
+  /** 还没解锁（界面列出来但标成不可做） */
+  locked?: boolean;
+}
+interface TradeView {
+  id: string; name: string; note: string;
+  /** 给什么（给人看的字符串，唯一实现在 `Trade.giveText`） */
+  give: string;
+  /** 要什么（同上，`Trade.askText`） */
+  ask: string;
+  ok: boolean;
+  reason: string;
+  /** 这一波还能买几次 */
+  left: number;
+}
+interface TradeApi {
+  LIST: TradeOfferDef[];
+  BY_ID: Record<string, TradeOfferDef>;
+  /** **允许收的钱**（§6.5 的唯一落点：只有这两笔） */
+  ASK_CURRENCIES: string[];
+  /** 一位商人每波能做几次（与训练的"每波 3 次"、制造的"每波每条产线一次"同一形状） */
+  PER_WAVE: number;
+  byId(id: string): TradeOfferDef | null;
+  /** 这一档报价里的代币键（只认 `ASK_CURRENCIES`） */
+  askCurrencies(offer: TradeOfferDef | null): string[];
+  /** **不合法的**收钱键（§6.5 的判据；自检与测试都读它） */
+  illegalAsks(offer: TradeOfferDef | null): string[];
+  /** 只看条件（余额由调用方查） */
+  check(offer: TradeOfferDef | null, ctx: {
+    stage?: string; used?: Record<string, number> | null;
+  } | null): { ok: boolean; reason: string };
+  /** 这一位商人现在摆着哪些（关系不够的**也列出来**，标成不可做） */
+  offersFor(npcId: string, ctx: {
+    stage?: string; used?: Record<string, number> | null;
+  } | null): TradeView[];
+  isTrader(npcId: string): boolean;
+  traders(): string[];
+  isEmpty(offer: TradeOfferDef | null): boolean;
+  giveText(offer: TradeOfferDef | null): string;
+  askText(offer: TradeOfferDef | null): string;
+  describe(): string;
   audit(): { ok: boolean; problems: string[]; counts?: Record<string, number> };
 }
 
@@ -4691,6 +4792,16 @@ interface GameApi {
      ⚠ §6.5：NPC 互动**不能花战斗/经营的钱** —— 相处不花钱，它只**产**养成那一侧。 */
   /** 列出所有 NPC 的关系 */
   bondsAll(): Array<{ id: string; trust: number; stage: string; stageName: string; note: string; toNext: number; nextName: string; left: number }>;
+  /* ---- **NPC 交易**（R41 普查里"完全没有"的那一栏）----
+     规则全在 `trade.ts`，这里只做问句 / 判定 / 落账。
+     ⚠ 换到的东西进 **`S.starter*`（下一局的开局条件）**，不进这一局的背包 ——
+       这是它与商店的分界线（商店花 `scrap`、换这一局的战力）。 */
+  /** 这位 NPC 是不是商人（界面据此决定要不要画「交易」那个入口） */
+  isTrader(npcId: string): boolean;
+  /** 这一位商人现在摆着的报价（关系不够的**也列出来**，标成不可做） */
+  tradeOffers(npcId: string): TradeView[];
+  /** 做一笔交易。⚠ 得**站在他面前**（`Game.hall().near`）—— 交易是走过去做的事 */
+  trade(offerId: string): { ok: boolean; reason: string; got: string };
   /** 相处一次（养成线的动作）：信任 +1，**跨阶段就产成长点** */
   talkTo(npcId: string): { ok: boolean; reason: string; gain: number; stage: string };
   /** 界面铺一屏训练科目（价钱 / 能不能练 / 练不练得起） */
@@ -4830,6 +4941,16 @@ interface GameApi {
     weaponReach(w: WeaponInst): number;
     /** "白给的回血"那一道门（道具代价 `noHeal` 要取消的就是它；只给测试用） */
     settleHeal(amount: number): number;
+    /**
+     * **把人放在屋里某个位置**（只给测试）。
+     *
+     * 屋里是**真能走**的（`stepHall` + 碰撞），所以"走到某一站"是一条要靠走位的路；
+     * 而"交易要站在他面前"这条判据不该由"测试会不会走位"来决定。
+     * ⚠ 它**不改任何玩法状态**：只挪一下坐标（`near` 下一步算出来）。
+     *   "走过去真的能到"由 `hall.ts` 的连通性自检与 `test/trade.mjs` 的
+     *   一条真走位断言各自守着 —— 两条路分开量，各自才说得清。
+     */
+    placeHall(x: number, y: number): HallState | null;
     /**
      * **等级推进的唯一入口**（只给测试与实验台）。
      * `checkLevelUp` 平时只在"吃到材料"时跑（经验跟着材料走），

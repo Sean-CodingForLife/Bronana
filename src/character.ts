@@ -86,10 +86,33 @@ Character.normalize = function (raw: unknown, fallbackCharId?: string): Characte
   var entry = (init.entry && typeof init.entry === 'object')
     ? (init.entry as Record<string, unknown>) : {};
 
+  /* ---- **交易换到的东西**（R41）：下一局的开局条件 ----
+     与 `look` / `init` 同一套路：坏值**夹回来**而不是抛 ——
+     一个认不出的武器 id 不该让这个档打不开，只该让它回到"没换过"。
+     ⚠ "那个 id 存不存在"由**总账**查（下面 `character` 家族的 refs），
+       本模块不认识 `data_weapons` / `data_items`（那会多一条到数据表的边）。 */
+  var sw: string[] = [];
+  var rawW = Array.isArray(o.starterWeapons) ? (o.starterWeapons as unknown[]) : [];
+  for (var wi = 0; wi < rawW.length && sw.length < 8; wi++) {
+    var wid = String(rawW[wi] || '');
+    if (wid && sw.indexOf(wid) < 0) sw.push(wid);
+  }
+  var si: string[] = [];
+  var rawI = Array.isArray(o.starterItems) ? (o.starterItems as unknown[]) : [];
+  for (var ii = 0; ii < rawI.length && si.length < 8; ii++) {
+    var iid = String(rawI[ii] || '');
+    if (iid && si.indexOf(iid) < 0) si.push(iid);
+  }
+  var ss = Math.max(0, Math.floor(Number(o.starterScrap) || 0));
+  if (ss > 9999) ss = 9999;
+
   return {
     charId: charId,
     name: normName(o.name),
     look: { palette: palette, face: face, accessory: accessory },
+    starterWeapons: sw,
+    starterItems: si,
+    starterScrap: ss,
     init: {
       entry: {
         skill: String(entry.skill || ''),
@@ -281,7 +304,13 @@ Registry.family('character', {
         { field: 'charId', value: 'ranger', family: 'char' },
         { field: 'look.palette', value: Appearance.DEFAULT_PALETTE, family: 'lookPalette' },
         { field: 'look.face', value: Appearance.DEFAULT_FACE, family: 'lookFace' },
-        { field: 'look.accessory', value: Appearance.DEFAULT_ACCESSORY, family: 'lookAccessory' }
+        { field: 'look.accessory', value: Appearance.DEFAULT_ACCESSORY, family: 'lookAccessory' },
+        /* **交易换到的东西也在这里对账**（R41）：`starter*` 是**走完一局之后**
+           才写进档的，所以"那个 id 存不存在"不能靠写入那一刻查 ——
+           `Profile.applyRun` 在结算里，而那时不该再 import 武器表。
+           放在这里的意思是：**任何**一条进档的 starter id 都必须是真实存在的。 */
+        { field: 'starterWeapons[0]', value: 'knife', family: 'weapon' },
+        { field: 'starterItems[0]', value: 'coffee', family: 'item' }
       ]
     }];
   }

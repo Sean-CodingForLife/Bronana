@@ -1011,6 +1011,18 @@ Profile.openingOf = function (charId) {
     for (var it = 0; it < ent.items.length; it++) out.items.push(ent.items[it]);
     out.scrap += ent.scrap;
     out.material = Math.max(0, Math.round((out.material || 0) + (ent.material || 0)));
+    /* **交易换到的开局条件**（R41）：与入门三选**同一个出口** ——
+       两个都改"开局带什么"，走两条路就是 R38 那种"同一处开局写了两份"。
+       它们是上一次结算 `applyRun` 记在这个档里的（见那里的一段说明）。 */
+    var sw = me.starterWeapons || [];
+    for (var tw = 0; tw < sw.length; tw++) {
+      if (out.weapons.indexOf(sw[tw]) < 0) out.weapons.push(sw[tw]);
+    }
+    var si = me.starterItems || [];
+    for (var ti = 0; ti < si.length; ti++) {
+      if (out.items.indexOf(si[ti]) < 0) out.items.push(si[ti]);
+    }
+    out.scrap += Math.max(0, Math.floor(Number(me.starterScrap) || 0));
   }
   var km = Profile.keepMods();
   // 「靶场」：多带 N 件（N 来自据点表）。**按局数轮换**，不掷骰子：
@@ -1199,6 +1211,27 @@ Profile.applyRun = function (run, totals) {
   /* **据点快照**（离线产出读它，见 `blank()` 里 `keepLast` 的说明）。
      截的是"这一局结束时据点盖到哪了"。 */
   if (run.keep && typeof run.keep === 'object') data.keepLast = copyOf(run.keep);   // 同 noteKeep
+
+  /* ---- **NPC 交易换到的东西**（R41）：它们是"下一局的开局条件" ----
+     住在这个档的 `CharacterDef.starter*` 里（一份存档 = 一个槽位 = 一个人）。
+     与 `keepLast` 同一个位置、同一条理由：结算那一刻是"这一局结束"的边界，
+     而这些东西**跨局**。`S.starter*` 每次结算**覆盖**（不是累加）——
+     玩家换到的就是"下一局带这些"，打完那一局之后它们已经用掉了。 */
+  var meChar = Profile.character();
+  if (meChar) {
+    var sw = Array.isArray(run.starterWeapons)
+      ? run.starterWeapons.filter(function (x) { return typeof x === 'string'; }).slice(0, 8) : [];
+    var si = Array.isArray(run.starterItems)
+      ? run.starterItems.filter(function (x) { return typeof x === 'string'; }).slice(0, 8) : [];
+    var ss = Math.max(0, Math.floor(num(run.starterScrap)));
+    /* 只有真的换了东西才动它 —— 没交易过的一局不该把上一次换的清掉 */
+    if (sw.length || si.length || ss > 0) {
+      data.characters[slotKeyOfCurrent()] = Character.normalize({
+        charId: meChar.charId, name: meChar.name, look: meChar.look,
+        init: meChar.init, starterWeapons: sw, starterItems: si, starterScrap: ss
+      });
+    }
+  }
 
   var matGain = Math.max(0, Math.floor(num(run.materials)));
   if (matGain > 0) { report.material = matGain; }

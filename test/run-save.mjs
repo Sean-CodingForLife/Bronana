@@ -92,7 +92,9 @@ console.log('\n[2] 编码（serialize）');
     'bossesDown', 'coreEarned', 'boon', 'pendingBoons', 'packsOpened', 'packSpent',
     'offers', 'combineCount', 'roomFx', 'craftCount', 'craftUsed', 'camp', 'campRow', 'bonds', 'talks', 'growth', 'capacity', 'relic', 'sigil', 'sigilSectors', 'rerolls',
     'rerollCost', 'shopLocked', 'shopBonus', 'freeRerolls', 'rndState', 'pendingLevels',
-    'runEvents'
+    'runEvents',
+    /* R41 · NPC 交易换到的东西（**追加**在最后：插在中间等于给所有旧档换了个形状） */
+    'starterWeapons', 'starterItems', 'starterScrap'
   ];
   const actual = Object.keys(runs);
   ok(actual.length === ORDER.length, '字段个数与契约一致（' + actual.length + ' / ' + ORDER.length + '）',
