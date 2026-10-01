@@ -1569,6 +1569,13 @@ interface ObjectKindRow {
   live: number;
 }
 interface ObjectsApi {
+  /** ⚠ **组件运行时的注入点**（E1 普查之后加）。
+   *  改造前 `object.ts` 静态 `import { Comp }` —— 那条边方向合法，但 `comp.ts`
+   *  被划成**混合**（运行时是引擎、同文件装着本作 37 组件 / 11 原型），
+   *  于是"引擎 import 混合模块"被门 `engine-boundary` 抓成越界。
+   *  改成由 `comp.ts` **主动提供**（依赖方向 comp → object）——
+   *  与 `grid.ts` 的 `GridCtx` 是同一套 DIP 样板。 */
+  setComponents(c: CompApi): void;
   CONTRACT: { identity: string; unit: string; note: string };
   /** 全项目对象普查：每个原型一行（含"它在哪个容器里"与当前数量） */
   kinds(sess?: any): ObjectKindRow[];
@@ -1692,6 +1699,48 @@ interface RHIApi {
   backends(): { id: string; note: string; impl: string; status: string; active: boolean }[];
   /** 当前活跃后端的 id（必须恰好一个） */
   activeBackend(): string | null;
+  audit(): { ok: boolean; problems: string[] };
+}
+/* ---------------- 文字面（text.ts，R61） ----------------
+   字体栈 / 字重 / 字号 / 字符集 / 排版缺省**收成声明**。
+   改造前字体串硬编在 `D.text` 里、字号是调用点随手传的数字 ——
+   而 R49 阶段 4（文本）要把它们烘成字形图集，**必须先有这份声明**。 */
+interface TextStackDef {
+  id: string;
+  note: string;
+  /** 字体栈（CSS 形状，`ctx.font` 与 DOM 都用它） */
+  css: string;
+  /** 这一档走哪个宿主（`canvas` = 经 draw2d；`dom` = 经 CSS） */
+  usedBy: 'canvas' | 'dom';
+}
+interface TextWeightDef { id: string; value: number; note: string }
+interface TextSizeDef { px: number; note: string }
+interface TextCharsetDef {
+  id: string;
+  note: string;
+  /** 覆盖范围（`'\u4e00-\u9fff'` 形状的段，可多段） */
+  ranges: string[];
+  /** **走字形图集还是走位图** —— emoji 只能走位图 */
+  raster: 'glyphAtlas' | 'bitmap';
+  /** 普查读数（门 `text-census` 拿它当对照基线） */
+  census: { count: number };
+}
+interface TextApi {
+  /** 拼 `ctx.font` —— **唯一出处** */
+  font(size: number, weight?: number): string;
+  stack(id: string): TextStackDef | null;
+  stacks(): TextStackDef[];
+  weights(): TextWeightDef[];
+  sizes(): number[];
+  sizeTable(): TextSizeDef[];
+  charsets(): { id: string; note: string; raster: string; ranges: string[]; census: number }[];
+  layout(): { align: string; baseline: string; outlineMinPx: number; outlineRatio: number; letterSpacingPx: number; autoWrap: boolean };
+  /** 描边宽度（与 `D.text` 改造前的表达式逐位一致） */
+  outlineWidth(size: number, given?: number): number;
+  /** **字形图集的规模**（R49 阶段 4 直接要这个数） */
+  atlasBudget(): { glyphChars: number; bitmapChars: number; sizes: number; glyphs: number };
+  /** 一个字符走哪条路 */
+  rasterOf(ch: string): string;
   audit(): { ok: boolean; problems: string[] };
 }
 /* ---------------- Z 深度（depth.ts） ----------------

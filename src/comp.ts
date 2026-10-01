@@ -23,6 +23,7 @@ comp.ts — 组件式组合运行时
 
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
+import { Objects } from './object.ts';
 
 var Comp = {} as CompApi;
 
@@ -629,5 +630,16 @@ if (!compVerdict.ok) {
   throw new Error('comp.ts 组件 / 原型表自检失败：\n' + compVerdict.problems.join('\n'));
 }
 SelfCheck.register('Comp', Comp.selfCheck);
+
+/* =========================================================
+   ⚠ **把运行时交给 `object.ts`**（E1 普查之后加，2026-10-01）
+   ---------------------------------------------------------
+   `object.ts`（引擎，L0）要读原型的账目，而它**不再**静态 import 本模块 ——
+   因为本模块被正确地划成了**混合**（运行时是引擎，同文件里装着本作 37 个组件 /
+   11 个原型 / 1 个玩法系统），而"引擎 import 混合模块"是越界。
+   所以依赖方向**反过来**：由本模块主动把运行时提供出去（`comp.ts → object.ts`）。
+   这与 `grid.ts` 的 `GridCtx { session() }` 是同一套 DIP 样板。
+   ========================================================= */
+Objects.setComponents(Comp);
 
 export { Comp };

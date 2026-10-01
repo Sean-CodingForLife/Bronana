@@ -96,7 +96,7 @@ const FORBID = [
     '不得反向依赖渲染层 / 界面层）'],
   ['bronana.ts', modFiles.filter(f => ['bronana.ts', 'rig.ts', 'draw2d.ts', 'comp.ts', 'utils.ts'].indexOf(f) < 0),
     '角色骨架只依赖 骨架层 / 组件层 / 绘制原语层 / 工具层'],
-  ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts'),
+  ['comp.ts', modFiles.filter(f => f !== 'comp.ts' && f !== 'utils.ts' && f !== 'registry.ts' && f !== 'selfcheck.ts' && f !== 'object.ts'),
     '组件层是纯声明与组合，只依赖 utils / 总账 / 自检登记处（组件与原型两张表要在启动期自检，见 comp.ts 末尾）'],
   /* 诊断面板读的就是**各系统自己的账**：R51 起又多了世界 / 对象两行，所以允许列表里
      多了 `world.ts` / `object.ts` / `comp.ts`（三者都在 L0，是引擎地基）。

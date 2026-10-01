@@ -200,6 +200,10 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
        它是**字段形态**的模块级可变状态（不是顶层 var），登记在这里是因为
        这份盘点的规矩是"可变就必须被看见"：它对玩法零影响，但每 spawn 一次就变。 */
     'comp.ts': ['DEFS', 'DEF_NAMES', 'ARCHS', 'ARCH_NAMES', 'SYSTEMS', 'SYS_NAMES', 'seq'],
+    /* object.ts（R61/E1）：CompRef 是**注入进来的组件运行时**（E1 普查之后'
+       把 object.ts 静态 import comp.ts 那条边反过来 —— 见 object.ts 的注释）。
+       它是一份**引用**，不是可变的玩法状态：写一次（comp.ts 末尾）之后只读。 */
+    'object.ts': ['CompRef'],
     'scene.ts': ['TABLE'],
     'ai.ts': ['BEHS', 'BEH_NAMES', 'PATS', 'PAT_NAMES'],
     'bronana.ts': ['W'],

@@ -31,12 +31,45 @@
    否则"同一个事实有两份"这件事就会从这一层重新长出来。
    ========================================================= */
 
-import { Comp } from './comp.ts';
 import { Containers } from './containers.ts';
 import { Registry } from './registry.ts';
 import { SelfCheck } from './selfcheck.ts';
 
 var Objects = {} as ObjectsApi;
+
+/* =========================================================
+   ⚠ **组件运行时的注入点**（E1 普查之后加，2026-10-01）
+   ---------------------------------------------------------
+   改造前这里是 `import { Comp } from './comp.ts'`。那条边**方向合法**
+   （两个都是引擎），但 `comp.ts` 在 E1 普查里被正确地划成了**混合**
+   （运行时是引擎，同一个文件里装着本作 37 个组件 / 11 个原型 / 1 个玩法系统）
+   —— 于是"引擎 `object.ts` 静态 import 混合模块 `comp.ts`"被门 `engine-boundary`
+   当场抓成越界。**门是对的。**
+
+   为什么用注入而不是"把它划回引擎"：那样等于把"同一个文件里有两种东西"
+   这件事按下去（门抓不住它，人会忘）。注入之后：
+
+     · `object.ts` 认识的是**一组能力**（`ObjectsApi` 要的那几个查询），不是一个模块；
+     · `comp.ts` 在文件末尾调 `Objects.setComponents(Comp)` —— 它是**主动提供方**；
+     · 依赖方向变成 `comp.ts → object.ts`，而"混合模块 import 引擎"是**允许的边**。
+
+   ⚠ **为什么安全**：本模块**没有一处**在加载期读 `Comp` ——
+   上面那个注释（"只能登记、不能在加载期跑"）说的正是这件事，
+   而所有 `requireComp().*` 调用都在**函数体**里，启动期（`SelfCheck.run`）时才发生，
+   那时 `comp.ts` 早已加载并完成注入。
+   这与 `grid.ts` 的 `GridCtx { session() }` 是**同一套 DIP 样板**。
+
+   若是注入前被调用，`require()` 会**抛明确的名字**而不是静默返回 undefined ——
+   这一层不许出现"静默少算"。 */
+var CompRef: CompApi | null = null;
+function requireComp(): CompApi {
+  if (!CompRef) {
+    throw new Error('object.ts：组件运行时还没注入（应当在 comp.ts 末尾调 Objects.setComponents(Comp)）');
+  }
+  return CompRef;
+}
+/** 由 `comp.ts` 在文件末尾调用 —— **它是提供方**（依赖方向 comp → object） */
+Objects.setComponents = function (c) { CompRef = c; };
 
 Objects.CONTRACT = {
   identity: '$id',
@@ -67,9 +100,9 @@ var HOMELESS: Record<string, string> = {
 
 /** 按"集合路径"反查原型（`player.weapons` 这种点号路径原样比） */
 function archOfList(list: string) {
-  var archs = Comp.archetypes();
+  var archs = requireComp().archetypes();
   for (var i = 0; i < archs.length; i++) {
-    var info = Comp.archetypeInfo(archs[i]);
+    var info = requireComp().archetypeInfo(archs[i]);
     if (info && info.list === list) return archs[i];
   }
   return null;
@@ -79,7 +112,7 @@ function archOfList(list: string) {
 function homesOf(arch: string) {
   var out: string[] = [];
   var names = Containers.names();
-  var info = Comp.archetypeInfo(arch);
+  var info = requireComp().archetypeInfo(arch);
   for (var i = 0; i < names.length; i++) {
     var d = Containers.def(names[i]);
     if (!d) continue;
@@ -111,11 +144,11 @@ Objects.bindings = function () {
 
 Objects.kinds = function (sess) {
   var st = sess ? Containers.stats(sess) : null;
-  var archs = Comp.archetypes();
+  var archs = requireComp().archetypes();
   var out: ObjectKindRow[] = [];
   for (var i = 0; i < archs.length; i++) {
     var name = archs[i];
-    var info = Comp.archetypeInfo(name);
+    var info = requireComp().archetypeInfo(name);
     var homes = homesOf(name);
     var live = 0;
     if (st) for (var h = 0; h < homes.length; h++) live += st[homes[h]] ? st[homes[h]].len : 0;
@@ -137,7 +170,7 @@ Objects.kinds = function (sess) {
    3. 定义期对账（启动期自检）
    ---------------------------------------------------------
    每条判据都对着一个真实的静默故障：
-     · 原型声明了集合、却没有容器认领它 → `Comp.query` 拿到的是**别的数组**
+     · 原型声明了集合、却没有容器认领它 → `requireComp().query` 拿到的是**别的数组**
        （老实现就发生过：`query(sess,'weapon')` 静默返回空数组）
      · 容器存在、却没有原型认领它 → 往里面 push 的东西**没有字段校验**，
        长得和别的对象一样、但不受任何守卫约束
@@ -146,13 +179,13 @@ Objects.kinds = function (sess) {
    ========================================================= */
 Objects.audit = function () {
   var problems: string[] = [];
-  var archs = Comp.archetypes();
+  var archs = requireComp().archetypes();
   var names = Containers.names();
   var fieldTotal = 0, i, j;
 
   /* 3.1 每个原型：有家 或 在 HOMELESS 里；字段并集与组件一致 */
   for (i = 0; i < archs.length; i++) {
-    var info = Comp.archetypeInfo(archs[i]);
+    var info = requireComp().archetypeInfo(archs[i]);
     if (!info) { problems.push('原型 ' + archs[i] + ' 查不到信息'); continue; }
     var homes = homesOf(archs[i]);
     if (!homes.length && !HOMELESS[archs[i]]) {
@@ -165,7 +198,7 @@ Objects.audit = function () {
     var union: Record<string, boolean> = Object.create(null);
     var n = 0;
     for (j = 0; j < info.comps.length; j++) {
-      var keys = Comp.componentKeys(info.comps[j]);
+      var keys = requireComp().componentKeys(info.comps[j]);
       if (!keys) { problems.push('原型 ' + archs[i] + ' 引用了未登记的组件 ' + info.comps[j]); continue; }
       for (var k = 0; k < keys.length; k++) if (!union[keys[k]]) { union[keys[k]] = true; n++; }
     }
@@ -189,10 +222,10 @@ Objects.audit = function () {
   /* 3.3 名单不许有已删除的条目（名单只会越积越松） */
   for (var p in POOLS) {
     if (!Containers.has(p)) problems.push('POOLS 里的容器 ' + p + ' 已经不存在了');
-    else if (!Comp.hasArchetype(POOLS[p])) problems.push('POOLS 里的原型 ' + POOLS[p] + ' 已经不存在了');
+    else if (!requireComp().hasArchetype(POOLS[p])) problems.push('POOLS 里的原型 ' + POOLS[p] + ' 已经不存在了');
   }
   for (var h2 in HOMELESS) {
-    if (!Comp.hasArchetype(h2)) problems.push('HOMELESS 里的原型 ' + h2 + ' 已经不存在了');
+    if (!requireComp().hasArchetype(h2)) problems.push('HOMELESS 里的原型 ' + h2 + ' 已经不存在了');
     else if (homesOf(h2).length) problems.push('原型 ' + h2 + ' 已经有容器了，不该再留在 HOMELESS 里');
   }
   if (!Objects.CONTRACT.identity || !Objects.CONTRACT.unit) problems.push('对象契约不完整');
@@ -249,7 +282,7 @@ Objects.liveAudit = function (sess) {
   var i, j;
   function one(where: string, o: unknown, want: string) {
     checked++;
-    if (!Comp.archOf(o)) {
+    if (!requireComp().archOf(o)) {
       problems.push(where + ' 不是组合对象（手写的对象字面量？）');
       return;
     }
@@ -263,7 +296,7 @@ Objects.liveAudit = function (sess) {
     if (!(id > 0)) problems.push(where + '（' + bag.$arch + '）没有身份（$id=' + id + '）');
     else if (seen[id]) problems.push(where + ' 的身份 #' + id + ' 与别的对象撞了');
     else seen[id] = true;
-    var r = Comp.audit(o);
+    var r = requireComp().audit(o);
     if (r.unknown.length) problems.push(where + '（' + bag.$arch + '）游离字段 ' + r.unknown.join(','));
     if (r.missing.length) problems.push(where + '（' + bag.$arch + '）缺字段 ' + r.missing.join(','));
   }
@@ -288,9 +321,9 @@ Objects.id = function (e) {
 
 /** 这个对象是什么：原型 / 身份 / 组件 / 字段 / 家 */
 Objects.describeObject = function (e) {
-  var arch = Comp.archOf(e);
+  var arch = requireComp().archOf(e);
   if (!arch) return null;
-  var info = Comp.archetypeInfo(arch);
+  var info = requireComp().archetypeInfo(arch);
   return {
     arch: arch, id: Objects.id(e), comps: info.comps, fields: info.fields,
     list: info.list || ''
@@ -301,7 +334,7 @@ Objects.describeObject = function (e) {
 Objects.describe = function (sess) {
   var rows = Objects.kinds(sess);
   var lines = ['对象普查：' + rows.length + ' 类 · ' + Containers.names().length +
-    ' 个容器 · 身份到 #' + Comp.seq];
+    ' 个容器 · 身份到 #' + requireComp().seq];
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     lines.push('  ' + r.arch.padEnd(10) +

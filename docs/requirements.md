@@ -3577,10 +3577,10 @@ Safari（尤其 Intel Mac）的 `ImageBitmap` transfer + 消费成本；引入 w
 | 门 | **24 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / `audio` / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **65 套**（清单在 `test/suites.mjs`，**数量由清单算出来**） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
-| 模块 | **96 个 · 44911 行**（另有 `types.d.ts` 5414 行；`hall.ts` 724 行） |
+| 模块 | **97 个 · 45307 行**（另有 `types.d.ts` 5469 行；`hall.ts` 724 行） |
 | 依赖环 | **0** |
 | 向上的边 | **2 条**，都已逐条登记理由 |
-| 家族（扩展点总账） | **143 个**，0 个没人守（`Registry.family` 各有一条 `SelfCheck` 或跨表引用） |
+| 家族（扩展点总账） | **144 个**，0 个没人守（`Registry.family` 各有一条 `SelfCheck` 或跨表引用） |
 | 内容规模 | 9 角色 · 24 武器（10 近战 + 14 远程）· 13 怪物 · 20 技能 / 15 符文 / 9 树 · 两种战斗模式 · **8 色板 × 3 脸型 × 5 配件**（外观）· **3 × 3 档入门三选** · **34 条台词（含 2 条带分支）· 9 条战斗短句** · **12 档 NPC 交易报价 × 3 位商人** · **3 种状态 × 5 种 kind** |
 | 运行时依赖 | **0** |
 | 构建产物 | JS **744.68 kB**（gzip **275.63**）· CSS 28.2 kB（gzip 6.2）· HTML 33.5 kB（gzip 9.9）· **全站 gzip 290.0 kB**（默认不发 sourcemap）；预算与判据在 `test/modes.mjs` [9]（JS ≤ **285** · 全站 ≤ 300 —— 未压缩上限 720 → **750**，**三次**放宽的账在 R41 第二/三批与 R50 第四批） |

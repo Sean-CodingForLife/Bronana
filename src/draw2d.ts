@@ -6,6 +6,7 @@ draw2d.ts — 美术宪法执行层
 
 import { PAL, U } from './utils.ts';
 import { RHI } from './rhi.ts';
+import { Text } from './text.ts';
 var OUT = 3;             // 标准外轮廓线宽
 
 /* ================= 基础 ================= */
@@ -376,11 +377,15 @@ D.text = function (c, str, x0, y0, size, color, o) {
   o = o || {};
   var x = ctxOf(c);
   x.save();
-  x.font = (o.weight || 700) + ' ' + size + 'px "Microsoft YaHei","PingFang SC",sans-serif';
-  x.textAlign = o.align || 'center';
-  x.textBaseline = o.baseline || 'middle';
+  /* ⚠ 字体串与缺省排版**不再在这里拼** —— 它们住在 `text.ts`（R61）。
+     理由：R49 阶段 4 要把字形烘成图集，而"烘哪几档字号 / 哪一族字体"
+     必须有出处。写在这行里就等于"内容在定义引擎的面"。
+     参数取自下面两处声明：字体栈 `STACKS.ui`、缺省字重 700、描边 `max(2, size*0.16)`。 */
+  x.font = Text.font(size, o.weight);
+  x.textAlign = o.align || Text.layout().align;
+  x.textBaseline = o.baseline || Text.layout().baseline;
   if (o.outline !== false && o.outline !== null) {
-    x.lineWidth = o.outlineWidth === undefined ? Math.max(2, size * 0.16) : o.outlineWidth;
+    x.lineWidth = Text.outlineWidth(size, o.outlineWidth);
     x.strokeStyle = col(o.outline);
     x.lineJoin = 'round';
     x.strokeText(str, x0, y0);

@@ -80,6 +80,7 @@
     "engine:boundary": "node tools/engine-boundary.mjs",
     "hardcode": "node tools/hardcode-audit.cjs",
     "audio:census": "node tools/audio-census.mjs",
+    "text:census": "node tools/text-census.mjs",
     "draw": "node tools/draw-census.mjs",
     "score": "node tools/score.mjs",
     "ui-text": "node tools/extract-ui-text.mjs",

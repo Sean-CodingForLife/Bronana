@@ -42,6 +42,7 @@ const SYSTEMS = [
          ⚠ 它**不认识** `CanvasRenderingContext2D`（那是后端的事）——
          所以它比 `draw2d.ts` 更靠近底层，而 `draw2d.ts` 反过来 import 它。 */
       'rhi.ts',
+      'text.ts',
       /* `fold.ts`（数值折叠：一张表四种折法）坐在 L0 的理由：它只 import
          `registry.ts` / `selfcheck.ts`（都是 L0），不认识任何一个玩法概念 ——
          而 data（1）/ dungeon（2）/ meta（3）/ sim（4）四层都要用它的折法。
