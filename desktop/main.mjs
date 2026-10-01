@@ -14,7 +14,7 @@
 
 import path from 'node:path';
 import process from 'node:process';
-import { chooseUrl, describeLaunch, isNavigationAllowed, parseArgs, resolveDist, startServer, windowOptions } from './shell.mjs';
+import { chooseUrl, describeLaunch, gpuMode, isNavigationAllowed, isRendererLaunchFailure, parseArgs, resolveDist, shellArgsOf, startServer, windowOptions } from './shell.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -50,11 +50,23 @@ if (notReady) {
 
 const { app, BrowserWindow, dialog } = electron;
 
-const opts = parseArgs(process.argv.slice(2));
+/* ⚠ 用 `shellArgsOf` 而不是 `process.argv.slice(2)`：Electron 会把 Chromium 的
+   开关放在脚本路径**之前**（`electron --no-sandbox main.mjs`），
+   于是主进程里 `argv` 是 `[electron, '--no-sandbox', 'main.mjs']` ——
+   朴素切片会把脚本路径自己当成参数并报"未知参数"（实测踩到）。
+   完整说明在 `shell.mjs` 的 `shellArgsOf` 上面。 */
+const opts = parseArgs(shellArgsOf(process.argv));
 if (opts.errors.length) {
   console.error(opts.errors.join('\n'));
   process.exit(1);
 }
+
+/* **GPU 那一档必须在 `app.whenReady()` 之前定下来** ——
+   `disableHardwareAcceleration()` 只在这之前调用才有效（之后就晚了）。
+   默认关的理由与实测的报错原文写在 `shell.mjs` 的 `gpuMode` 上面那一节。 */
+const gpu = gpuMode(opts, process.env);
+if (!gpu.accel) app.disableHardwareAcceleration();
+console.log('  显示    ' + (gpu.accel ? '硬件加速' : '软件合成（默认）') + ' —— ' + gpu.why);
 
 let server = null;
 let win = null;
@@ -96,10 +108,44 @@ async function boot() {
     return { action: 'deny' };
   });
   win.webContents.on('render-process-gone', function (evt, d) {
-    console.error('渲染进程结束：' + (d && d.reason));
+    const reason = (d && d.reason) || '(未给出原因)';
+    console.error('渲染进程结束：' + reason);
+    /* `launch-failed` 是"它根本没起来"，而不是"跑着跑着崩了" ——
+       这两件事的下一步完全不同，所以分开说。实测踩到过：Chromium 的
+       **GPU 进程**起不来时，渲染进程会直接 `launch-failed`，而日志里
+       只有一串 `gpu_process_host.cc` —— 不点明的话，用户会去查前端代码。 */
+    if (isRendererLaunchFailure(reason)) {
+      console.error('');
+      console.error('  这一条的含义是"渲染进程没能起来"，而不是"页面里的代码报错"。');
+      console.error('  最常见的两个原因：');
+      console.error('    1) GPU 进程起不来（日志里会有 gpu_process_host.cc 的 ERROR）——');
+      console.error('       本壳默认已经关掉硬件加速；若你显式加过 --gpu，去掉它再试一次。');
+      console.error('    2) 安全软件 / 受管环境拦住了渲染进程的沙箱 ——');
+      console.error('       先跑 `pnpm run serve` 用浏览器打开同一份 dist，确认那份是好的。');
+      console.error('');
+    }
   });
 
-  await win.loadURL(url);
+  /* ⚠ `loadURL` **会失败**，而它的拒绝如果不接住，Electron 会当成
+     `UnhandledPromiseRejectionWarning` 打出来并结束进程（实测：
+     磁盘缓存写不进去时 Chromium 报 `ERR_FAILED (-2) loading …`，
+     窗口已经开好了，却因为这个拒绝被带走）。
+     接住它 → 打印"哪一步失败 + 下一步做什么"，然后**让窗口与服务器继续活着**，
+     用户至少看得到那个窗口（而不是什么提示都没有就没了）。 */
+  try {
+    await win.loadURL(url);
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    console.error('加载失败：' + msg);
+    console.error('');
+    console.error('  窗口已经开好了，但这一趟没能把页面读进来。');
+    console.error('  日志里若有 `disk_cache` / `Unable to move the cache` / `拒绝访问`，');
+    console.error('  说明 Chromium 写不了它的用户数据目录 —— 那是**系统层面**的拦截。');
+    console.error('  ⚠ 实测过：`--user-data-dir=<可写目录>` 并不总能绕过它（试过，仍被拒）。');
+    console.error('  所以先走这一条，它用的是同一份 dist：');
+    console.error('    pnpm run serve        # 用浏览器打开它打印的地址');
+    /* 窗口关掉时进程自然结束；这里**不再抛**，让用户看见这一幕 */
+  }
 }
 
 app.whenReady().then(boot);

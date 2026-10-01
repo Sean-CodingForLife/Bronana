@@ -359,6 +359,95 @@ console.log('\n[7] 桌面外壳：纯逻辑与安全默认值');
   ok(/127\.0\.0\.1/.test(shellSrc), '只监听回环地址');
 }
 
+/* =========================================================
+   桌面外壳：**起不来那件事**（实测踩到的三次，每次的判据都不一样）
+   =========================================================
+   背景：用户机器上 `pnpm run desktop` 报
+     GPU process launch failed: error_code=18
+     GPU process isn't usable. Goodbye.
+     [ELIFECYCLE] Command failed with exit code -2147483645
+   下面四条守的就是"这一类崩溃以后能被认出来 / 能绕过去"。
+   ========================================================= */
+console.log('\n[7b] 桌面外壳：启动失败的三条判据与两个开关');
+{
+  /* ① 退出码要按**有符号 32 位**比。
+     ⚠ 实测踩到：Windows 上 Node 给的退出码是**无符号**的 ——
+     `STATUS_BREAKPOINT`（0x80000003）拿到手是 `2147483651`，
+     而 PowerShell 打的是 `-2147483645`。第一版拿负数去比，于是
+     "解释了半天的提示一句都不打"，而崩溃照旧。 */
+  ok(shell.GPU_CRASH_CODE === -2147483645, '崩溃码是 Windows 的 STATUS_BREAKPOINT',
+    String(shell.GPU_CRASH_CODE));
+  ok(shell.isGpuFailure(-2147483645) === true, '有符号写法认得出来');
+  ok(shell.isGpuFailure(2147483651) === true,
+    '**无符号写法也认得出来**（Node 在 Windows 上给的就是这个）', String(2147483651));
+  ok(shell.isGpuFailure(0) === false && shell.isGpuFailure(1) === false, '正常退出码不误判');
+  ok(shell.signed32(2147483651) === -2147483645, 'signed32 把无符号归一成有符号');
+  ok(shell.signed32(-2147483645) === -2147483645, 'signed32 对有符号是恒等');
+  ok(shell.signed32(0) === 0 && shell.signed32(1) === 1, 'signed32 不动小正数');
+
+  /* ② 渲染进程"没能起来"要和"跑着跑着崩了"分开 */
+  ok(shell.isRendererLaunchFailure('launch-failed') === true, '认得 launch-failed');
+  ok(shell.isRendererLaunchFailure('crashed') === false, 'crashed 不算 launch-failed');
+  ok(shell.isRendererLaunchFailure('') === false && shell.isRendererLaunchFailure(null) === false,
+    '空 / null 不误判');
+
+  /* ③ `ELECTRON_RUN_AS_NODE` 必须被摘掉。
+     不摘的话 electron.exe 退化成纯 Node —— 窗口不存在，而报错会把人指向
+     "electron 没装 / 二进制没下下来"这个**错误的方向**。 */
+  const cleaned = shell.childEnv({ PATH: 'x', ELECTRON_RUN_AS_NODE: '1' });
+  ok(cleaned.ELECTRON_RUN_AS_NODE === undefined, 'childEnv 摘掉 ELECTRON_RUN_AS_NODE');
+  ok(cleaned.PATH === 'x', 'childEnv 保留其余环境变量');
+  ok(shell.childEnv({ ELECTRON_RUN_AS_NODE: '1' }).ELECTRON_RUN_AS_NODE === undefined &&
+    ({ ELECTRON_RUN_AS_NODE: '1' }).ELECTRON_RUN_AS_NODE === '1',
+    'childEnv 不改动传入的那个对象（不改调用方的环境）');
+
+  /* ④ 命令行切开：**Chromium 开关排在脚本路径之前**。
+     不切的话 `--no-sandbox` 会被当成脚本参数（Chromium 看不到它，于是
+     "加了开关却一点没变"）；反过来，`main.mjs` 里朴素切片会把**脚本路径自己**
+     当成参数并报"未知参数 …\desktop\main.mjs"（这两条都实测踩到过）。 */
+  const o1 = shell.parseArgs(['--no-sandbox']);
+  ok(o1.chromium.length === 1 && o1.chromium[0] === '--no-sandbox' && !o1.errors.length,
+    '--no-sandbox 被认成透传开关，而不是"未知参数"', JSON.stringify(o1.errors));
+  ok(shell.parseArgs(['--no-sandbox', '--disable-gpu']).chromium.length === 2, '多个透传开关都收');
+  ok(shell.parseArgs(['--wat']).errors.length > 0, '真正不认识的参数仍然报错（不是静默放过）');
+  const udd = shell.parseArgs(['--user-data-dir', 'C:\\tmp\\x']);
+  ok(udd.chromium.length === 2 && udd.chromium[1] === 'C:\\tmp\\x',
+    '--user-data-dir 的**取值**也收进来（否则 Chromium 拿不到目录）', JSON.stringify(udd.chromium));
+  const udd2 = shell.parseArgs(['--user-data-dir=C:\\tmp\\x']);
+  ok(udd2.chromium.length === 1 && udd2.chromium[0] === '--user-data-dir=C:\\tmp\\x',
+    '--user-data-dir=… 这种带等号的写法也收');
+
+  /* `shellArgsOf`：丢脚本路径与 Chromium 开关，只留壳自己的参数 */
+  ok(shell.shellArgsOf(['e.exe', '--no-sandbox', 'm.mjs']).length === 0,
+    'shellArgsOf 丢掉脚本路径与 Chromium 开关（不留下来变成"未知参数"）',
+    JSON.stringify(shell.shellArgsOf(['e.exe', '--no-sandbox', 'm.mjs'])));
+  const sa = shell.shellArgsOf(['e.exe', '--dev', '--port', '5200', 'm.mjs']);
+  ok(sa.join(' ') === '--dev --port 5200', 'shellArgsOf 保住壳自己的参数（含取值）', sa.join(' '));
+  ok(shell.shellArgsOf(['e.exe', '--gpu', 'm.mjs']).join(' ') === '--gpu', 'shellArgsOf 保住 --gpu');
+
+  /* ⑤ GPU 那一档：默认**关**硬加速，要另一档必须显式说 */
+  ok(shell.gpuMode({}, {}).accel === false, '默认不启用硬件加速（GPU 起不来时它会让整个应用起不来）');
+  ok(shell.gpuMode({ gpu: true }, {}).accel === true, '命令行 --gpu 才启用');
+  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '1' }).accel === true, '环境变量也能启用');
+  ok(shell.gpuMode({}, { BRONANA_DESKTOP_GPU: '0' }).accel === false, '环境变量给 0 不算启用');
+  ok(/默认/.test(shell.gpuMode({}, {}).why), '默认那一档给得出理由（会印在启动横幅里）',
+    shell.gpuMode({}, {}).why);
+
+  /* ⑥ 主进程里那两处接线（静态判据：它们在无头环境里跑不到） */
+  const mainSrc2 = readCode('desktop/main.mjs');
+  ok(/shellArgsOf\(process\.argv\)/.test(mainSrc2),
+    '主进程用 shellArgsOf 解析（不是朴素的 process.argv.slice(2)）');
+  ok(/disableHardwareAcceleration\(\)/.test(mainSrc2),
+    '主进程在 whenReady 之前关掉硬加速');
+  ok(/try\s*\{[\s\S]*?await win\.loadURL\(url\)[\s\S]*?\}\s*catch/.test(mainSrc2),
+    'loadURL 的拒绝被接住（不接住时 Electron 会以"未处理的拒绝"结束进程 —— 实测）');
+  ok(/isRendererLaunchFailure/.test(mainSrc2), '渲染进程 launch-failed 有专门的提示');
+  const launchSrc = readCode('desktop/launch.mjs');
+  ok(/childEnv\(process\.env\)/.test(launchSrc), '启动器给子进程用 childEnv（摘掉 RUN_AS_NODE）');
+  ok(/isGpuFailure/.test(launchSrc), '启动器认得"启动阶段就死了"那个码并给人话');
+  ok(/PASSTHROUGH|parseArgs/.test(launchSrc), '启动器复用 shell 的参数解析（不自己再切一遍）');
+}
+
 console.log('\n[8] 三种形态共用一个入口（不各写一套）');
 {
   const html = readSrc('index.html');

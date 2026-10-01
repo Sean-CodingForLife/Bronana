@@ -44,6 +44,73 @@
 - `test/cache.mjs`：缓存键的前缀分类从五类扩到**六类**（新增 `el-` 精英覆盖层，懒烘）。
   把前缀换成没记账的名字 → 当场红。
 
+## 未发布 · 修掉"桌面模式起不来"（Windows 上 `GPU process isn't usable`）
+
+### 现象（用户机器上实测）
+
+```
+$ pnpm run desktop
+  Bronana 桌面外壳
+    模式    生产（内置静态服务器）
+    加载    http://127.0.0.1:50844/
+  [ERROR:content\browser\gpu\gpu_process_host.cc] GPU process launch failed: error_code=18
+  渲染进程结束：launch-failed
+  [FATAL:gpu_data_manager_impl_private.cc] GPU process isn't usable. Goodbye.
+  [ELIFECYCLE] Command failed with exit code -2147483645.
+```
+
+⚠ 注意它**不是白窗口、也不是页面里的代码报错**：外壳已经起来了（端口与地址都打出来了），
+崩的是 **Chromium 的 GPU 进程**。`-2147483645` 是 Windows 的 `STATUS_BREAKPOINT`
+（`0x80000003`）—— Chromium 在"进程起不来"时是**主动自杀**，所以连一句自己的报错都来不及打，
+`desktop/main.mjs` 那一行都没跑到。
+
+### 查出来的四件事（每一条都是实测，不是推断）
+
+| # | 是什么 | 怎么发现的 |
+| --- | --- | --- |
+| 1 | **`ELECTRON_RUN_AS_NODE=1` 会让 `electron.exe` 退化成纯 Node** | 本环境的 shell 里就有它。带着它时窗口、`app`、`BrowserWindow` 一个都不存在，而 `main.mjs` 那句"electron 模块没给出 app/BrowserWindow"会把人指向**错误的方向**（以为 electron 没装 / 二进制没下下来）。已在启动器里**摘掉**（只能在那里摘：那个变量是在进程启动那一刻被读的） |
+| 2 | **`--no-sandbox` 是唯一实测有效的开关** | 在能复现同一个崩溃码的环境里逐个试：`--disable-gpu` / `--disable-gpu-sandbox` / `--in-process-gpu` / `--disable-gpu-compositing` **都没用**，`--no-sandbox` 让窗口真的起来了（端口、`200 /`、JS/CSS 都出来了） |
+| 3 | **Chromium 的开关必须排在脚本路径之前** | `electron main.mjs --no-sandbox` 时开关被当成**脚本参数**（Chromium 看不到它，于是"加了开关却一点没变"）；改成 `electron --no-sandbox main.mjs` 之后，主进程里 `process.argv` 变成 `[electron, '--no-sandbox', 'main.mjs']`，朴素的 `slice(2)` 又会把**脚本路径自己**当成参数并报"未知参数" |
+| 4 | **Node 在 Windows 上给的退出码是无符号的** | `STATUS_BREAKPOINT` 拿到手是 `2147483651`，而 PowerShell 打印的是 `-2147483645`。`isGpuFailure` 第一版拿负数去比，于是**永远为假** —— 表现是"写好的提示一句都不打"，而崩溃照旧 |
+
+### 改了什么
+
+| 文件 | 改动 |
+| --- | --- |
+| `desktop/shell.mjs` | 新增 `gpuMode`（**默认关硬件加速**）· `childEnv`（摘掉 `ELECTRON_RUN_AS_NODE`）· `signed32` / `isGpuFailure`（按有符号比）· `isRendererLaunchFailure` · `shellArgsOf`（丢掉脚本路径与 Chromium 开关）· 参数解析认识透传开关（`--no-sandbox` / `--disable-gpu-sandbox` / `--user-data-dir` …） |
+| `desktop/main.mjs` | 在 `app.whenReady()` **之前**关硬加速并印出理由 · `process.argv` 改走 `shellArgsOf` · `render-process-gone` 的 `launch-failed` 给专门提示 · **接住 `loadURL` 的拒绝**（不接住时 Electron 会以"未处理的拒绝"结束进程） |
+| `desktop/launch.mjs` | 给子进程用 `childEnv` · 把 Chromium 开关排到脚本路径**之前** · 认出"启动阶段就死了"那个码并给出**照着做**的两条路 |
+| `package.json` | 新增 `desktop:gpu`（`--gpu`）与 `desktop:nosandbox`（`--no-sandbox`） |
+
+### 玩家能看出什么不同
+
+- **平时没有变化**（`pnpm run desktop` 照旧）。
+- **起不来的机器上不再是"一堆 Chromium 日志"**，而是一段人话：
+  它发生在哪一步、两条实测能通的路（`pnpm run desktop:nosandbox` / `pnpm run serve`）。
+- 新增两个入口：`pnpm run desktop:nosandbox`（受管策略 / 安全软件挡沙箱时用）、
+  `pnpm run desktop:gpu`（要看硬加速那条路时用）。
+- ⚠ 一条**诚实的边界**：这一切是在这个开发环境里复现同一个崩溃码之后验的。
+  用户机器上"GPU error_code=18"的**根因**（是策略、安全软件还是驱动）没有定论，
+  所以给的是"两条实测能绕过去的路"，而不是"已经修好了那台机器"。
+
+### 一处**没做成**的尝试（写下来免得下次再试）
+
+`--user-data-dir=<可写目录>` **没能**绕过磁盘缓存那条 `Unable to move the cache: 拒绝访问`
+（试过，仍被拒）。所以 `loadURL` 失败时给的指引是 `pnpm run serve`，
+而不是那个开关 —— 它在参数解析里留着（有些环境确实需要它），但不再当"解法"卖。
+
+### 证据
+
+| 验证 | 结果 |
+| --- | --- |
+| `node test/modes.mjs` | ✅ 新增 `[7b] 桌面外壳：启动失败的三条判据与两个开关`（21 条断言）全过 |
+| 实测：`pnpm run desktop` | 崩溃码**被认出来了**，打出人话与负的退出码 `-2147483645` |
+| 实测：`pnpm run desktop:nosandbox` | ✅ **窗口真的起来了**（`200 /` + JS/CSS 都取到） |
+| 实测：`loadURL` 被拦时 | ✅ 打出"哪一步失败 + 先用 `pnpm run serve`"，**进程不再被未处理的拒绝带走**（窗口与服务器继续活着） |
+| 行为指纹 | ✅ 三个值未变（桌面外壳不在模拟层里） |
+
+---
+
 ## 未发布 · 状态系统：R50 点名的第 10 条，以及两个**死写入**的真 bug
 
 > 用户 2026-10-01 点名的十条系统里，这一条在账本上的原文是：
