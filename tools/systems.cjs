@@ -42,6 +42,12 @@ const SYSTEMS = [
          ⚠ 它**不认识** `CanvasRenderingContext2D`（那是后端的事）——
          所以它比 `draw2d.ts` 更靠近底层，而 `draw2d.ts` 反过来 import 它。 */
       'rhi.ts',
+      /* `workspace.ts`（**工作区清单的校验器**，2026-10-02）坐在 L0 的理由：
+         它只 import `registry.ts` / `selfcheck.ts`（都是 L0），而且它是**纯函数** ——
+         给一个对象、回一个结论，**不读盘、不认识任何玩法概念**。
+         读盘是 L8 宿主的事（`src/` 不许碰 Node —— 那是无头测试的前提）。
+         用户口径：「Bronana 只能住在自己的工作区里，由引擎管理工作区」。 */
+      'workspace.ts',
       'text.ts',
       /* `fold.ts`（数值折叠：一张表四种折法）坐在 L0 的理由：它只 import
          `registry.ts` / `selfcheck.ts`（都是 L0），不认识任何一个玩法概念 ——

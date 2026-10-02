@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "bronana",
+  "displayName": "Bronana",
+  "engine": ">=2.0.0 <3",
+  "entry": "../../src/main.ts",
+  "storage": { "namespace": "bronana" },
+  "modules": { "enabled": [], "disabled": [] },
+  "plugins": { "enabled": [] },
+  "content": { "src": "../../src" },
+  "note": "⚠ 过渡状态（批次 1）：内容**还没有搬进工作区** —— `entry` 与 `content.src` 暂时指向仓库根的 src/。批次 3 做完 git mv 之后，它们会变成 ./src/main.ts 与 ./src，而引擎侧的宿主一律改为只认这个清单。"
+}

@@ -210,6 +210,19 @@ const GATES = [
       + '所以这条门也顺手把"同一条信息有几份"这件事变成一个要处理的账。'
   },
   {
+    id: 'workspace',
+    name: '工作区清单（每份清单都要被引擎认下来）',
+    cmd: ['node', ['tools/workspace-audit.mjs']],
+    why: '用户 2026-10-02 的口径：「Bronana 已经在项目里**降级**了，它只能住在自己的工作区里，'
+      + '由**引擎**去管理工作区」。这条门守的是**清单本身**：未知字段报错（抄 Cargo —— 它把'
+      + '`workspace.metadata` 静默忽略、官方原文写着 will not be warned about）· 缺必填报错'
+      + '（抄 pnpm —— 缺清单时它曾经 silently link no project at all）· `storage.namespace`'
+      + '**必须等于 `id`**（这一步防的是 Godot 那个坑：它的 config/name 同时决定 user data 目录，'
+      + '于是**改名 = 存档搬家**）· `schema` 不认识就停下。'
+      + '⚠ 门**不自己写一套校验**，它 import `src/workspace.ts` 的 `Workspace.parse` —— '
+      + '两份判据迟早漂开（`systems.cjs` 的头注释写着同一句话）。'
+  },
+  {
     id: 'doc-links',
     name: '文档链接与索引（链得到 · 找得到）',
     cmd: ['node', ['tools/doc-links.mjs']],

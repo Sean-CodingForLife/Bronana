@@ -4160,6 +4160,38 @@ interface DangerLevelDef {
   level: number; name: string; note: string;
   mods: Partial<DangerMods>;
 }
+/** 工作区清单里的一个字段（声明表在 `src/workspace.ts` 的 `FIELDS`） */
+interface WorkspaceFieldSpec { kind: string; required: boolean; note: string }
+/** 一份工作区清单（**形状**；未知字段由 `Workspace.parse` 点名报错） */
+interface WorkspaceManifest {
+  [key: string]: unknown;
+  schema?: number;
+  id?: string;
+  displayName?: string;
+  engine?: string;
+  entry?: string;
+  storage?: { namespace?: string };
+  modules?: Record<string, unknown>;
+  plugins?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+  note?: string;
+}
+interface WorkspaceApi {
+  /** 清单格式版本（**不是引擎版本**）；格式变了才 +1 */
+  SCHEMA: number;
+  FIELDS: Record<string, WorkspaceFieldSpec>;
+  /** 纯函数：给清单对象、回结论 —— **不读盘**（读盘是宿主的事） */
+  parse(obj: unknown): { ok: boolean; problems: string[]; value: WorkspaceManifest | null };
+  set(m: WorkspaceManifest): void;
+  get(): WorkspaceManifest | null;
+  id(): string | null;
+  displayName(): string | null;
+  /** 存储命名空间：**只**从 `id` 派生（E3 第 2 小步那个注入点的唯一出处） */
+  namespace(): string | null;
+  audit(): { ok: boolean; problems: string[] };
+}
+declare var Workspace: WorkspaceApi;
+
 interface DangerApi {
   LIST: DangerLevelDef[];
   BY_LEVEL: Record<number, DangerLevelDef>;

@@ -129,6 +129,10 @@ jobs:
       - name: 附加 · SOLID 体检
         run: pnpm run solid -- --strict
 
+      - name: 附加 · 工作区清单（每份清单都要被引擎认下来）
+        run: pnpm run workspace:audit
+
+
       - name: 附加 · 文档链接与索引（链得到 · 找得到）
         run: pnpm run doc:links
 

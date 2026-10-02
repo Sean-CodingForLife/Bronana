@@ -20,6 +20,30 @@ links: ["README.md", "docs/history/README.md"]
 
 ---
 
+## 未发布 · 批次 1：工作区清单落地 —— 先把「一个工作区是什么」写成**可校验的文件**
+
+**玩家能看出什么**：没有变化（本批只加了清单、校验器与一道门，没有改任何玩法或存档路径）。
+
+**为什么先做这个**：下一步是 E4 —— 把内容 `git mv` 进工作区，那是**不可逆**的动作。
+动 41 个模块之前，先让「一个工作区是什么」有**唯一的、可校验的出处**，
+否则搬完没人能回答「搬对了吗」。
+
+新增：
+- `workspace/Bronana/teapot.workspace.json` —— 第一份真清单（**如实写着过渡状态**：内容还指向仓库根的 `src/`）；
+- `src/workspace.ts` —— 引擎侧**纯函数**校验器（L0；**不读盘** —— `src/` 不许碰 Node）；
+- 门 **`workspace`**（第 28 道）：未知字段报错 · 缺必填报错 · **`storage.namespace` 必须等于 `id`** · `schema` 不认识就停下；
+  外加提示级两条（目录名≠id · 清单总表）。**门不自己写一套校验**，它 import 引擎的 `Workspace.parse`。
+
+**判据的出处**（都抄自真实的坑，见 `docs/workspace-spec.md`）：
+未知字段 → Cargo 把 `workspace.metadata` 静默忽略；缺必填 → pnpm 曾经 silently link no project at all；
+**`namespace` 必须等于 `id`** → **Godot 的 `config/name` 同时决定 user data 目录 ⇒ 改名 = 存档搬家**。
+
+**越界审计的结论**（用户要求先查）：引擎代码里内容名 **0 处** ✅ · 引擎不 import 内容 ✅ ·
+但**结构层有**：全仓没有 `workspace/`，内容仍住在引擎仓库里，且引擎启动处**硬编码** `Storage.setNamespace('bronana')`（2 处）。
+
+---
+
+
 ## 未发布 · E3 第 3 小步：引擎不再自称某个**游戏**
 
 **玩家能看出什么**：只有一处 —— 崩溃卡不再写「Bronana」，改成中性的「出了点意外（这一局可能已经不可靠了）」。

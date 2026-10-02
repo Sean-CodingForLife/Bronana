@@ -24,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
     "env:declared": "node tools/env-declared.mjs",
     "doc:links": "node tools/doc-links.mjs",
+    "workspace:audit": "node tools/workspace-audit.mjs",
     "where": "node tools/where.mjs",
     "verify": "node tools/verify.mjs",
     "verify:quick": "node tools/verify.mjs --quick",
