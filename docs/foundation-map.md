@@ -25,7 +25,7 @@ links: ["README.md", "../AGENTS.md"]
 | --- | --- | --- | --- | --- | --- |
 | `test:bonds` | `test/bonds.mjs` | 测试 |  |  | ⚠ |
 | `test:storage-fs` | `test/storage-fs.mjs` | 测试 |  |  | ⚠ |
-| `test:for` | `tools/test-for.mjs` | 测试 |  |  | ⚠ |
+| `test:for` | `tools/test-for.mjs` | 测试 · **manual** |  |  | ⚠ |
 | `test:station` | `test/station.mjs` | 测试 |  |  | ⚠ |
 | `test:fold` | `test/fold.mjs` | 测试 |  |  | ⚠ |
 | `dev` | `(内联命令)` | 工具 / 其他 |  |  | ✔ |
@@ -36,16 +36,16 @@ links: ["README.md", "../AGENTS.md"]
 | `sim` | `src/cli.ts` | 工具 / 其他 |  |  | ✔ |
 | `serve` | `src/cli.ts` | 工具 / 其他 |  |  | ✔ |
 | `desktop` | `(内联命令)` | 工具 / 其他 |  |  | ✔ |
-| `desktop:gpu` | `(内联命令)` | 工具 / 其他 |  |  | ⚠ |
-| `desktop:nosandbox` | `(内联命令)` | 工具 / 其他 |  |  | ⚠ |
+| `desktop:gpu` | `(内联命令)` | 工具 / 其他 · **manual** |  |  | ⚠ |
+| `desktop:nosandbox` | `(内联命令)` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `typecheck` | `(内联命令)` | 工具 / 其他 |  | ✔ | ✔ |
 | `env:declared` | `tools/env-declared.mjs` | 门 | `env` | ✔ | ⚠ |
 | `doc:links` | `tools/doc-links.mjs` | 门 | `doc-links` | ✔ | ⚠ |
 | `workspace:audit` | `tools/workspace-audit.mjs` | 门 | `workspace` | ✔ | ⚠ |
 | `where` | `tools/where.mjs` | 工具 / 其他 |  |  | ✔ |
 | `verify` | `tools/verify.mjs` | 工具 / 其他 |  | ✔ | ✔ |
-| `verify:quick` | `tools/verify.mjs` | 工具 / 其他 |  |  | ⚠ |
-| `typecheck:report` | `tools/tsc-report.cjs` | 工具 / 其他 |  |  | ⚠ |
+| `verify:quick` | `tools/verify.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
+| `typecheck:report` | `tools/tsc-report.cjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `test` | `test/run-all.mjs` | 门 | `test` | ✔ | ✔ |
 | `suites` | `tools/run-suites.cjs` | 工具 / 其他 |  |  | ✔ |
 | `test:skill` | `test/skill.mjs` | 测试 |  |  | ⚠ |
@@ -80,7 +80,7 @@ links: ["README.md", "../AGENTS.md"]
 | `audit` | `tools/arch-audit.cjs` | 门 | `audit` | ✔ | ✔ |
 | `curves` | `tools/curve-audit.mjs` | 门 | `curves` | ✔ | ✔ |
 | `loop` | `tools/loop-audit.mjs` | 门 | `loop` | ✔ | ✔ |
-| `gen:curves` | `tools/gen-curve-tables.py` | 工具 / 其他 |  |  | ⚠ |
+| `gen:curves` | `tools/gen-curve-tables.py` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `probe` | `tools/bug-probe.mjs` | 工具 / 其他 |  | ✔ | ✔ |
 | `run` | `tools/bug-probe.mjs` | 工具 / 其他 |  | ✔ | ✔ |
 | `fun` | `tools/fun-audit.mjs` | 工具 / 其他 |  | ✔ | ✔ |
@@ -103,7 +103,7 @@ links: ["README.md", "../AGENTS.md"]
 | `engine:boundary` | `tools/engine-boundary.mjs` | 门 | `engine-boundary` | ✔ | ⚠ |
 | `hardcode` | `tools/hardcode-audit.cjs` | 门 | `hardcode` | ✔ | ✔ |
 | `audio:census` | `tools/audio-census.mjs` | 门 | `audio` | ✔ | ⚠ |
-| `text:census` | `tools/text-census.mjs` | 工具 / 其他 |  |  | ⚠ |
+| `text:census` | `tools/text-census.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `draw` | `tools/draw-census.mjs` | 工具 / 其他 |  |  | ✔ |
 | `score` | `tools/score.mjs` | 工具 / 其他 |  |  | ✔ |
 | `ui-text` | `tools/extract-ui-text.mjs` | 门 | `ui-text` | ✔ | ✔ |
@@ -111,7 +111,7 @@ links: ["README.md", "../AGENTS.md"]
 | `fp:repro` | `tools/fp-repro.mjs` | 门 | `repro` | ✔ | ✔ |
 | `map` | `tools/map-audit.mjs` | 工具 / 其他 |  |  | ✔ |
 | `shot` | `tools/ui-shot.mjs` | 工具 / 其他 |  | ✔ | ⚠ |
-| `ui-preview` | `tools/ui-serve.mjs` | 工具 / 其他 |  |  | ⚠ |
+| `ui-preview` | `tools/ui-serve.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `flow` | `tools/flow-audit.mjs` | 门 | `flow` | ✔ | ✔ |
 | `test:comp` | `test/comp.mjs` | 测试 |  |  | ⚠ |
 | `test:world` | `test/world.mjs` | 测试 |  |  | ⚠ |
@@ -135,11 +135,11 @@ links: ["README.md", "../AGENTS.md"]
 | `test:render` | `test/render-check.mjs` | 测试 |  |  | ⚠ |
 | `test:depth` | `test/depth.mjs` | 测试 |  |  | ⚠ |
 | `test:rhi` | `test/rhi.mjs` | 测试 |  |  | ⚠ |
-| `dev:edit` | `tools/dev-edit.mjs` | 工具 / 其他 |  |  | ⚠ |
+| `dev:edit` | `tools/dev-edit.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `test:dev-edit` | `test/dev-edit.mjs` | 测试 |  |  | ✔ |
 | `naming:audit` | `tools/naming.mjs` | 门 | `naming` | ✔ | ⚠ |
 | `test:naming-gate` | `test/naming-gate.mjs` | 测试 |  |  | ⚠ |
-| `rename:inventory` | `tools/rename-inventory.mjs` | 工具 / 其他 |  |  | ⚠ |
+| `rename:inventory` | `tools/rename-inventory.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `test:cache` | `test/cache.mjs` | 测试 |  |  | ⚠ |
 | `test:ui` | `test/ui-check.mjs` | 测试 |  |  | ⚠ |
 | `test:input` | `test/input.mjs` | 测试 |  |  | ⚠ |
@@ -154,38 +154,38 @@ links: ["README.md", "../AGENTS.md"]
 | `test:craft` | `test/craft.mjs` | 测试 |  |  | ⚠ |
 | `test:forge` | `test/forge.mjs` | 测试 |  |  | ⚠ |
 | `test:arch` | `test/arch.mjs` | 测试 |  |  | ⚠ |
-| `hooks:install` | `tools/install-hooks.mjs` | 工具 / 其他 |  |  | ⚠ |
-| `hooks:status` | `tools/install-hooks.mjs` | 工具 / 其他 |  |  | ⚠ |
-| `hooks:remove` | `tools/install-hooks.mjs` | 工具 / 其他 |  |  | ⚠ |
-| `art-manifest` | `tools/art-manifest.mjs` | 工具 / 其他 |  |  | ⚠ |
+| `hooks:install` | `tools/install-hooks.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
+| `hooks:status` | `tools/install-hooks.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
+| `hooks:remove` | `tools/install-hooks.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
+| `art-manifest` | `tools/art-manifest.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 
-> **可达性**（谁真的会跑到它）：门 29 · 套件（`pnpm test`）67 · CI 11 · 仅文档 13 · **谁都跑不到 15**
+> **可达性**（谁真的会跑到它）：门 29 · 套件（`pnpm test`）67 · CI 11 · 仅文档 13 · **谁都跑不到 11**
 >
-> ⚠ **谁都跑不到的命令**（15 条）：`test:for` · `desktop:gpu` · `desktop:nosandbox` · `verify:quick` · `typecheck:report` · `foundation:map` · `gen:curves` · `text:census` · `ui-preview` · `dev:edit` · `rename:inventory` · `hooks:install` · `hooks:status` · `hooks:remove` · `art-manifest`
+> ⚠ **谁都跑不到的命令**（11 条）：`test:for` · `desktop:gpu` · `desktop:nosandbox` · `typecheck:report` · `gen:curves` · `text:census` · `rename:inventory` · `hooks:install` · `hooks:status` · `hooks:remove` · `art-manifest`
 
-## 二、工具链（`tools/`）—— 74 个文件
+## 二、工具链（`tools/`）—— 73 个文件
 
 | 文件 | 角色 | 谁引用它 | `--self-test` |
 | --- | --- | --- | --- |
 | `.session.json` | 普查 / 其他 | `tools/env.mjs` · `tools/where.mjs` |  |
 | `_run.mjs` | 库（共用） | `tools/bug-probe.mjs` · `tools/curve-audit.mjs` · `tools/fun-audit.mjs` · `tools/matrix.mjs` · `tools/reconcile.mjs` · `tools/registry-drift.mjs` |  |
 | `_tables.mjs` | 库（共用） | `tools/foundation-map.mjs` · `tools/registration-audit.mjs` |  |
-| `apply-comp.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `apply-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `arch-audit.cjs` | 门 | 门 `audit` · 脚本 `audit` · `tools/readme-stats.cjs` · `tools/systems.cjs` · `tools/verify.mjs` |  |
 | `art-audit.mjs` | 门 | 门 `art` · 脚本 `art` · `tools/verify.mjs` |  |
 | `art-manifest.mjs` | 普查 / 其他 | 脚本 `art-manifest` |  |
 | `audio-census.mjs` | 门 | 门 `audio` · 脚本 `audio:census` · `tools/verify.mjs` |  |
 | `balance.mjs` | 普查 / 其他 | 脚本 `bal` · `tools/curve-audit.mjs` · `tools/registry-drift.mjs` |  |
-| `batch-close.cjs` | 声明表 | ⚠ 没人引用 |  |
-| `batch-num.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `batch-close.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `batch-num.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `bug-probe.mjs` | 普查 / 其他 | 脚本 `probe` · 脚本 `run` · `tools/_run.mjs` · `tools/coverage.mjs` · `tools/fun-audit.mjs` |  |
-| `canvas-numbers.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `canvas-numbers.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `color-audit.mjs` | 门 | 门 `color` · 脚本 `color:audit` · `tools/verify.mjs` |  |
 | `coverage.mjs` | 普查 / 其他 | 脚本 `coverage` |  |
 | `curve-audit.mjs` | 门 | 门 `curves` · 脚本 `curves` · `tools/registry-drift.mjs` · `tools/verify.mjs` |  |
-| `decal-decide.cjs` | 声明表 | ⚠ 没人引用 |  |
-| `decal-hoist.cjs` | 声明表 | ⚠ 没人引用 |  |
-| `dev-edit.mjs` | 开发工具 | 脚本 `dev:edit` · `tools/rename-inventory.mjs` |  |
+| `decal-decide.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `decal-hoist.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `dev-edit.mjs` | 开发工具 | 脚本 `dev:edit` · `tools/foundation-map.mjs` · `tools/rename-inventory.mjs` |  |
 | `doc-front-matter.mjs` | 门 | 门 `doc-front` · 脚本 `doc:front` · `tools/verify.mjs` |  |
 | `doc-links.mjs` | 门 | 门 `doc-links` · 脚本 `doc:links` · `tools/verify.mjs` |  |
 | `doc-num-audit.mjs` | 门 | 门 `doc-num` · 脚本 `doc:num` · `tools/verify.mjs` |  |
@@ -194,13 +194,13 @@ links: ["README.md", "../AGENTS.md"]
 | `env-declared.mjs` | 门 | 门 `env` · 脚本 `env:declared` · `tools/verify.mjs` | ✔ |
 | `env.mjs` | 普查 / 其他 | 脚本 `env` · `tools/where.mjs` |  |
 | `eol-audit.mjs` | 门 | 门 `eol` · 脚本 `eol:audit` · `tools/verify.mjs` |  |
-| `esm-ify.cjs` | 声明表 | ⚠ 没人引用 |  |
-| `esm-tests.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `esm-ify.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `esm-tests.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `extract-ui-text.mjs` | 门 | 门 `ui-text` · 脚本 `ui-text` · `tools/verify.mjs` |  |
-| `finalize-comp.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `finalize-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `fingerprint.mjs` | 门 | 门 `fingerprint` · 脚本 `fingerprint` · `tools/fp-repro.mjs` · `tools/verify.mjs` |  |
-| `fix-comp.cjs` | 声明表 | ⚠ 没人引用 |  |
-| `fix-types.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `fix-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `fix-types.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `flow-audit.mjs` | 门 | 门 `flow` · 脚本 `flow` · `tools/verify.mjs` |  |
 | `foundation-map.mjs` | 普查 / 其他 | 脚本 `foundation:map` · `tools/doc-num-audit.mjs` · `tools/registration-audit.mjs` | ✔ |
 | `fp-repro.mjs` | 门 | 门 `repro` · 脚本 `fp:repro` · `tools/verify.mjs` |  |
@@ -211,10 +211,10 @@ links: ["README.md", "../AGENTS.md"]
 | `hardcode-audit.cjs` | 门 | 门 `hardcode` · 脚本 `hardcode` · `tools/color-audit.mjs` · `tools/verify.mjs` |  |
 | `install-hooks.mjs` | 普查 / 其他 | 脚本 `hooks:install` · 脚本 `hooks:status` · 脚本 `hooks:remove` |  |
 | `loop-audit.mjs` | 门 | 门 `loop` · 脚本 `loop` · `tools/verify.mjs` |  |
-| `make-migration-fixture.mjs` | 普查 / 其他 | ⚠ 没人引用 |  |
+| `make-migration-fixture.mjs` | 普查 / 其他 · **keep** | `tools/foundation-map.mjs` |  |
 | `map-audit.mjs` | 普查 / 其他 | 脚本 `map` |  |
 | `matrix.mjs` | 普查 / 其他 | 脚本 `matrix` · `tools/_run.mjs` |  |
-| `migrate-types.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `migrate-types.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `name-audit.mjs` | 门 | 门 `name` · 脚本 `name:audit` · `tools/color-audit.mjs` · `tools/systems.cjs` · `tools/verify.mjs` |  |
 | `name-baseline.json` | 普查 / 其他 | `tools/name-audit.mjs` |  |
 | `naming.mjs` | 门 | 门 `naming` · 脚本 `naming:audit` · `tools/verify.mjs` |  |
@@ -223,9 +223,9 @@ links: ["README.md", "../AGENTS.md"]
 | `registration-audit.mjs` | 门 | 门 `registration` · 脚本 `registration:audit` · `tools/verify.mjs` | ✔ |
 | `registry-drift.mjs` | 门 | 门 `drift` · 脚本 `drift` · `tools/eol-audit.mjs` · `tools/verify.mjs` |  |
 | `rename-bronana.cjs` | 声明表 | `tools/rename-doudou.cjs` |  |
-| `rename-doudou.cjs` | 声明表 | ⚠ 没人引用 |  |
+| `rename-doudou.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `rename-inventory.mjs` | 普查 / 其他 | 脚本 `rename:inventory` |  |
-| `rewrite-items.py` | 普查 / 其他 | ⚠ 没人引用 |  |
+| `rewrite-items.py` | 普查 / 其他 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `run-suites.cjs` | 声明表 | 脚本 `suites` |  |
 | `score.mjs` | 普查 / 其他 | 脚本 `score` · `tools/registry-drift.mjs` |  |
 | `solid-audit.cjs` | 门 | 门 `solid` · 脚本 `solid` · `tools/verify.mjs` |  |
@@ -233,7 +233,6 @@ links: ["README.md", "../AGENTS.md"]
 | `systems.cjs` | 声明表 | `tools/_tables.mjs` · `tools/arch-audit.cjs` · `tools/engine-boundary.mjs` · `tools/foundation-map.mjs` · `tools/guard-gaps.mjs` · `tools/registration-audit.mjs` · `tools/src-files.cjs` · `tools/test-for.mjs` · `tools/verify.mjs` · `tools/workspace-audit.mjs` |  |
 | `test-for.mjs` | 普查 / 其他 | 脚本 `test:for` |  |
 | `text-census.mjs` | 普查 / 其他 | 脚本 `text:census` |  |
-| `tmp-readme-rows.mjs` | ⚠ 临时件（不该留在盘上） | ⚠ 没人引用 |  |
 | `tsc-report.cjs` | 声明表 | 脚本 `typecheck:report` |  |
 | `ui-serve.mjs` | 普查 / 其他 | 脚本 `ui-preview` · `tools/ui-shot.mjs` |  |
 | `ui-shot.mjs` | 普查 / 其他 | 脚本 `shot` |  |
@@ -242,7 +241,7 @@ links: ["README.md", "../AGENTS.md"]
 | `workspace-audit.mjs` | 门 | 门 `workspace` · 脚本 `workspace:audit` · `tools/_tables.mjs` · `tools/registration-audit.mjs` · `tools/verify.mjs` | ✔ |
 | `yaml-check.mjs` | 门 | 门 `yaml` · 脚本 `yaml` · `tools/registry-drift.mjs` · `tools/verify.mjs` |  |
 
-> ⚠ **没有任何引用的工具**（16 个）：`apply-comp.cjs` · `batch-close.cjs` · `batch-num.cjs` · `canvas-numbers.cjs` · `decal-decide.cjs` · `decal-hoist.cjs` · `esm-ify.cjs` · `esm-tests.cjs` · `finalize-comp.cjs` · `fix-comp.cjs` · `fix-types.cjs` · `make-migration-fixture.mjs` · `migrate-types.cjs` · `rename-doudou.cjs` · `rewrite-items.py` · `tmp-readme-rows.mjs`
+> ⚠ **没有任何引用的工具**（0 个）：（无）
 
 ## 三、验收门与测试（框架的判据层）
 
@@ -313,7 +312,7 @@ links: ["README.md", "../AGENTS.md"]
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
 | `AGENTS.md` | 协作 | 现行 | 533 | —（分卷） |
-| `CHANGELOG.md` | 变更史 | 现行 | 2198 | —（分卷） |
+| `CHANGELOG.md` | 变更史 | 现行 | 2207 | —（分卷） |
 | `CODE_OF_CONDUCT.md` | 协作 | 现行 | 71 | —（分卷） |
 | `CONTRIBUTING.md` | 协作 | 现行 | 225 | —（分卷） |
 | `README.md` | 门面 | 现行 | 1886 | —（分卷） |
@@ -324,7 +323,7 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
 | `docs/external-game-mechanics.md` | 外部参考 | 现行 | 3111 | ✔ |
 | `docs/external-workspace-conventions.md` | 调研 | 现行 | 152 | ✔ |
-| `docs/foundation-audit.md` | 协作 | 现行 | 140 | ✔ |
+| `docs/foundation-audit.md` | 协作 | 现行 | 147 | ✔ |
 | `docs/history/01-长线化与三角.md` | 交付记录 | 现行 | 842 | —（分卷） |
 | `docs/history/02-地牢化与设计复查.md` | 交付记录 | 现行 | 1186 | —（分卷） |
 | `docs/history/03-体系化与数值曲线.md` | 交付记录 | 现行 | 756 | —（分卷） |
@@ -342,7 +341,7 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/history/15-批次2-内容模块显式认领.md` | 交付记录 | 现行 | 67 | —（分卷） |
 | `docs/history/16-批次2后半-draw2d那一刀.md` | 交付记录 | 现行 | 64 | —（分卷） |
 | `docs/history/17-工具层三个洞的结构性消除.md` | 交付记录 | 现行 | 145 | —（分卷） |
-| `docs/history/18-地基体检.md` | 交付记录 | 现行 | 68 | —（分卷） |
+| `docs/history/18-地基体检.md` | 交付记录 | 现行 | 74 | —（分卷） |
 | `docs/history/README.md` | 交付记录 | 现行 | 49 | —（分卷） |
 | `docs/requirements.md` | 需求账本 | 现行 | 4293 | ✔ |
 | `docs/scaling-benchmarks.md` | 外部参考 | 现行 | 246 | ✔ |

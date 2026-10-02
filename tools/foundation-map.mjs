@@ -37,6 +37,77 @@ const CHECK = process.argv.includes('--check');
 const SELF_TEST = process.argv.includes('--self-test');
 const SKIP_DIR = new Set(['node_modules', '.git', 'dist', '.agents', 'ui-shots', '.tmp-npm-cache']);
 
+/* =========================================================
+   状态声明表：**无引用 ⇒ 必须有状态与理由**
+   ---------------------------------------------------------
+   为什么要有它：地图第一次跑出来时，`tools/` 里有 **16 个文件没有任何引用**、
+   命令里有 **14 条谁都跑不到** —— 而它们在机器眼里与"在役工具"**长得一模一样**。
+   "手工档"与"死命令"分不开，就等于**没有任何地方能回答"这个东西还要不要"**；
+   而其中 `tools/tmp-readme-rows.mjs` **连 git 都没跟踪**（它自己在文件头写着"验完即删"），
+   所以**任何门都不可能发现它** —— 这正是"靠人记住的规范都会漂"的活证据。
+
+   ⇒ 判据：**有引用 ⇒ 不用声明；没引用 ⇒ 必须在这里写状态与理由（理由 ≥ 12 字）**。
+     反向也判：声明表里不许有盘上已经不存在的东西（幽灵声明）。
+   ========================================================= */
+const TOOLS_STATUS = new Map([
+  ['apply-comp.cjs', ['oneoff', '把各处"手写对象字面量"改成 `Comp.spawn(原型, 覆盖)` —— 已执行完的一次性改造']],
+  ['batch-close.cjs', ['oneoff', '收掉"批处理"这条线 —— 一次性的结构性改造']],
+  ['batch-num.cjs', ['oneoff', 'README 里的烘焙帧数字改成实测值 —— 一次性（现在由门 `readme` 守存量表）']],
+  ['canvas-numbers.cjs', ['oneoff', '更正决策记录里的离屏画布显存数字 —— 一次性']],
+  ['decal-decide.cjs', ['oneoff', '贴花三条决定的收尾 —— 一次性']],
+  ['decal-hoist.cjs', ['oneoff', '把贴花循环里"每个贴花各存一次画布状态栈"提出来 —— 一次性性能改造']],
+  ['esm-ify.cjs', ['oneoff', '把"IIFE + 挂 window"的模块写法改成真正的 ES 模块 —— 一次性迁移（已完成）']],
+  ['esm-tests.cjs', ['oneoff', '把"CJS + `vm.runInThisContext`"的测试套件改成真正的 ESM —— 一次性迁移（已完成）']],
+  ['finalize-comp.cjs', ['oneoff', '`comp` 改造的收尾 —— 一次性']],
+  ['fix-comp.cjs', ['oneoff', '第一轮 `comp` 普查抓出来的四个问题 —— 一次性']],
+  ['fix-types.cjs', ['oneoff', '迁移期的定向修复（文件头写着"可重复执行"）—— 迁移结束后不再需要']],
+  ['make-migration-fixture.mjs', ['keep', '生成 v1→v2 迁移的**测试夹具**：`test/migration.mjs` 用的是它的产物，夹具要重生成时靠它']],
+  ['migrate-types.cjs', ['oneoff', '一次性迁移脚本（机械改动）—— 迁移已完成']],
+  ['rename-doudou.cjs', ['oneoff', '中文里的「土豆」改成「豆豆」—— 一次性改名']],
+  ['rewrite-items.py', ['oneoff', '把 `data_items.ts` 的 `I.LIST` 换成"有得有失"的版本 —— 一次性（**仓库里唯一的 Python 文件**）']],
+  /* ⚠ 这里**曾经**有一条 `tmp-readme-rows.mjs`（状态 `temp`）。它按家法被删掉了 ⇒
+     声明表里也必须跟着删 —— 否则**幽灵声明**那条判据会红（这正是它该有的行为：
+     声明表与盘上**两个方向**都要对得上）。 */
+]);
+
+const COMMANDS_STATUS = new Map([
+  ['test:for', ['manual', '按名字单跑一套测试的捷径（`pnpm test` 是正门）—— 手工档']],
+  ['desktop:gpu', ['manual', '带 GPU 加速开关的桌面外壳启动 —— 机器层手工档']],
+  ['desktop:nosandbox', ['manual', '关掉沙箱的桌面启动（排障用）—— 机器层手工档']],
+  ['verify:quick', ['manual', '文档里的正写法是 `pnpm verify --quick`；这条是等价别名 —— 手工档']],
+  ['typecheck:report', ['manual', '把 `tsc` 的错误整理成给人读的报告 —— 手工档']],
+  ['gen:curves', ['manual', '从实测数据重算数值曲线表 —— 需要时手工跑']],
+  ['text:census', ['manual', '文案普查（i18n 与界面文本）—— 手工档']],
+  ['ui-preview', ['manual', '在无头环境里生成界面预览（`ui-shots/`）—— 手工档']],
+  ['dev:edit', ['manual', '`tools/dev-edit.mjs` 的入口别名 —— 文档直接写 `node tools/dev-edit.mjs`']],
+  ['rename:inventory', ['manual', '改名前先普查"这个词出现在哪些文件" —— 改名流程的第一步']],
+  ['hooks:install', ['manual', 'git 钩子的安装 —— **刻意不装**（钩子是机器层的，判据留在 `pnpm verify`）']],
+  ['hooks:status', ['manual', '看钩子装没装 —— 与上一条同一套工具']],
+  ['hooks:remove', ['manual', '卸载钩子 —— 与上一条同一套工具']],
+  ['art-manifest', ['manual', '导出美术清单 —— 手工档']],
+]);
+
+/** 判据：**无引用 ⇒ 必须有状态与理由**（工具的 `refs` / 命令的 `reach` 都是"有人在用它"的证据） */
+function dispositions(m) {
+  const problems = [];
+  for (const t of m.tools) {
+    if (t.refs.length) continue;
+    const d = TOOLS_STATUS.get(t.f);
+    if (!d) problems.push('`tools/' + t.f + '` **没有任何引用**，也没在 `TOOLS_STATUS` 里写状态与理由');
+    else if (!d[1] || d[1].length < 12) problems.push('`tools/' + t.f + '` 的状态理由太短（要说清"这是什么、为什么还留着"）');
+  }
+  for (const c of m.commands) {
+    if (c.reach) continue;
+    const d = COMMANDS_STATUS.get(c.name);
+    if (!d) problems.push('命令 `' + c.name + '` **谁都跑不到**，也没在 `COMMANDS_STATUS` 里写状态与理由');
+    else if (!d[1] || d[1].length < 12) problems.push('命令 `' + c.name + '` 的状态理由太短');
+  }
+  /* 反向：声明表里不许有盘上不存在的东西（**幽灵声明** —— 与门 `registration` 的幽灵条目同一个病） */
+  for (const k of TOOLS_STATUS.keys()) if (!m.tools.some((t) => t.f === k)) problems.push('`TOOLS_STATUS` 里的 `' + k + '` 已经不在盘上了');
+  for (const k of COMMANDS_STATUS.keys()) if (!m.commands.some((c) => c.name === k)) problems.push('`COMMANDS_STATUS` 里的 `' + k + '` 已经不是脚本了');
+  return problems;
+}
+
 /* ---------------- 读各类清单 ---------------- */
 const pkg = JSON.parse(read('package.json'));
 const SCRIPTS = pkg.scripts || {};
@@ -120,7 +191,8 @@ async function build() {
     const role = g ? '门' : f.startsWith('_') ? '库（共用）' : f.startsWith('tmp-') ? '⚠ 临时件（不该留在盘上）'
       : f.endsWith('.cjs') || f === 'systems.cjs' || f === 'src-files.cjs' ? '声明表'
         : f.startsWith('dev-') ? '开发工具' : '普查 / 其他';
-    return { f, role, refs: [...new Set(refs)], selfTest };
+    const st = TOOLS_STATUS.get(f);
+    return { f, role, refs: [...new Set(refs)], selfTest, status: st ? st[0] : '', why: st ? st[1] : '' };
   });
 
   const suiteFiles = new Set(suites.map((s) => 'test/' + s.file));
@@ -134,8 +206,20 @@ async function build() {
     /* **可达性**：门由 `pnpm verify` 跑到；套件由 `pnpm test`（`test/suites.mjs`）跑到；
        其余要么进 CI、要么只被文档提到。这样"孤儿命令"才是真的孤儿
        （第一版没算"套件"这一路，于是 60 条正常的 `test:*` 快捷方式全被报成孤儿 —— 判据要算全）。 */
-    const reach = gate ? '门' : suiteFiles.has(target) ? '套件（`pnpm test`）' : inCi ? 'CI' : inDocs ? '文档' : '';
-    return { name, cmd: String(cmd), target, kind, gate: gate ? gate.id : '', inCi, inDocs, reach };
+    /* ⚠ 第一版**没把"目标文件被文档提到"算进可达性**，于是把 `dev:edit`（文档里写的是
+       `node tools/dev-edit.mjs`）也报成了"谁都跑不到" —— **判据要算全，算不全就是噪声**。 */
+    const targetDoc = target !== '(内联命令)' &&
+      ['AGENTS.md', 'CONTRIBUTING.md', 'README.md'].some((d) => read(d).includes(target));
+    /* ⚠ 判据要算**三种**"有人在用它"：门 / 套件 / CI 或文档 / **被别的工具调用**
+       （`foundation:map` 就是第三种：它由门 `doc-num` 间接调用 —— 不认这一种就会把它冤枉成死命令）。 */
+    const base = target.split('/').pop();
+    const byTool = target.startsWith('tools/') &&
+      [...toolTexts.entries()].some(([o, t]) => o !== base && t.includes(base));
+    const reach = gate ? '门' : suiteFiles.has(target) ? '套件（`pnpm test`）' : inCi ? 'CI' : inDocs ? '文档'
+      : targetDoc ? '文档（目标文件被提到）' : byTool ? '被别的工具调用' : '';
+    const st = COMMANDS_STATUS.get(name);
+    return { name, cmd: String(cmd), target, kind, gate: gate ? gate.id : '', inCi, inDocs, reach,
+      status: st ? st[0] : '', why: st ? st[1] : '' };
   });
 
   const docs = walkMd(ROOT).map((f) => {
@@ -204,7 +288,7 @@ function render(m) {
   p('| 脚本 | 指向 | 类别 | 门 | 在 CI | 被文档提到 |');
   p('| --- | --- | --- | --- | --- | --- |');
   for (const c of m.commands) {
-    p('| `' + c.name + '` | `' + c.target + '` | ' + c.kind + ' | ' + (c.gate ? '`' + c.gate + '`' : '') +
+    p('| `' + c.name + '` | `' + c.target + '` | ' + c.kind + (c.status ? ' · **' + c.status + '**' : '') + ' | ' + (c.gate ? '`' + c.gate + '`' : '') +
       ' | ' + (c.inCi ? '✔' : '') + ' | ' + (c.inDocs ? '✔' : '⚠') + ' |');
   }
   const orphanCmd = m.commands.filter((c) => !c.reach);
@@ -222,7 +306,7 @@ function render(m) {
   p();
   p('| 文件 | 角色 | 谁引用它 | `--self-test` |');
   p('| --- | --- | --- | --- |');
-  for (const t of m.tools) p('| `' + t.f + '` | ' + t.role + ' | ' + (t.refs.join(' · ') || '⚠ 没人引用') + ' | ' + (t.selfTest ? '✔' : '') + ' |');
+  for (const t of m.tools) p('| `' + t.f + '` | ' + t.role + (t.status ? ' · **' + t.status + '**' : '') + ' | ' + (t.refs.join(' · ') || (t.status ? '（无引用，已声明）' : '⚠ 没人引用')) + ' | ' + (t.selfTest ? '✔' : '') + ' |');
   const orphanTool = m.tools.filter((t) => !t.refs.length);
   p();
   p('> ⚠ **没有任何引用的工具**（' + orphanTool.length + ' 个）：' + (orphanTool.length ? orphanTool.map((t) => '`' + t.f + '`').join(' · ') : '（无）'));
@@ -296,7 +380,8 @@ function render(m) {
 }
 
 /* ---------------- 跑 ---------------- */
-const text = render(await build());
+const M = await build();
+const text = render(M);
 const abs = path.join(ROOT, OUT);
 
 if (SELF_TEST) {
@@ -304,11 +389,16 @@ if (SELF_TEST) {
   const altered = text.replace('## 一、命令链', '## 一、命令链（被篡改过）');
   const caught = altered !== text;
   const floored = ['命令链', '工具链'].length > 0 && text.length > 2000;
+  /* 自证之二：**没有归属**的东西必须被点名（拿一份只多出一个无引用工具的数据去问） */
+  const dispCaught = dispositions({ tools: [...M.tools, { f: 'zzz_fake.cjs', refs: [] }], commands: [] }).length > 0;
+  const ghostCaught = dispositions({ tools: [], commands: [] }).length > 0;   /* 声明表里的东西全不在盘上 ⇒ 幽灵 */
   console.log('\n=== foundation-map --self-test ===\n');
   console.log('  ' + (caught ? '✔' : '✘') + ' 文件被改一个字 ⇒ 比较判据能发现（**地图不会漂**）');
   console.log('  ' + (floored ? '✔' : '✘') + ' 生成物非空（' + text.length + ' 字节 / ' +
     String(text).split('\n').length + ' 行）—— 空手而归必须红');
-  process.exit(caught && floored ? 0 : 1);
+  console.log('  ' + (dispCaught ? '✔' : '✘') + ' 一个**无引用且无状态**的工具 ⇒ 被点名（"手工档"与"死命令"分得开）');
+  console.log('  ' + (ghostCaught ? '✔' : '✘') + ' 声明表指向盘上没有的东西 ⇒ 也红（**幽灵声明**）');
+  process.exit(caught && floored && dispCaught && ghostCaught ? 0 : 1);
 }
 
 if (WRITE) {
@@ -320,6 +410,15 @@ if (WRITE) {
 if (CHECK) {
   if (!fs.existsSync(abs)) {
     console.log('✘ ' + OUT + ' 不存在 —— 先跑 `node tools/foundation-map.mjs --write`');
+    process.exit(1);
+  }
+  /* **先判状态声明**（与"新鲜度"是两件事，所以分开报）：无引用 ⇒ 必须有状态与理由 */
+  const und = dispositions(M);
+  if (und.length) {
+    console.log('✘ 地图里有 ' + und.length + ' 项**没有归属**（无引用，也没写状态声明）：');
+    for (const x of und.slice(0, 20)) console.log('    · ' + x);
+    console.log('  两条出路：① 让它**被引用**（进 JSON 脚本 / 门 / CI / 另一份工具）；');
+    console.log('             ② 在 `tools/foundation-map.mjs` 的 `TOOLS_STATUS` / `COMMANDS_STATUS` 里写状态与理由。');
     process.exit(1);
   }
   const onDisk = fs.readFileSync(abs, 'utf8');
