@@ -122,7 +122,7 @@ const GATES = [
   },
   {
     id: 'loop',
-    name: '三模块循环体检',
+    name: '三个游戏模式的循环体检',
     cmd: ['node', ['tools/loop-audit.mjs']],
     why: '战斗 / 经营 / 养成三条边真的接上了，而且没有断头路'
   },

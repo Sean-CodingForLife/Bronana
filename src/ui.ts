@@ -1829,7 +1829,7 @@ function renderTalents() {
   if (el.exchangeList) {
     U.clear(el.exchangeList);
     var exHead = U.el('div', 'set-row');
-    exHead.appendChild(U.el('span', 'set-label', '兑换（模块代币之间 · 单向 · 亏一截）'));
+    exHead.appendChild(U.el('span', 'set-label', '兑换（游戏模式代币之间 · 单向 · 亏一截）'));
     exHead.appendChild(U.el('span', 'set-value', '换的是近路，不是主路'));
     el.exchangeList.appendChild(exHead);
     Game.exchangeOpts().forEach(function (o) {

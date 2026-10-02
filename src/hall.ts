@@ -114,11 +114,11 @@ var ROOMS: HallRoomDef[] = [
     floor: { base: '#4a423b', alt: '#413a34', edge: PAL.STEEL, rug: '#5a5049', lit: '#6b5f52' },
     spots: [
       /* 三道门：`id` 就是 `Station.LIST` 里的站点 id（自检守着两边一一对应），
-         去哪个模块也由那张表说了算（`module` 只是给画法与提示用的副本，
+         去哪个游戏模式也由那张表说了算（`mode` 只是给画法与提示用的副本，
          自检会查它们一致 —— 写错一个字母就是"走进门去了别的模块"）。 */
-      { id: 'gate-combat', name: '出击门', kind: 'portal', x: 300, y: 320, r: 46, face: 1, module: 'combat' },
-      { id: 'gate-manage', name: '经营门', kind: 'portal', x: 750, y: 320, r: 46, face: 0, module: 'manage' },
-      { id: 'gate-grow', name: '养成门', kind: 'portal', x: 1200, y: 320, r: 46, face: -1, module: 'grow' },
+      { id: 'gate-combat', name: '出击门', kind: 'portal', x: 300, y: 320, r: 46, face: 1, mode: 'combat' },
+      { id: 'gate-manage', name: '经营门', kind: 'portal', x: 750, y: 320, r: 46, face: 0, mode: 'manage' },
+      { id: 'gate-grow', name: '养成门', kind: 'portal', x: 1200, y: 320, r: 46, face: -1, mode: 'grow' },
       /* 公告板：不是门（`kind:'board'`，没有 screen）—— 走到它面前按 E 读账 */
       { id: 'board', name: '公告板', kind: 'board', x: 750, y: 640, r: 44, face: 0 },
       /* 通往**枢纽**的门洞：枢纽是这一局的"家"，也是局内的一间 ——
@@ -214,11 +214,11 @@ Hall.BY_ID = (function () {
    ---------------------------------------------------------
    这一间房里只写"**摆在哪**"（坐标、半径、朝向、画成什么），
    而"**通向哪**"与"**站着谁**"各有唯一出处：
-     · 大厅三道门 → `station.ts` 的站点表（`screen` / `module`）
+     · 大厅三道门 → `station.ts` 的站点表（`screen` / `mode`）
      · 枢纽八站   → `story.ts` 的站点表（`npc` / `screen`）
 
    为什么不把 screen 直接抄在坐标旁边：那样等于把同一件事写两份，
-   "改了一处忘了另一处"的表现是**走进出击门去了养成模块**这一类
+   "改了一处忘了另一处"的表现是**走进出击门去了养成游戏模式**这一类
    最难查的故障。这里在加载期合成一次，之后一律读合成后的摆位。
    ========================================================= */
 (function wire() {
@@ -231,7 +231,7 @@ Hall.BY_ID = (function () {
       sp.name = site.name;
       if (site.kind === 'portal') {
         sp.screen = site.screen || undefined;
-        sp.module = site.to || undefined;
+        sp.mode = site.to || undefined;
       }
     }
   }
@@ -404,7 +404,7 @@ Hall.exits = function (roomId: string) {
      · 门表里的门没摆出来   → 玩家进不了那个模块，而界面上什么异常都没有
      · 摆出来的门不在门表里 → 走上去"什么也没发生"
      · 站点的 id 重复      → 提示会说两个名字，触发只认其中一个
-     · `module` 与门表不一致 → **走进出击门去了养成模块**（最难查的一类）
+     · `mode` 与门表不一致 → **走进出击门去了养成游戏模式**（最难查的一类）
    ========================================================= */
 Hall.audit = function () {
   var problems: string[] = [];
@@ -518,9 +518,9 @@ Hall.audit = function () {
         if (mine[0].kind !== 'portal') {
           problems.push('站点「' + site.name + '」是门，摆出来的却是 ' + mine[0].kind);
         }
-        if (mine[0].module !== site.to) {
+        if (mine[0].mode !== site.to) {
           problems.push('站点「' + site.name + '」在门表里通向 ' + site.to +
-            '，摆出来的那一站写着 ' + mine[0].module + '（走进门会去错模块）');
+            '，摆出来的那一站写着 ' + mine[0].mode + '（走进门会去错游戏模式）');
         }
       }
     }

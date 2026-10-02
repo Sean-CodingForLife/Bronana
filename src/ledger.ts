@@ -47,13 +47,13 @@ var SYSTEMS: Record<string, SystemDef> = {
 
 /** 代币的三种**角色**（v3 §5.1：模块代币 / 核心素材 / 全局货币） */
 var ROLES: Record<string, CurrencyRoleDef> = {
-  module: {
-    name: '模块代币',
-    note: '产出在本模块、**消费在本模块**。跨模块只能走兑换（高税、限额、消耗全局货币）'
+  mode: {
+    name: '游戏模式代币',
+    note: '产出在本游戏模式、**消费在本游戏模式**。跨游戏模式只能走兑换（高税、限额、消耗全局货币）'
   },
   global: {
     name: '全局货币',
-    note: '三模块通用，每个模块都产、都用。它是**行动成本**（税），不是钱'
+    note: '三个游戏模式通用，每个游戏模式都产、都用。它是**行动成本**（税），不是钱'
   }
 };
 
@@ -77,7 +77,7 @@ Ledger.define = function (def) {
   var rows = (def.currencies || []).map(function (c) {
     return {
       id: c.id, name: c.name, note: c.note, why: c.why,
-      role: c.role || (def.owner === 'global' ? 'global' : 'module'),
+      role: c.role || (def.owner === 'global' ? 'global' : 'mode'),
       ledger: def.id, owner: def.owner
     };
   });
@@ -196,9 +196,9 @@ Ledger.audit = function () {
       }
       seenCur[c.id] = b.id;
       /* **内嵌的头号禁令**：模块代币只能住在自己模块的账本里 */
-      if (c.role === 'module' && b.owner !== c.owner) {
-        problems.push('模块代币「' + c.name + '」住在 ' + b.id + '，而它归 ' + c.owner +
-          ' —— 模块代币不许出现在别人的账本里（内嵌）');
+      if (c.role === 'mode' && b.owner !== c.owner) {
+        problems.push('游戏模式代币「' + c.name + '」住在 ' + b.id + '，而它归 ' + c.owner +
+          ' —— 游戏模式代币不许出现在别人的账本里（内嵌）');
       }
     }
   }
@@ -229,9 +229,9 @@ Ledger.audit = function () {
     if (!tb) problems.push('兑换 ' + key + ' 的 `to` 不是已登记的代币');
     if (e.from === e.to) problems.push('兑换 ' + key + ' 两边是同一笔代币');
     if (fa && tb) {
-      if (fa.role !== 'module' || tb.role !== 'module') {
-        problems.push('兑换 ' + key + ' 的两边不是"模块代币 ↔ 模块代币"（' +
-          fa.role + ' → ' + tb.role + '）—— 只有模块代币之间才谈得上兑换');
+      if (fa.role !== 'mode' || tb.role !== 'mode') {
+        problems.push('兑换 ' + key + ' 的两边不是"游戏模式代币 ↔ 游戏模式代币"（' +
+          fa.role + ' → ' + tb.role + '）—— 只有游戏模式代币之间才谈得上兑换');
       }
       if (fa.owner === tb.owner) {
         problems.push('兑换 ' + key + ' 两边是同一个模块的（自己换自己没有意义）');
@@ -277,7 +277,7 @@ Registry.family('ledgerSystem', {
   values: function () { return Object.keys(SYSTEMS); }
 });
 Registry.family('currencyRole', {
-  note: '代币的角色（模块代币 / 全局货币）—— 核心素材**不在这里**，它不在任何账本里',
+  note: '代币的角色（游戏模式代币 / 全局货币）—— 核心素材**不在这里**，它不在任何账本里',
   owner: 'ledger.ts',
   values: function () { return Object.keys(ROLES); }
 });

@@ -129,7 +129,7 @@ if (!verdict.ok) throw new Error('exchange.ts 自检失败：\n' + verdict.probl
 SelfCheck.register('Exchange', Exchange.audit);
 
 Registry.family('exchange', {
-  note: '模块代币之间的兑换（单向 + 高税 + 限额 + 消耗全局货币）',
+  note: '游戏模式代币之间的兑换（单向 + 高税 + 限额 + 消耗全局货币）',
   owner: 'exchange.ts',
   values: function () { return Exchange.LIST.map(function (e) { return e.id; }); }
 });

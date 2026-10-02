@@ -300,7 +300,7 @@ Trade.audit = function () {
     var bad = Trade.illegalAsks(o);
     if (bad.length) {
       problems.push(o.id + ' 收 ' + bad.join('/') + ' —— §6.5 明令禁止 NPC 互动' +
-        '直接花战斗/经营模块代币（只许 ' + Trade.ASK_CURRENCIES.join(' / ') + '）');
+        '直接花战斗/经营**游戏模式代币**（只许 ' + Trade.ASK_CURRENCIES.join(' / ') + '）');
     }
     /* 价格必须为正 */
     for (j = 0; j < Trade.ASK_CURRENCIES.length; j++) {

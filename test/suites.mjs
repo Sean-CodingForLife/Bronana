@@ -20,7 +20,7 @@ export const SUITES = [
   ['扩展点总账 / 跨表引用', 'registry.mjs'],
   ['数值折叠 / 一张表四种折法 · 四张声明表跨表对账', 'fold.mjs'],
   ['数据契约 / 字段→家族 · 值域 · 未读字段', 'data-contract.mjs'],
-  ['货币与循环 / 战斗·经营·养成三模块', 'economy.mjs'],
+  ['货币与循环 / 战斗·经营·养成三个游戏模式', 'economy.mjs'],
   ['大厅（站）/ 三道门 · 开门顺序 · 可达性', 'station.mjs'],
   ['数值曲线 / 角色与怪物的成长表', 'curves.mjs'],
   ['容器与对象管理 / 回收与上限', 'containers.mjs'],

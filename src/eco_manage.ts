@@ -54,7 +54,7 @@ Ledger.define({
      · `produce` —— 它产能（经营：生产与效率的结余）
    一个模块的钱要转起来，两边都得有人 —— 只有一边就是死水。
    ========================================================= */
-Manage.SUBMODULES = [
+Manage.SUBMODES = [
   {
     id: 'build', name: '建造',
     scope: ['布局', '设施', '升级', '解锁', '空间规划'],
@@ -77,7 +77,7 @@ Manage.SUBMODULES = [
 
 Manage.BY_ID = (function () {
   var m: Record<string, ManageSubDef> = Object.create(null);
-  for (var i = 0; i < Manage.SUBMODULES.length; i++) m[Manage.SUBMODULES[i].id] = Manage.SUBMODULES[i];
+  for (var i = 0; i < Manage.SUBMODES.length; i++) m[Manage.SUBMODES[i].id] = Manage.SUBMODES[i];
   return m;
 })();
 
@@ -97,12 +97,12 @@ Manage.SCOPE_OF = {
    ========================================================= */
 Manage.audit = function () {
   var problems: string[] = [];
-  if (Manage.SUBMODULES.length !== 2) {
-    problems.push('子模块应当是**两个**（建造 + 经营，v3 §二-3），现在是 ' + Manage.SUBMODULES.length + ' 个');
+  if (Manage.SUBMODES.length !== 2) {
+    problems.push('子模式应当是**两个**（建造 + 经营，v3 §二-3），现在是 ' + Manage.SUBMODES.length + ' 个');
   }
   var seen: Record<string, boolean> = Object.create(null);
-  for (var i = 0; i < Manage.SUBMODULES.length; i++) {
-    var s = Manage.SUBMODULES[i];
+  for (var i = 0; i < Manage.SUBMODES.length; i++) {
+    var s = Manage.SUBMODES[i];
     if (!s.id) { problems.push('第 ' + i + ' 个子模块没有 id'); continue; }
     if (seen[s.id]) problems.push('子模块 id 重复：' + s.id);
     seen[s.id] = true;
@@ -129,13 +129,13 @@ Manage.audit = function () {
     }
   }
   /* 一产一花：两边都得有人，否则钱不转 */
-  var prod = Manage.SUBMODULES.filter(function (s) { return s.money === 'produce'; }).length;
-  var spen = Manage.SUBMODULES.filter(function (s) { return s.money === 'spend'; }).length;
+  var prod = Manage.SUBMODES.filter(function (s) { return s.money === 'produce'; }).length;
+  var spen = Manage.SUBMODES.filter(function (s) { return s.money === 'spend'; }).length;
   if (prod !== 1 || spen !== 1) {
     problems.push('两个子模块应当**一产一花**（现在 produce=' + prod + ' spend=' + spen + '）—— ' +
       '都花是死水，都产是印钞机，而 v3 §5.1 说模块代币"产出在本模块、消费在本模块"');
   }
-  return { ok: problems.length === 0, problems: problems, counts: { subs: Manage.SUBMODULES.length, scopes: Manage.SCOPE_OF.build.length + Manage.SCOPE_OF.ops.length } };
+  return { ok: problems.length === 0, problems: problems, counts: { subs: Manage.SUBMODES.length, scopes: Manage.SCOPE_OF.build.length + Manage.SCOPE_OF.ops.length } };
 };
 
 var verdict = Manage.audit();
@@ -143,10 +143,10 @@ if (!verdict.ok) throw new Error('eco_manage.ts 自检失败：\n' + verdict.pro
 
 SelfCheck.register('Manage', Manage.audit);
 
-Registry.family('manageSub', {
+Registry.family('manageSubMode', {
   note: '经营模块的两个子模块（建造 / 经营）；子领域逐条对账 v3 §三-2 的原文',
   owner: 'eco_manage.ts',
-  values: function () { return Manage.SUBMODULES.map(function (s) { return s.id; }); }
+  values: function () { return Manage.SUBMODES.map(function (s) { return s.id; }); }
 });
 
 export { Manage };

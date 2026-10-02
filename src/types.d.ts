@@ -629,7 +629,7 @@ interface ManageSubDef {
 }
 
 /**
- * 一条**模块代币之间的兑换**（`exchange.ts`）。
+ * 一条**游戏模式代币之间的兑换**（`exchange.ts`）。
  *
  * v3 §5.3：可以把本模块的代币换成另一个模块的。§7-12：必须有
  * **高税 / 限额 / 单向 / 消耗全局货币**，否则玩家会用它绕过整个模块。
@@ -675,7 +675,7 @@ interface ExchangeApi {
 }
 
 interface ManageApi {
-  SUBMODULES: ManageSubDef[];
+  SUBMODES: ManageSubDef[];
   BY_ID: Record<string, ManageSubDef>;
   /** v3 §三-2 的两份清单原文（用来对账） */
   SCOPE_OF: Record<string, string[]>;
@@ -756,7 +756,7 @@ interface CurrencyDef {
   name: string;
   note: string;
   why: string;
-  /** `module` = 模块代币（只在本模块花）；`global` = 全局货币（行动成本） */
+  /** `mode` = 游戏模式代币（只在本模式花）；`global` = 全局货币（行动成本） */
   role: string;
   /** 它住哪本账（`combat` / `manage` / `grow` / `global`） */
   ledger: string;
@@ -773,7 +773,7 @@ interface LedgerDef {
 }
 
 /**
- * **模块代币之间的兑换**（v3 §5.3 + §7-12）。
+ * **游戏模式代币之间的兑换**（v3 §5.3 + §7-12）。
  *
  * v3 要的四条限制全在这里，`Ledger.audit()` 逐条查：
  *   · `rate`   —— 汇率必须 **< 1**（高税：换一次就亏一截）
@@ -816,7 +816,7 @@ interface LedgerApi {
   of(owner: string): LedgerDef | null;
   /** 某个模块自己的代币 id（"这笔钱只能在这个模块花"的判据） */
   ownedBy(owner: string): string[];
-  /** 兑换表（v3 §5.3：只有**模块代币之间**才谈得上兑换） */
+  /** 兑换表（v3 §5.3：只有**游戏模式代币之间**才谈得上兑换） */
   EXCHANGE: ExchangeDef[];
   exchangeById(from: string, to: string): ExchangeDef | null;
   /** 这笔兑换现在能不能做（余额、限额、全局货币都查） */
@@ -826,7 +826,7 @@ interface LedgerApi {
 }
 
 /**
- * **核心素材**（v3 §5.1 / §5.2）—— 跨模块代币。
+ * **核心素材**（v3 §5.1 / §5.2）—— 跨游戏模式的代币。
  *
  * ⚠ **它不在任何账本里**（上面那套账本类型里没有它）。
  * v3 §5.4-错误2："把核心素材当货币处理…一旦可兑换或流通，循环就散了。"
@@ -922,14 +922,14 @@ interface EconomyApi {
   ownerOf(id: string): string;
   /** 某个模块自己的代币 id */
   ownedBy(sys: string): string[];
-  /** 这笔代币是模块代币吗（产在本模块、只在本模块花） */
-  isModule(id: string): boolean;
-  /** 这笔代币是全局货币吗（三模块都产都花，是行动成本） */
+  /** 这笔代币是**游戏模式代币**吗（产在本模式、只在本模式花） */
+  isMode(id: string): boolean;
+  /** 这笔代币是全局货币吗（三个游戏模式都产都花，是行动成本） */
   isGlobal(id: string): boolean;
   /** 全库唯一的那笔全局货币 */
   globalCurrency(): CurrencyDef | null;
 
-  /** 兑换表（v3 §5.3：只有**模块代币之间**才谈得上兑换） */
+  /** 兑换表（v3 §5.3：只有**游戏模式代币之间**才谈得上兑换） */
   EXCHANGE: ExchangeDef[];
   exchangeById(from: string, to: string): ExchangeDef | null;
   /** 这笔兑换现在能不能做（余额、限额、全局货币都查） */
@@ -2070,8 +2070,8 @@ interface HallSpotDef {
   r: number;
   /** 走上去进入哪一屏（状态名）；公告板没有（它不是门） */
   screen?: string;
-  /** 门通向哪个模块（`StationSiteDef.to` 的副本；自检守着两边一致） */
-  module?: string;
+  /** 门通向哪个**游戏模式**（`StationSiteDef.to` 的副本；自检守着两边一致） */
+  mode?: string;
   /** 站在那儿的人（枢纽的 NPC 站有；`Story.STATIONS` 是唯一出处） */
   npc?: string;
   /** 朝向：1 面向右 / -1 面向左 / 0 面向下（只影响画法） */
@@ -2282,7 +2282,7 @@ interface SessionCraft {
   capacity: number;
   /* ---- **核心素材**（跨模块，M4）----
      v3 §5.2 的三条边：**战斗 → 经营 → 养成 → 战斗**。它们**不在任何账本里**
-     （见 `link.ts`）—— 模块代币"产出与消费都在本模块"，而核心素材的存在意义
+     （见 `link.ts`）—— 游戏模式代币"产出与消费都在本模式"，而核心素材的存在意义
      就是**跨模块**。 */
   /** **遗物**：经营的关键建筑产出它，养成的关键能力（图纸）花它 */
   relic: number;
@@ -4258,7 +4258,7 @@ declare var Banners: BannersApi;
 
 /* ---------------- 引擎的功能单元（module.ts） ----------------
    ⚠ 「模块」在 `docs/workspace-spec.md` §一 的定义是**引擎原生的功能单元**（插件走同一套加载器）；
-   `hall.ts` 的 `module: 'combat'` 那类是**玩法模块**（内容侧）—— 同一个词的两层含义，不是混用。 */
+   `hall.ts` 的 `mode: 'combat'` 那类是**游戏模式**（内容侧）—— 用户 2026-10-02 裁定："模块"只指引擎的功能单元。 */
 /** 一个引擎模块（原生 9 个；与 `tools/systems.cjs` 的系统一一对应） */
 interface ModuleDef {
   /** 稳定 id（= 系统 id；两张表由 `test/arch.mjs` 第 [7] 节对账） */
@@ -4406,8 +4406,8 @@ interface SceneApi {
   screenActOf(act: string): GameStateName | null;
   screenActNames(): string[];
   /** 大厅那三道门的翻译表：模块名（combat / manage / grow）→ 状态名（哪一屏） */
-  moduleScreenOf(mod: string): GameStateName | null;
-  moduleScreenNames(): string[];
+  modeScreenOf(mod: string): GameStateName | null;
+  modeScreenNames(): string[];
   overlayNames(): string[];
   describe(): string;
 }

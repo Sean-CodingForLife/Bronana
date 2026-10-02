@@ -64,9 +64,9 @@ Eco.BY_ID = (function () {
 Eco.ownerOf = function (id) { var d = Eco.BY_ID[id]; return d ? d.owner : ''; };
 /** 某个模块自己的代币 */
 Eco.ownedBy = function (sys) { return Ledger.ownedBy(sys); };
-/** 这笔代币是模块代币吗（产在本模块、只在本模块花） */
-Eco.isModule = function (id) { var d = Eco.BY_ID[id]; return !!d && d.role === 'module'; };
-/** 这笔代币是全局货币吗（三模块都产都花，是行动成本） */
+/** 这笔代币是**游戏模式代币**吗（产在本模式、只在本模式花） */
+Eco.isMode = function (id) { var d = Eco.BY_ID[id]; return !!d && d.role === 'mode'; };
+/** 这笔代币是全局货币吗（三个游戏模式都产都花，是行动成本） */
 Eco.isGlobal = function (id) { var d = Eco.BY_ID[id]; return !!d && d.role === 'global'; };
 /** 某个模块的账本 */
 Eco.ledgerOf = function (sys) { return Ledger.of(sys); };

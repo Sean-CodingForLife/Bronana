@@ -170,7 +170,7 @@ console.log('\n[6] 总账');
 
      · 状态机里有 `station`，而且它与 `playing` **互通**（局内的来回）
      · 场景表把它登记成局内一屏（world:true / sim:false）
-     · 模块 → 屏幕的翻译表（scene.ts 的 MODULE_SCREENS）三个都在
+     · 模块 → 屏幕的翻译表（scene.ts 的 MODE_SCREENS）三个都在
      · index.html 里有那一屏与三块内容（id 是界面契约的一部分）
      · ui.ts 里有渲染函数、两道门动作，以及"开局落在大厅"那一步
    ========================================================= */
@@ -197,10 +197,10 @@ console.log('\n[7] 接线（状态 → 场景 → 界面）');
   /* 模块 → 屏幕：三道门的翻译表（写错一个字母 = 那扇门点下去没反应） */
   const SCREENS = { combat: 'playing', manage: 'keep', grow: 'talents' };
   for (const mod of Object.keys(SCREENS)) {
-    ok(Scene.moduleScreenOf(mod) === SCREENS[mod],
-      '门「' + mod + '」通向 ' + SCREENS[mod], Scene.moduleScreenOf(mod));
+    ok(Scene.modeScreenOf(mod) === SCREENS[mod],
+      '门「' + mod + '」通向 ' + SCREENS[mod], Scene.modeScreenOf(mod));
   }
-  ok(Scene.moduleScreenOf('noSuchModule') === null, '未知模块 → null（调用方不许瞎猜）');
+  ok(Scene.modeScreenOf('noSuchMode') === null, '未知游戏模式 → null（调用方不许瞎猜）');
 
   /* 转换：大厅 ↔ 战斗是**局内**的来回；选人页仍然进不去大厅 */
   Game.newRun('ranger', 99);

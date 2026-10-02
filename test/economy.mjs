@@ -43,7 +43,7 @@ console.log('[1] 四本账（禁止"一张表定义所有货币"）');
   /* 每本账归一个模块，而且里面的模块代币**必须**归那个模块 */
   for (const b of Ledger.all()) {
     for (const c of b.currencies) {
-      if (c.role === 'module') {
+      if (c.role === 'mode') {
         ok(b.owner === c.owner,
           '模块代币「' + c.name + '」住在自己的账本里（' + b.id + '）—— 不许出现在别人的账本里');
       }

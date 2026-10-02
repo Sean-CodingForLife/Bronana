@@ -270,7 +270,7 @@ Link.audit = function () {
 SelfCheck.register('Link', Link.audit);
 
 Registry.family('coreLink', {
-  note: '核心素材（跨模块代币）：产在 A、**只能在 B 花**，不可兑换 —— 链条靠它成立',
+  note: '核心素材（跨游戏模式的代币）：产在 A、**只能在 B 花**，不可兑换 —— 链条靠它成立',
   owner: 'link.ts',
   entries: function () {
     return LINKS.map(function (l) {

@@ -625,10 +625,10 @@ var HALL_LABEL = { outline: PAL.INK, outlineWidth: 4, weight: 700 };
 var HALL_HINT = { outline: PAL.INK, outlineWidth: 5, weight: 700 };
 var HALL_GATE_A = { alpha: 0.85, outline: PAL.INK, outlineWidth: 2.5 };
 
-function hallGateColor(module) {
-  if (module === 'combat') return PAL.GATE_COMBAT;
-  if (module === 'manage') return PAL.GATE_MANAGE;
-  if (module === 'grow') return PAL.GATE_GROW;
+function hallGateColor(mode) {
+  if (mode === 'combat') return PAL.GATE_COMBAT;
+  if (mode === 'manage') return PAL.GATE_MANAGE;
+  if (mode === 'grow') return PAL.GATE_GROW;
   return PAL.STEEL;
 }
 
@@ -719,7 +719,7 @@ function drawHallSpot(x, s, t, playerNear) {
     case 'portal':
     case 'device':
     case 'door': {
-      var col = hallGateColor(s.module);
+      var col = hallGateColor(s.mode);
       if (s.kind === 'door') col = PAL.WOOD;
       // 门环：地上的一个椭圆环 + 深色底（"走进去"这件事要看得见）
       D.ellipse(x, s.x, s.y + 10, s.r * 1.15, s.r * 0.62, 0, '#241f1c', HALL_THIN_EDGE);

@@ -63,7 +63,13 @@ T.section('1. 门现在绿，而且不是空绿');
       '弃用词没有出现在玩家可见字符串里', JSON.stringify(r.retiredHits.slice(0, 4)));
     T.ok(r.sourceProblems.length === 0, '7 笔钱的权威名与出处一致', JSON.stringify(r.sourceProblems));
     T.ok(r.counts.currencies === 7, '登记了 7 笔钱（' + r.counts.currencies + '）', String(r.counts.currencies));
-    T.ok(r.counts.retired === 7, '登记了 7 个弃用词（' + r.counts.retired + '）', String(r.counts.retired));
+    /* ⚠ **弃用词的条数从表里算**，不写死：写死的话，每加一个弃用词这条断言就要跟着改一次，
+       而"改断言让它变绿"正是这个仓库最忌的那种动作（数量一律从清单算）。
+       判据变成"门数到的 == 表里声明的" —— 两边对不上才是真问题。 */
+    const { Terms } = await import('../src/terms.ts');
+    T.ok(r.counts.retired === Terms.RETIRED.length,
+      '门数到的弃用词条数与表里声明的一致（' + r.counts.retired + ' / ' + Terms.RETIRED.length + '）',
+      String(r.counts.retired) + ' vs ' + Terms.RETIRED.length);
   }
 }
 

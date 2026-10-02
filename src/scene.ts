@@ -185,12 +185,12 @@ var SCREEN_ACTS: Record<string, GameStateName> = {
 
    留在这里的是**校验**：只有本模块认识全部状态名，所以"目标状态存不存在"
    仍然在定义期就查（写错一个字母 = 那道门走上去什么也不会发生）。
-   本模块对外仍然提供同一个读口 `Scene.moduleScreenOf`（调用方不用改）。
+   本模块对外仍然提供同一个读口 `Scene.modeScreenOf`（调用方不用改）。
 
    ⚠ 其中"战斗 → playing"指的是**回到手里这一局**，不是新开一局
      （新开一局只有 `newRun` 一条路，见 game.ts 的 TRANSITIONS 注释）。
    ========================================================= */
-var MODULE_SCREENS: Record<string, GameStateName> = (function () {
+var MODE_SCREENS: Record<string, GameStateName> = (function () {
   var out: Record<string, GameStateName> = Object.create(null);
   for (var i = 0; i < Station.LIST.length; i++) {
     var s = Station.LIST[i];
@@ -252,15 +252,15 @@ Scene.validate = function () {
   }
 
   // 模块 → 屏幕：同一件事（大厅那三道门靠它落地）
-  for (var mod in MODULE_SCREENS) {
-    if (!Object.prototype.hasOwnProperty.call(MODULE_SCREENS, mod)) continue;
-    if (Game.STATES.indexOf(MODULE_SCREENS[mod]) < 0) {
-      problems.push('模块 ' + mod + ' 指向不存在的界面：' + MODULE_SCREENS[mod] +
+  for (var mod in MODE_SCREENS) {
+    if (!Object.prototype.hasOwnProperty.call(MODE_SCREENS, mod)) continue;
+    if (Game.STATES.indexOf(MODE_SCREENS[mod]) < 0) {
+      problems.push('游戏模式 ' + mod + ' 指向不存在的界面：' + MODE_SCREENS[mod] +
         '（那扇门点下去什么也不会发生）');
     }
   }
 
-  /* 门表里的 `screen` 与 MODULE_SCREENS 是同一件事的两个读口（前者在
+  /* 门表里的 `screen` 与 MODE_SCREENS 是同一件事的两个读口（前者在
      `station.ts`，后者派生于它）—— 这里再逐个查一遍，于是"门自己写着
      一个不存在的状态名"也会在定义期被抓住。 */
   for (var si = 0; si < Station.LIST.length; si++) {
@@ -275,7 +275,7 @@ Scene.validate = function () {
   /* 两间能走的房（大厅 / 枢纽）不在这里查：
        · "有没有写去处 / 摆位压没压墙 / 走不走得到" 归 `hall.ts` 的 `Hall.audit`
        · "写的去处是不是真实状态" 归总账（`hallRoom` / `hallSpot` 的 refs → family 'state'）
-     本模块只留"门表 → 屏幕"这条翻译（MODULE_SCREENS，由 Station 派生）。 */
+     本模块只留"门表 → 屏幕"这条翻译（MODE_SCREENS，由 Station 派生）。 */
 
   /* 与其它模块的 `audit()` 同一形状（返回 `{ok, problems}` 而不是抛）：
      于是它既能被启动期自检统一收集，也能被测试直接读问题清单。
@@ -307,8 +307,8 @@ Scene.keyGroup = function (state) { return Scene.of(state).keys; };
 Scene.screenActOf = function (act) { return SCREEN_ACTS[act] || null; };
 Scene.screenActNames = function () { return Object.keys(SCREEN_ACTS); };
 /** 大厅的门通向哪一屏（模块名 → 状态名；不在表里就返回 null，调用方不许瞎猜） */
-Scene.moduleScreenOf = function (mod) { return MODULE_SCREENS[mod] || null; };
-Scene.moduleScreenNames = function () { return Object.keys(MODULE_SCREENS); };
+Scene.modeScreenOf = function (mod) { return MODE_SCREENS[mod] || null; };
+Scene.modeScreenNames = function () { return Object.keys(MODE_SCREENS); };
 /** 所有用到的覆盖层名字（ui.ts 用它建元素引用） */
 Scene.overlayNames = function () {
   var out = [];
@@ -380,21 +380,21 @@ Registry.family('screenAct', {
 });
 /* 模块 → 屏幕：**两边的名字都要真的存在**（左 = 经济循环的三个模块，
    右 = 状态机里的状态）。写错任一边的表现都是"大厅里那扇门点不开"。 */
-Registry.family('moduleScreen', {
+Registry.family('modeScreen', {
   note: '模块（combat / manage / grow）通向哪一屏 —— 大厅那三道门的翻译表' +
     '（表在 station.ts 的门上，这里登记"它指向的状态真实存在"）', owner: 'scene.ts',
   entries: function () {
     var out = [];
     /* 名单从公开读口拿（而不是直接遍历私有变量）：总账登的就是
        "表里有哪些模块"这件事本身，两边不会各数一遍。 */
-    var names = Scene.moduleScreenNames();
+    var names = Scene.modeScreenNames();
     for (var i = 0; i < names.length; i++) {
       var m = names[i];
       out.push({
         id: m,
         refs: [
-          { field: 'screen', value: MODULE_SCREENS[m], family: 'state' },
-          { field: 'module', value: m, family: 'ledgerSystem' }
+          { field: 'screen', value: MODE_SCREENS[m], family: 'state' },
+          { field: 'mode', value: m, family: 'ledgerSystem' }
         ]
       });
     }
