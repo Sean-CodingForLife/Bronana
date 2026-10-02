@@ -178,15 +178,15 @@ function drawFace(ctx, inst, a) {
   var style = a.eyeStyle || 'stern';
   Rig.at(ctx, inst, B.head, function (g) {
     if (a.mood === 'dead') {
-      D.eye(g, -eyeDx, 0, eyeR, 'dead');
-      D.eye(g, eyeDx, 0, eyeR, 'dead');
-      D.mouth(g, 0, ry * (MOUTH_DEAD_V - HEAD_V), rx * 0.24, 'wave');
+      Bronana.eye(g, -eyeDx, 0, eyeR, 'dead');
+      Bronana.eye(g, eyeDx, 0, eyeR, 'dead');
+      Bronana.mouth(g, 0, ry * (MOUTH_DEAD_V - HEAD_V), rx * 0.24, 'wave');
       return;
     }
     var eo = style === 'angry' ? D.O.slopeAngry : D.O.slopeStern;
-    D.eye(g, -eyeDx + shift, 0, eyeR, style, eo);
-    D.eye(g, eyeDx + shift, 0, eyeR, style, eo);
-    D.mouth(g, shift * 0.6, ry * (0.36 - HEAD_V), rx * 0.22,
+    Bronana.eye(g, -eyeDx + shift, 0, eyeR, style, eo);
+    Bronana.eye(g, eyeDx + shift, 0, eyeR, style, eo);
+    Bronana.mouth(g, shift * 0.6, ry * (0.36 - HEAD_V), rx * 0.22,
       a.mood === 'hurt' ? 'open' : (a.mouthStyle || 'flat'));
   });
 }
@@ -319,5 +319,76 @@ Bronana.aheadPoint = function (inst, boneIdx, dist, out) {
 Bronana.MUZZLE_AHEAD = MUZZLE_AHEAD;
 Bronana.BULLET_AHEAD = BULLET_AHEAD;
 Bronana.RY_RATIO = RY_RATIO;
+
+/* =========================================================
+   表情原语（**从 draw2d.ts 搬来**，2026-10-02 · 批次 2）
+   ---------------------------------------------------------
+   为什么它们不属于引擎的绘制库：`eye` / `mouth` 是**角色语义** ——
+   引擎的原语只知道"画一个椭圆/一段弧"，不知道"这是眼睛"。
+   搬来这里还有两个技术理由：
+     · `sprites.ts` **已经** import 本模块，放这里不成环（放 sprites 会成环）；
+     · 调用者只有内容侧（本模块与 `sprites.ts`）。
+   ========================================================= */
+Bronana.eye = function (c, cx, cy, r, style, o) {
+  o = o || {};
+  /* 一个量只写一处表达式（门 `hardcode` 的判据）。搬家之前它分散在两个文件里，
+     所以没触发 —— 这是**搬过来才暴露的真实重复**。 */
+  var dy = r * 0.1;
+  style = style || 'stern';
+  var x = D.ctxOf(c);
+  x.save();
+  /* ⚠ 这一支必须存在：老实现没有它，`'none'` 就落到最后的 `else`（stern），
+     表现是浮游之眼 / 钟摆那颗白眼球上多压了一道半月形 —— 而 `sprites.ts` 对
+     `shape === 'eye'` 传的正是 `'none'`（那里的注释写着"眼球本体已有瞳孔"）。
+     `'empty'` 这个名字**从来没有过画法**：它混进家族是因为 `D.O.empty` 是个选项常量；
+     家族里已经删掉它（声明一个画不出来的值 = 假声明）。 */
+  if (style === 'none') { x.restore(); return; }
+  if (style === 'round' || style === 'dot') {
+    D.circle(x, cx, cy, style === 'dot' ? r * 0.55 : r, o.white === false ? PAL.INK : PAL.WHITE, D.O.ink2);
+    D.circle(x, cx, cy + dy, Math.max(1, r * 0.42), PAL.INK, D.O.none);
+  } else if (style === 'angry') {
+    D.circle(x, cx, cy, r * 0.92, PAL.WHITE, D.O.ink2);
+    D.circle(x, cx, cy + r * 0.12, Math.max(1, r * 0.45), PAL.INK, D.O.none);
+    D.poly(x, [[cx - r * 1.2, cy - r * 1.05], [cx + r * 1.15, cy - r * 1.6], [cx + r * 1.1, cy - r * 1.05]], PAL.INK, D.O.none);
+  } else if (style === 'dead') {
+    D.capsule(x, cx - r, cy - r, cx + r, cy + r, 3, PAL.INK, { outlineWidth: 0 });
+    D.capsule(x, cx + r, cy - r, cx - r, cy + r, 3, PAL.INK, { outlineWidth: 0 });
+  } else { // stern：上半平直、下缘圆弧的半月眼
+    x.beginPath();
+    x.moveTo(cx - r, cy - r * 0.15);
+    x.lineTo(cx + r, cy - r * (o.slope === undefined ? 0.35 : o.slope));
+    x.lineTo(cx + r, cy + dy);
+    x.quadraticCurveTo(cx, cy + r * 1.25, cx - r, cy + dy);
+    x.closePath();
+    D.fill(x, PAL.INK);
+    x.lineWidth = 2; x.strokeStyle = PAL.INK; x.stroke();
+  }
+  x.restore();
+};
+
+/** 嘴：'flat' | 'grin' | 'open' | 'wave' | 'none' */
+Bronana.mouth = function (c, cx, cy, w, style, color) {
+  var x = D.ctxOf(c);
+  /* 同上：三处同一个量 ⇒ 提成局部 */
+  var wx = w * 0.55;
+  x.save();
+  x.strokeStyle = color || PAL.INK; x.lineWidth = 3; x.lineCap = 'round';
+  x.beginPath();
+  if (style === 'grin') {
+    x.moveTo(cx - w, cy); x.quadraticCurveTo(cx, cy + w * 1.15, cx + w, cy);
+  } else if (style === 'open') {
+    D.ellipse(x, cx, cy + 1, wx, w * 0.7, 0, PAL.INK, D.O.none);
+  } else if (style === 'wave') {
+    x.moveTo(cx - w, cy);
+    x.quadraticCurveTo(cx - w * 0.5, cy - wx, cx, cy);
+    x.quadraticCurveTo(cx + w * 0.5, cy + wx, cx + w, cy);
+  } else if (style === 'none') {
+    // nothing
+  } else {
+    x.moveTo(cx - w, cy); x.lineTo(cx + w, cy);
+  }
+  x.stroke();
+  x.restore();
+};
 
 export { Bronana };

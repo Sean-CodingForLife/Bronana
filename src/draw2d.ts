@@ -169,6 +169,11 @@ var O = {
   slopeAngry: { slope: -0.55 }                        // 凶相眼
 };
 D.O = O;
+/* ⚠ 2026-10-02（批次 2）：表情原语 `eye` / `mouth` 搬去内容侧的造型模块之后，
+   那边需要这个「把 canvas 归一成 RHI 包装过的 ctx」的入口。
+   它本来就是**通用能力**（引擎的），所以按 content → engine 的方向**导出**，
+   而不是复制一份 —— 复制一份就等于两份真相。 */
+D.ctxOf = ctxOf;
 
 D.rect = function (c, x0, y0, w, h, color, o) {
   o = o || {};
@@ -288,62 +293,6 @@ D.capsule = function (c, x0, y0, x1, y1, w, color, o) {
  *   `'none'` = **一个像素都不画**（给"眼球本体自己就是眼睛"的那种怪用）。
  *   它与选项常量 `D.O.none` 是两件事：那个是"不描边"，这个是"不画眼睛"。
  */
-D.eye = function (c, cx, cy, r, style, o) {
-  o = o || {};
-  style = style || 'stern';
-  var x = ctxOf(c);
-  x.save();
-  /* ⚠ 这一支必须存在：老实现没有它，`'none'` 就落到最后的 `else`（stern），
-     表现是浮游之眼 / 钟摆那颗白眼球上多压了一道半月形 —— 而 `sprites.ts` 对
-     `shape === 'eye'` 传的正是 `'none'`（那里的注释写着"眼球本体已有瞳孔"）。
-     `'empty'` 这个名字**从来没有过画法**：它混进家族是因为 `D.O.empty` 是个选项常量；
-     家族里已经删掉它（声明一个画不出来的值 = 假声明）。 */
-  if (style === 'none') { x.restore(); return; }
-  if (style === 'round' || style === 'dot') {
-    D.circle(x, cx, cy, style === 'dot' ? r * 0.55 : r, o.white === false ? PAL.INK : PAL.WHITE, O.ink2);
-    D.circle(x, cx, cy + r * 0.1, Math.max(1, r * 0.42), PAL.INK, O.none);
-  } else if (style === 'angry') {
-    D.circle(x, cx, cy, r * 0.92, PAL.WHITE, O.ink2);
-    D.circle(x, cx, cy + r * 0.12, Math.max(1, r * 0.45), PAL.INK, O.none);
-    D.poly(x, [[cx - r * 1.2, cy - r * 1.05], [cx + r * 1.15, cy - r * 1.6], [cx + r * 1.1, cy - r * 1.05]], PAL.INK, O.none);
-  } else if (style === 'dead') {
-    D.capsule(x, cx - r, cy - r, cx + r, cy + r, 3, PAL.INK, { outlineWidth: 0 });
-    D.capsule(x, cx + r, cy - r, cx - r, cy + r, 3, PAL.INK, { outlineWidth: 0 });
-  } else { // stern：上半平直、下缘圆弧的半月眼
-    x.beginPath();
-    x.moveTo(cx - r, cy - r * 0.15);
-    x.lineTo(cx + r, cy - r * (o.slope === undefined ? 0.35 : o.slope));
-    x.lineTo(cx + r, cy + r * 0.1);
-    x.quadraticCurveTo(cx, cy + r * 1.25, cx - r, cy + r * 0.1);
-    x.closePath();
-    fill(x, PAL.INK);
-    x.lineWidth = 2; x.strokeStyle = PAL.INK; x.stroke();
-  }
-  x.restore();
-};
-
-/** 嘴：'flat' | 'grin' | 'open' | 'wave' | 'none' */
-D.mouth = function (c, cx, cy, w, style, color) {
-  var x = ctxOf(c);
-  x.save();
-  x.strokeStyle = color || PAL.INK; x.lineWidth = 3; x.lineCap = 'round';
-  x.beginPath();
-  if (style === 'grin') {
-    x.moveTo(cx - w, cy); x.quadraticCurveTo(cx, cy + w * 1.15, cx + w, cy);
-  } else if (style === 'open') {
-    D.ellipse(x, cx, cy + 1, w * 0.55, w * 0.7, 0, PAL.INK, O.none);
-  } else if (style === 'wave') {
-    x.moveTo(cx - w, cy);
-    x.quadraticCurveTo(cx - w * 0.5, cy - w * 0.55, cx, cy);
-    x.quadraticCurveTo(cx + w * 0.5, cy + w * 0.55, cx + w, cy);
-  } else if (style === 'none') {
-    // nothing
-  } else {
-    x.moveTo(cx - w, cy); x.lineTo(cx + w, cy);
-  }
-  x.stroke();
-  x.restore();
-};
 
 /* ================= 平涂辅助 ================= */
 /** 纯色斑点（躯体凹坑、怪物疣） */

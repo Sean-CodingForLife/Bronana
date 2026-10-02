@@ -2625,6 +2625,8 @@ interface DrawOptions {
 interface DrawApi {
   OUT: number;
   O: Record<string, DrawOptions>;
+  /** 把 canvas 或 ctx **归一成 RHI 包装过的 ctx**（内容侧也要用，故导出） */
+  ctxOf(c: any): any;
   ink(x: any, color?: string, width?: number): void;
   fill(x: any, color?: string): void;
   seedBlobPath(x: any, rx: number, ry: number, seed?: number, bump?: number): void;
@@ -2638,8 +2640,6 @@ interface DrawApi {
   seedBlob(c: any, cx: number, cy: number, rx: number, ry: number, color?: string | null, o?: DrawOptions): void;
   arcRing(c: any, cx: number, cy: number, r: number, a0: number, a1: number, width: number, color: string, o?: DrawOptions): void;
   capsule(c: any, x0: number, y0: number, x1: number, y1: number, w: number, color: string, o?: DrawOptions): void;
-  eye(c: any, cx: number, cy: number, r: number, style: string, o?: DrawOptions): void;
-  mouth(c: any, cx: number, cy: number, w: number, style: string, color?: string): void;
   dots(c: any, cx: number, cy: number, r: number, n: number, seedStr?: string, color?: string, size?: number): void;
   ditherBand(x: any, x0: number, x1: number, y: number, h: number, cA: string, cB: string, seedStr?: string, density?: number): void;
   text(c: any, str: string, x0: number, y0: number, size: number, color?: string, o?: DrawOptions): void;
@@ -5474,6 +5474,8 @@ interface BronanaPose {
 }
 
 interface BronanaApi {
+  eye(c: any, cx: number, cy: number, r: number, style: string, o?: DrawOptions): void;
+  mouth(c: any, cx: number, cy: number, w: number, style: string, color?: string): void;
   TPL: RigTemplate;
   B: { anchor: number; body: number; head: number; armL: number; armR: number };
   SEATS: number;

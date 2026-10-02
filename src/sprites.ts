@@ -717,27 +717,27 @@ S.enemySprite = function (def) {
     var eyeY = cy - R * (def.shape === 'jelly' ? 0.22 : 0.10);
     if (eyes === 1) {
       /* `shape === 'eye'` 时**不画眼睛部件**：那颗眼白 + 虹膜 + 瞳孔就是它的眼睛。
-         `'none'` 是 `D.eye` 的一支真分支（见 draw2d.ts）—— 老实现没有它，
+         `'none'` 是 `Bronana.eye` 的一支真分支（见 draw2d.ts）—— 老实现没有它，
          于是这里会落到 `else`（stern），表现是白眼球上多压一道半月形。 */
-      D.eye(x, cx, eyeY, eyeR * 1.15, def.shape === 'eye' ? 'none' : 'dot', D.O.empty);
+      Bronana.eye(x, cx, eyeY, eyeR * 1.15, def.shape === 'eye' ? 'none' : 'dot', D.O.empty);
     } else if (eyes === 2) {
-      D.eye(x, cx - R * 0.36, eyeY, eyeR, 'round');
-      D.eye(x, cx + R * 0.36, eyeY, eyeR, 'round');
+      Bronana.eye(x, cx - R * 0.36, eyeY, eyeR, 'round');
+      Bronana.eye(x, cx + R * 0.36, eyeY, eyeR, 'round');
     } else {
-      D.eye(x, cx - R * 0.46, eyeY, eyeR * 0.85, 'round');
-      D.eye(x, cx, eyeY - R * 0.30, eyeR * 0.85, 'round');
-      D.eye(x, cx + R * 0.46, eyeY, eyeR * 0.85, 'round');
+      Bronana.eye(x, cx - R * 0.46, eyeY, eyeR * 0.85, 'round');
+      Bronana.eye(x, cx, eyeY - R * 0.30, eyeR * 0.85, 'round');
+      Bronana.eye(x, cx + R * 0.46, eyeY, eyeR * 0.85, 'round');
     }
 
     // 嘴
     var m = def.mouth || 'flat';
     if (eyes !== 1 || def.shape === 'blob' || m !== 'none') {
       if (m === 'angry') {
-        D.mouth(x, cx, cy + R * 0.44, R * 0.30, 'grin');
+        Bronana.mouth(x, cx, cy + R * 0.44, R * 0.30, 'grin');
         D.capsule(x, cx - R * 0.34, cy + R * 0.20, cx - R * 0.60, cy + R * 0.34, 3, PAL.INK, D.O.none);
         D.capsule(x, cx + R * 0.34, cy + R * 0.20, cx + R * 0.60, cy + R * 0.34, 3, PAL.INK, D.O.none);
       } else {
-        D.mouth(x, cx, cy + R * 0.42, R * 0.26, m);
+        Bronana.mouth(x, cx, cy + R * 0.42, R * 0.26, m);
       }
     }
   }, {
