@@ -51,6 +51,22 @@ links: ["README.md", "docs/history/README.md"]
 
 **没变的那条**：说"改好了"之前仍然必须**全量绿** —— 只是它按阶段发生。
 
+**修订（同日 · 用户第二次澄清）**：上面那条写成了"阶段边界上跑一次全量 + **提交一次**"，
+但用户的澄清更准 —— **提交是本地事件，推送才是"集成"事件**：
+
+- **阶段内**：跑受影响的门（`--quick` 约 20 秒，或单跑那一两道）+ **本地提交**（小步、随便提，它是安全网）；
+- **阶段结束**：**推送**（这一步触发 CI 在**干净环境里跑全量**）；
+  本地要不要再跑一次全量**看阶段碰了什么** —— 碰了 `src/` 行为 / 判据 / 生成物 ⇒ 跑；
+  **纯文档阶段 ⇒ 不跑**（改几个字付 244 秒是浪费），只跑 `doc-num` / `doc-links` / `doc-front`
+  + 刷新地图，再做一次**干净检出复验**（那才是拦"本地绿、CI 红"的那一道）。
+
+**外部依据**（用户要求联网核实，不是我觉得）：CI 的集成边界是"提交到主线"而非每次保存
+（[Fowler《Continuous Integration》](https://martinfowler.com/articles/continuousIntegration.html)，
+其列出的实践之一是「让构建保持快」）；**按改动选集测试**是一整类正规做法
+（[Azure Pipelines Test Impact Analysis](https://learn.microsoft.com/en-us/azure/devops/pipelines/test/test-impact-analysis) ·
+[Predictive Test Selection vs. Test Impact Analysis](https://www.cloudbees.com/blog/predictive-test-selection-vs-test-impact-analysis)）；
+实践里最常见的钩子分层就是**提交跑快检查、推送跑测试**。**用户这次是对的：验证该按阶段发生，不按文件发生。**
+
 ---
 
 ## 未发布 · 地基体检：把"没有东西被漏掉"变成机器判据

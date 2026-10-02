@@ -49,23 +49,46 @@ pnpm verify --quick    # **改一次就跑它**（约 20 秒）：跳过测试�
 pnpm verify            # **一阶段结束才跑**（约 220~250 秒）：全部 29 道门 → 然后才提交 + 推送
 ```
 
-### ⚠ 粒度（用户 2026-10-02 定的工作流）
+### ⚠ 粒度（用户 2026-10-02 定；同日第二次澄清后**修订**）
 
-**什么叫"一阶段"**：账本里的一条 / `docs/history/` 的一卷 = 一个阶段。
-阶段内可以改很多次、跑很多次 `--quick`；**只在阶段边界上跑一次全量、提交一次、推送一次** ——
-把"每动一个文件就全量 + 提交 + 推送"改成"**阶段边界上做一次**"。
+**判据一句话**：**提交是本地事件，推送才是"集成"事件。**
 
-> 这条规则能成立，靠两条**硬约束**（违反了它就是偷懒，不是效率）：
+| 什么时候 | 跑什么 | 提交 / 推送 |
+| --- | --- | --- |
+| **阶段内 · 每改一次** | **受影响的门**（`pnpm verify --quick` 约 20 秒，或直接单跑那一两道） | **本地提交**（小步、可以随便提 —— 它是安全网，不是仪式） |
+| **阶段结束** | 见下面那张分档表 | **推送**（推送触发 CI 在**干净环境里跑全量**） |
+| **阶段结束 · 本地还要不要全量** | 碰了 `src/` 行为 / 判据 / 生成物 ⇒ **要跑**（约 220~250 秒） | 纯文档阶段 ⇒ 不必（`--quick` 都嫌多） |
+
+**什么是"一阶段"**：账本里的一条 / `docs/history/` 的一卷 / 一个可交付的改动。
+
+**为什么这样分**（外部依据，不是我觉得）：
+- **CI 的集成边界是"提交到主线"**，不是"每次保存" —— 见 [Fowler《Continuous Integration》](https://martinfowler.com/articles/continuousIntegration.html)，
+  其列出的实践之一是「**让构建保持快**」；
+- **按改动选集**是一整类正规做法：[Azure Pipelines 的 Test Impact Analysis](https://learn.microsoft.com/en-us/azure/devops/pipelines/test/test-impact-analysis) ·
+  [Predictive Test Selection vs. Test Impact Analysis](https://www.cloudbees.com/blog/predictive-test-selection-vs-test-impact-analysis)；
+- 实践里最常见的钩子分层就是 **提交跑快检查、推送跑测试**
+  （[例](https://github.com/nbramia/LifeOS/issues/42) · [例](https://github.com/atomicstrata/llm-wiki-compiler/pull/17)）——
+  与本项目"门分快档 / 全量"的形状一致。
+
+**纯文档阶段怎么收口**（改几个字不该付全量的钱，但也不能什么都不跑）：
+
+```bash
+node tools/foundation-map.mjs --write      # 地图是生成物：任何 .md 的行数变了它就会旧
+node tools/doc-num-audit.mjs               # 文档数字 / 基线哈希 / 生成物新鲜度
+node tools/doc-links.mjs && node tools/doc-front-matter.mjs
+git worktree add --detach <临时目录> HEAD   # **干净检出复验**：本地脏工作区看不出来的错，只有这里能发现
+```
+
+> 🔴 **两条硬约束**（违反了它们就是偷懒，不是效率）：
 >
 > 1. **`--quick` 跳过的恰好是"行为与数值的唯一真相"（67 套测试）。**
 >    所以阶段内只要碰了 `src/` 的行为，就**手动补** `pnpm test`（或 `pnpm run test:<那一套>`）——
 >    不要攒到最后才发现"整个阶段的方向是错的"。
-> 2. **生成物 / 判据本身的改动，要在干净检出里复验一次**：
->    `git worktree add --detach <临时目录> HEAD`，在新目录里跑那一道门。
->    本地脏工作区**看不出来**的错（实测：地图把 gitignore 与未跟踪的文件算了进去
->    ⇒ 本地全绿、**CI 必红**）只有这样才能当场发现。
+> 2. **生成物 / 判据本身的改动，必须过"干净检出复验"**（上面那条 `git worktree`）。
+>    实测踩过：地图把 gitignore 与未跟踪的文件算了进去 ⇒ **本地全绿、CI 必红**，
+>    连着三次红门都是这么来的。**本地绿从来不是证据；在干净环境里能算出同一结论才是。**
 >
-> **说"改好了"之前仍然必须跑全量** —— 这条没变，只是**它按阶段发生，不按文件发生**。
+> **说"改好了"之前仍然必须全量绿** —— 只是它发生在**推送**这个边界上（本地跑，或交给 CI 跑）。
 
 只跑某一道门时（门 = 命令 = 退出码，没有别的判据）：
 
