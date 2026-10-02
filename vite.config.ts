@@ -1,4 +1,36 @@
 import { defineConfig } from 'vite';
+import fs from 'node:fs';
+import path from 'node:path';
+
+/* =========================================================
+   **工作区清单的发现**（E4 第 0 批 · 无感知）
+   ---------------------------------------------------------
+   浏览器**读不到磁盘**，所以 web 形态的"宿主"在**构建机上**：
+   把清单找出来、`define` 进包里，由 `src/main.ts` 交给引擎的 `Workspace.parse` 认
+   （与 `cli.ts` 的"发现 → 读 → 交给引擎认"是同一条纪律，只是盘在哪一头）。
+
+   ⚠ **两种边界都不许静默**：
+     · `workspace/` 下**多份**清单 ⇒ 报错。一个构建只能绑一个工作区，
+       "挑一份"是猜 —— 而猜错的表现是"读不到旧档"（静默、最难查）。
+     · **一份都没有** ⇒ **不注入**（define 成 `null`），于是 `main.ts` 走**可见的失败**
+       （崩溃卡），而不是悄悄退回某个写死的工作区。
+   ========================================================= */
+function workspaceDefine(): Record<string, string> {
+  const base = path.join(import.meta.dirname, 'workspace');
+  const files = fs.existsSync(base)
+    ? fs.readdirSync(base, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => path.join(base, e.name, 'teapot.workspace.json'))
+        .filter((p) => fs.existsSync(p))
+        .sort()
+    : [];
+  if (files.length > 1) {
+    throw new Error('workspace/ 下有 ' + files.length + ' 份清单（' + files.join(' · ') + '）：' +
+      '一个构建只能绑一个工作区 —— 要么删掉多余的，要么显式指定（见 docs/workspace-migration.md）');
+  }
+  const value = files.length ? JSON.parse(fs.readFileSync(files[0], 'utf8')) : null;
+  return { __TEAPOT_WORKSPACE__: JSON.stringify(value) };
+}
 
 /* =========================================================
    Vite 配置
@@ -62,6 +94,8 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: '.',
   base: './',
+  /* 工作区清单（构建期发现）⇒ 打进包；`src/main.ts` 用它拿命名空间与入口身份 */
+  define: workspaceDefine(),
   build: {
     outDir: 'dist',
     target: 'es2020',

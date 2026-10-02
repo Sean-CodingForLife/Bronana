@@ -309,7 +309,7 @@ links: ["README.md", "../AGENTS.md"]
 
 **测试加载集**：`MODULES` 99 个键 · SIM 97 · RENDER 98 · UI 99 · 清单键（persist/arch）51 个
 
-## 六、文档体系 —— 45 份 `.md`
+## 六、文档体系 —— 46 份 `.md`
 
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
@@ -347,7 +347,8 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/history/18-地基体检.md` | 交付记录 | 现行 | 91 | —（分卷） |
 | `docs/history/19-引擎启动横幅与编辑器前置.md` | 交付记录 | 现行 | 104 | —（分卷） |
 | `docs/history/20-引擎的模块.md` | 交付记录 | 现行 | 85 | —（分卷） |
-| `docs/history/README.md` | 交付记录 | 现行 | 51 | —（分卷） |
+| `docs/history/21-无感知-宿主身份从清单来.md` | 交付记录 | 现行 | 50 | —（分卷） |
+| `docs/history/README.md` | 交付记录 | 现行 | 52 | —（分卷） |
 | `docs/requirements.md` | 需求账本 | 现行 | 4352 | ✔ |
 | `docs/scaling-benchmarks.md` | 外部参考 | 现行 | 246 | ✔ |
 | `docs/scaling-isaac-gungeon.md` | 外部参考 | 现行 | 61 | ✔ |

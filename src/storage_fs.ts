@@ -112,11 +112,49 @@ export function fileAdapter(opts: FileAdapterOptions): StorageAdapter {
   };
 }
 
-/** 默认的存档目录：`$TEAPOT_HOME`（**旧名 `$BRONANA_HOME` 仍然读** —— 改名兼容），否则 `~/.bronana`
- *  ⚠ 目录名与「工作区的数据住哪」是 **E5** 的事（见 `docs/workspace-spec.md` §二/§三）：
- *    今天这里只把**引擎自己的环境变量名**改对，同时保住旧名的可用性。 */
-export function defaultSaveDir(): string {
-  const home = process.env.TEAPOT_HOME || process.env.BRONANA_HOME ||
-    path.join(process.env.HOME || process.env.USERPROFILE || '.', '.bronana');
-  return home;
+/* =========================================================
+   **工作区清单的发现与读盘**（E4 第 0 批：宿主只从清单读身份）
+   ---------------------------------------------------------
+   用户口径：「所有和 Bronana 有关系的**统统**移动到 Bronana 自己的工作区里去，
+   二者要**彻底分离和无感知**」。**无感知**的第一步不是搬目录，而是：
+   **宿主不再知道"自己跑的是哪个工作区"** —— 它只发现清单、读它、认它。
+
+   为什么读盘落在这里而不是 `workspace.ts`：`workspace.ts` 在 L0，
+   **连 `process` 都不许出现**（那是"67 套测试能在 Node 里跑"的前提）；
+   而"发现目录"这件事**只有宿主干得了**。分工是：
+     · 引擎侧 `Workspace.parse` —— 认不认这份清单（纯函数，不读盘）
+     · 宿主侧 本文件         —— 找清单 / 读字节 / 交给引擎认
+   ========================================================= */
+
+/** 引擎仓库根（本文件在 `src/` 下 ⇒ 上一级）；⚠ 只用于**默认**发现，可被参数覆盖 */
+export function repoRoot(): string {
+  return path.resolve(import.meta.dirname, '..');
+}
+
+/** 盘上的工作区清单（`workspace/<目录>/teapot.workspace.json`，按路径字典序 —— 顺序确定） */
+export function workspaceFiles(root?: string): string[] {
+  const base = path.join(root || repoRoot(), 'workspace');
+  if (!fs.existsSync(base)) return [];
+  return fs.readdirSync(base, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => path.join(base, e.name, 'teapot.workspace.json'))
+    .filter((p) => fs.existsSync(p))
+    .sort();
+}
+
+/** 读一份清单的原始字节并解析（**解析失败就抛** —— "读不到"绝不静默，见 `workspace-spec.md` §五） */
+export function readManifest(file: string): unknown {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+/** 默认的存档目录：`$TEAPOT_HOME`（**旧名 `$BRONANA_HOME` 仍然读** —— 改名兼容），
+ *  否则 `~/.<工作区 id>`
+ *  ⚠ **目录名从 `id` 派生**（用户口径 / `workspace-spec.md` §三）：路径类的东西只能从
+ *    **稳定 id** 派生 —— Godot 那个"改名 = 存档搬家"的坑就是这么来的。
+ *    ⚠ 传不进 `id`（没有清单）时退到**中性**目录名 `.teapot` ——
+ *    **不许**在这里写死任何具体工作区的名字（那是"引擎认识内容"）。 */
+export function defaultSaveDir(id?: string): string {
+  const home = process.env.TEAPOT_HOME || process.env.BRONANA_HOME;
+  if (home) return home;
+  return path.join(process.env.HOME || process.env.USERPROFILE || '.', id ? '.' + id : '.teapot');
 }

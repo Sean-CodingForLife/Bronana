@@ -26,11 +26,13 @@ import { createHandler, listen } from '../server/static.mjs';
 /* ⚠ **CLI 是三种形态里唯一没有持久化的**（web / desktop 都走 Chromium 的
    localStorage，它落在 `userData` 里，本来就持久）。接上文件后端之后，
    `pnpm cli` 的设置与账号档案才会留下来。 */
-import { fileAdapter, defaultSaveDir } from './storage_fs.ts';
+import { defaultSaveDir, fileAdapter, readManifest, workspaceFiles } from './storage_fs.ts';
 /* ⚠ 必须**显式 import** `Storage` —— 浏览器环境有一个同名的
    全局 `Storage`（Web Storage API），不 import 的话 TypeScript 会解析到那个，
    于是 `.use` 报错。 */
 import { Storage } from './storage.ts';
+/* 工作区清单的**校验器**（引擎侧）：宿主读到字节之后交给它认 —— 判据只有一份实现。 */
+import { Workspace } from './workspace.ts';
 
 /* =========================================================
    参数解析（纯函数，测试直接调）
@@ -470,13 +472,26 @@ export async function runServe(o) {
    入口
    ========================================================= */
 export async function main(argv) {
-  /* ⚠ **存储键的命名空间必须排在定义期自检之前**（E3 第 2 小步）：
+  /* **工作区身份由清单给**（E4 第 0 批 · 用户口径「二者要彻底分离和无感知」）：
+     宿主只做四件事 —— **发现清单 → 读盘 → 交给引擎认 → 用它的值**。
+     ⚠ 引擎侧一行都不许出现具体工作区的名字；这一条由门 `workspace` 的一条判据守着
+     （`Storage.setNamespace(...)` 的实参**不许是字面量**）。
      自检那条会问"命名空间注入了没有"（不注入 ⇒ 键写成裸名 ⇒ 读不到旧档，静默），
      所以这里就是它的**前置条件**。纯内存操作，不建目录、不碰磁盘 ——
-     参数校验与"别在用户家里建目录"那条纪律仍然管着下面的 `Storage.use`。
-     ⚠ **值由宿主给**（引擎不认识任何具体游戏的名字）—— CLI 说清自己跑的是哪个工作区；
-     **E5 之后应当来自 `teapot.workspace.json`**。 */
-  Storage.setNamespace('bronana');
+     参数校验与"别在用户家里建目录"那条纪律仍然管着下面的 `Storage.use`。 */
+  var wsFile = workspaceFiles()[0];
+  if (!wsFile) {
+    console.error('找不到工作区清单（`workspace/<目录>/teapot.workspace.json`）—— ' +
+      '引擎不认识任何具体项目，身份只能由清单给（见 docs/workspace-spec.md §三）');
+    return 2;
+  }
+  var wsVerdict = Workspace.parse(readManifest(wsFile));
+  if (!wsVerdict.ok || !wsVerdict.value) {
+    console.error('工作区清单不合法：' + wsFile + '\n  · ' + wsVerdict.problems.join('\n  · '));
+    return 2;
+  }
+  Workspace.set(wsVerdict.value);
+  Storage.setNamespace(Workspace.namespace() as string);
   /* 定义期自检先跑：命令行是自动化入口，表坏掉时**应该立刻非零退出**，
      而不是先跑完一局再给一份没人看得懂的报告。
      `registry: 'partial'`：命令行是"只有模拟层"的构建，渲染层家族
@@ -511,7 +526,8 @@ export async function main(argv) {
      接不上就退回内存适配器 —— "存不进去"绝不该让命令行崩（与 `storage.ts` 同一条纪律）。
      ⚠ 命名空间在上面（自检之前）已经注入过了 —— 它只定"键叫什么"，不碰磁盘。 */
   Storage.use(fileAdapter({
-    dir: defaultSaveDir(),
+    /* ⚠ 目录名从清单的 **id** 派生（不是工作区的显示名）—— 见 docs/workspace-spec.md §三 */
+    dir: defaultSaveDir(Workspace.id() as string),
     onError: function (m) { console.error('[storage] ' + m); }
   }));
 

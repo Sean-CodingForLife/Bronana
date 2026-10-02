@@ -6,6 +6,7 @@ main.ts — 引导与主循环
 ========================================================= */
 
 import { Banners } from './banner.ts';
+import { Workspace } from './workspace.ts';
 import { SelfCheck } from './selfcheck.ts';
 import { Sfx } from './audio.ts';
 import { Chars } from './data_chars.ts';
@@ -184,13 +185,27 @@ function autoPause(reason) {
 }
 
 function initPersistence() {
-  /* ⚠ **命名空间必须在第一次读写之前注入**（E3 第 2 小步）：引擎不认识任何
-     具体游戏的名字 —— 值由**宿主**给。今天写在这里；**E5 之后应当来自
-     `teapot.workspace.json`**（那一版之前，三个宿主入口各自说清自己跑的是哪个工作区，
-     与 `Skills.make({ chars })` 的注入同一套做法）。
+  /* ⚠ **命名空间必须在第一次读写之前注入**（E3 第 2 小步）：
      晚一步注入的话，键会先以**裸名**被读写 / 被模块级快照冻住，
-     表现是"读不到旧档、像新玩家一样" —— 静默的，所以启动期有自检拦它。 */
-  Storage.setNamespace('bronana');
+     表现是"读不到旧档、像新玩家一样" —— 静默的，所以启动期有自检拦它。
+
+     **身份由清单给**（E4 第 0 批 · 无感知）：浏览器读不到磁盘，所以构建期由
+     vite.config.ts 发现清单并 define 进来（__TEAPOT_WORKSPACE__）。
+     ⚠ 缺失或不合法时**不许静默退回某个工作区** —— 那正是"引擎认识内容"；
+     走崩溃卡那一套**可见的**失败（与"定义期自检不过"同一个出口）。 */
+  var wsRaw = typeof __TEAPOT_WORKSPACE__ !== 'undefined' ? __TEAPOT_WORKSPACE__ : null;
+  var wsVerdict = wsRaw ? Workspace.parse(wsRaw) : {
+    ok: false, value: null,
+    problems: ['宿主没有注入工作区清单（构建期 __TEAPOT_WORKSPACE__ 缺失）—— ' +
+      '见 docs/workspace-migration.md 批次 0']
+  };
+  if (!wsVerdict.ok || !wsVerdict.value) {
+    var wsErr = new Error('工作区清单不可用：\n  · ' + wsVerdict.problems.join('\n  · '));
+    selfCheckFailPage(wsErr);
+    throw wsErr;
+  }
+  Workspace.set(wsVerdict.value);
+  Storage.setNamespace(Workspace.namespace() as string);
   // localStorage 在无痕/被禁用时会抛，接不上就退回内存适配器（本次会话内仍生效）
   var ls = null;
   try { ls = (typeof window !== 'undefined') ? window.localStorage : null; } catch (e) { ls = null; }

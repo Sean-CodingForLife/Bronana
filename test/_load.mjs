@@ -272,7 +272,18 @@ export async function loadAll(names, before) {
      `slots.ts` 的 `CARRIED` 已改成按需算），所以加载期没有任何一处会把裸键名记下来。 */
   const storageMod = await import('../src/storage.ts');
   if (!globalThis.Storage) globalThis.Storage = storageMod.Storage;
-  globalThis.Storage.setNamespace('bronana');
+  /* ⚠ **身份由清单给**（E4 第 0 批 · 无感知）：测试也是宿主，它自己从盘上读清单 ——
+     与 cli.ts 走的是同一条路（发现 → 读 → 交给引擎认）。
+     读不到 / 不合法就**硬失败**：静默退回某个命名空间会造出
+     "同一份代码在两处读写不同的键"，而那正是启动期自检要拦的那类静默失效。 */
+  const { workspaceFiles, readManifest } = await import('../src/storage_fs.ts');
+  const { Workspace } = await import('../src/workspace.ts');
+  const wsFile = workspaceFiles()[0];
+  if (!wsFile) throw new Error('测试宿主找不到工作区清单（workspace/<目录>/teapot.workspace.json）');
+  const wsVerdict = Workspace.parse(readManifest(wsFile));
+  if (!wsVerdict.ok) throw new Error('工作区清单不合法：' + wsVerdict.problems.join(' / '));
+  Workspace.set(wsVerdict.value);
+  globalThis.Storage.setNamespace(Workspace.namespace());
 
   globalThis.holdRoom = holdRoom;
   if (globalThis.Skills && globalThis.Chars) {

@@ -4260,7 +4260,7 @@ AGENT 倾向 ②（改动面小、不会悄悄改变现有画面），但①更�
 | 引擎代码里的**内容名**（门 `rename-inventory` 的 `engine-code` 档） | **0 处** |
 | 引擎模块 import 内容（门 `engine-boundary` 判据 [1]） | **没有越界** |
 | **结构层** | 全仓**没有 `workspace/` 目录**；内容（内容模块 / 67 套测试 / 游戏README）仍住在引擎仓库里 |
-| 引擎启动处**硬编码内容名** | `src/main.ts:192` 与 `src/cli.ts:332` 的 `Storage.setNamespace('bronana')`；`storage_fs.ts:120` 的默认目录名 |
+| 引擎启动处**硬编码内容名** | ✅ **已还清（E4 批次 0 · 2026-10-02）**：三个宿主（`src/main.ts` / `src/cli.ts` / `test/_load.mjs`）改为**发现清单 → 读盘 → 交给 `Workspace.parse` 认 → 用它的 `namespace`**；存档目录从 `id` 派生（`~/.<id>`，`TEAPOT_HOME` / 旧名 `BRONANA_HOME` 覆盖仍在）；门 `workspace` 第 5 条判据守着"实参**不许是字面量**"（自证里带一条"好形状不该报"） |
 
 ### 13.2 批次进度
 

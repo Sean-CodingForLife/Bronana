@@ -4192,6 +4192,10 @@ interface WorkspaceApi {
 }
 declare var Workspace: WorkspaceApi;
 
+/** **构建期注入的工作区清单**（`vite.config.ts` 的 `define`；浏览器读不到磁盘）
+ *  ⚠ 它可能是 `null`（构建机上没找到清单）—— 那时 `main.ts` **可见地失败**，不许静默。 */
+declare var __TEAPOT_WORKSPACE__: unknown;
+
 /* ---------------- 终端启动横幅（banner.ts · banner_data.ts） ----------------
    ⚠ 横幅是**引擎的**，不是游戏内容的：它讲引擎自己（版本 / 零依赖 / 三种宿主）。
    数据在**生成物** `banner_data.ts` 里，唯一真相是 `design/banner.py`。 */

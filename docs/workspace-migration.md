@@ -84,7 +84,7 @@ teapot/                        ← 引擎仓库根（引擎本体 + 它的规范
 
 | 批 | 做什么 | 判据（做完了怎么知道） | 回滚 |
 | --- | --- | --- | --- |
-| **0 · 无感知** | 宿主改从清单读：`Storage.setNamespace` 的来源改成 `Workspace.namespace()`，`storage_fs` 的默认目录从 `id` 派生，`test/_load.mjs` 同理；加**门 `names`**（引擎侧不许出现工作区名） | 门 `names` 绿（**注入一个 `'bronana'` 字面量必须红**）；`grep -i bronana src/` 只剩注释里的历史叙述；行为指纹**逐位不变** | 单文件回退 |
+| **0 · 无感知** | 宿主改从清单读：`Storage.setNamespace` 的来源改成 `Workspace.namespace()`，`storage_fs` 的默认目录从 `id` 派生，`test/_load.mjs` 同理；加**门 `names`**（引擎侧不许出现工作区名） | ✅ **已交付（2026-10-02 · `docs/history/21`）** —— 落点与计划略有出入，**照实测写**：判据不是新开一道门，而是**门 `workspace` 的第 5 条**（`Storage.setNamespace(x)` 的 `x` 不许是字面量 + 宿主里必须真的读清单；自证 11 条，含一条"好形状不该报"）。web 侧由 `vite.config.ts` 构建期发现并 `define` 注入 | 单文件回退 |
 | **1 · 工具链双根** | tsconfig / vite / `test/_load.mjs` / `systems.cjs` / `arch-audit` / `engine-boundary` / `foundation-map` / `readme-stats` / `doc-num` 全部改成**认两个根**（引擎 `src/` + `workspace/*/src/`）；先让**空的** `workspace/Bronana/src/` 被工具链认下来 | 30 道门全绿，而**一个文件都还没搬** ⇒ 证明"双根"这件事本身是稳的 | 回退这批的改动 |
 | **2 · 搬内容（`git mv`）** | 按 §二 的清单搬：先**混合档那 4 个切干净**，再搬显式内容与数据表；宿主/入口跟着改 | 门 `engine-boundary` 的分类表更新后仍**未认领 0**；30 道门全绿；`pnpm cli sim` 能跑出同一份报告；行为指纹逐位不变 | `git mv` 反向 + 回退分类表（**这一批必须一次做完、单独一个提交**） |
 | **3 · 测试与文档** | 内容侧测试搬进 `workspace/Bronana/test/`（测试清单分家：引擎的归引擎、内容的归内容）；门面文档分家（游戏的 README 归工作区） | 两边的测试各自能跑；`registry-drift` 认两个测试目录；文档索引分家后 `doc-links` 绿 | 同上 |

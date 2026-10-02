@@ -8,5 +8,5 @@
   "modules": { "enabled": [], "disabled": [] },
   "plugins": { "enabled": [] },
   "content": { "src": "../../src" },
-  "note": "⚠ 过渡状态（批次 1）：内容**还没有搬进工作区** —— `entry` 与 `content.src` 暂时指向仓库根的 src/。批次 3 做完 git mv 之后，它们会变成 ./src/main.ts 与 ./src，而引擎侧的宿主一律改为只认这个清单。"
+  "note": "⚠ 过渡状态：**身份**已经由本清单给（E4 批次 0 已交付 —— 三个宿主 main.ts / cli.ts / test/_load.mjs 都从 storage.namespace 取命名空间，存档目录从 id 派生），但**内容还没有搬进工作区**：entry 与 content.src 暂时指向仓库根的 src/。批次 2/3 做完 git mv 之后，它们会变成 ./src/main.ts 与 ./src。"
 }

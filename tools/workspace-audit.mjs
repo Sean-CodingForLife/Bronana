@@ -8,7 +8,7 @@
       （`systems.cjs` 的头注释写着同一件事："两边读同一份表，就不会出现
       '工具说没事、测试说有事'"）。所以引擎认不认，门就认不认；引擎改了字段表，门自动跟着改。
 
-   ## 四条判据
+   ## 五条判据
      1. **清单要过引擎的 `Workspace.parse`**（未知字段 / 缺必填 / 类型 / `storage.namespace`
         必须等于 `id` / `schema` 不认识）—— 逐条报错原文；
      2. **`id` 全局唯一**（两个工作区同一个 id ⇒ 存档目录与命名空间会撞在一起，这是**数据事故**）；
@@ -18,7 +18,14 @@
      4. **模块开关要过引擎的 `Module.check`**（2026-10-02 补 · 用户点名的句子）：
         未知模块 id · `enabled` 与 `disabled` 撞车 · **被禁用的模块不得被任何启用的模块依赖**。
         ⚠ 与判据 1 同一条纪律：**门不自己写一套** —— 它 import `../src/module.ts`，
-        所以引擎改了模块表，门自动跟着改（两份判据迟早漂开）。
+        所以引擎改了模块表，门自动跟着改（两份判据迟早漂开）；
+      5. **宿主的命名空间必须来自清单**（E4 第 0 批 · 无感知）：`Storage.setNamespace(x)` 的
+        `x` **不许是字面量**，而且调它的宿主里必须真的出现"读清单"（`Workspace.namespace()` /
+        `workspaceFiles()` / `readManifest()`）。
+        理由：宿主是**引擎的**入口 —— 它一旦写出某个工作区的名字，就等于
+        **引擎认识内容**（用户口径："二者要彻底分离和**无感知**"）。
+        ⚠ 这条判据**只判形状**（实参是不是字面量），而"字面量恰好等于清单里的 id"这种
+        情况它照样判红 —— 因为**判据比对的不是值，是有没有第二个出处**。
 
    ## 自证（家法：一条不会失败的审计等于装饰）
      `node tools/workspace-audit.mjs --self-test`
@@ -33,6 +40,35 @@ import { Workspace } from '../src/workspace.ts';
 const ROOT = path.resolve(import.meta.dirname, '..');
 const JSON_OUT = process.argv.includes('--json');
 const SELF_TEST = process.argv.includes('--self-test');
+
+/** 盘上所有工作区清单（`workspace/<dir>/teapot.workspace.json`） */
+const HOSTS = ['src/main.ts', 'src/cli.ts', 'test/_load.mjs'];
+
+/* 判据 5 的主体：**纯函数**（给它"怎么读文件"，回问题清单）——
+   于是 `--self-test` 能拿假源码跑同一段判据（家法：一条不会失败的审计等于装饰）。 */
+function checkNamespaceSource(read) {
+  const problems = [];
+  const CALL = /Storage\.setNamespace\s*\(([^)]*)\)/g;
+  for (const f of HOSTS) {
+    const src = read(f);
+    if (src === null) continue;                       // 这个宿主不存在（可选）
+    CALL.lastIndex = 0;
+    let m, calls = 0;
+    while ((m = CALL.exec(src)) !== null) {
+      const arg = m[1].trim();
+      if (/^['"\`]/.test(arg)) {
+        problems.push(f + '：`Storage.setNamespace(' + arg + ')` 的实参是**字面量** —— ' +
+          '宿主不许知道"自己跑的是哪个工作区"，身份只能来自清单（`Workspace.namespace()`）');
+      }
+      calls++;
+    }
+    if (calls && !/Workspace\.namespace\(\)|workspaceFiles\(|readManifest\(/.test(src)) {
+      problems.push(f + '：它调了 setNamespace，却没有从清单读身份' +
+        '（找不到 Workspace.namespace() / workspaceFiles() / readManifest()）');
+    }
+  }
+  return problems;
+}
 
 /** 盘上所有工作区清单（`workspace/<dir>/teapot.workspace.json`） */
 function manifests() {
@@ -80,11 +116,32 @@ if (SELF_TEST) {
       (list.length ? (hit ? '报到了：' + p.want : '报错了但没报对：' + list.join(' / ')) : '**没报错**（判据是装饰）'));
     if (!hit) bad++;
   }
-  console.log('\n  ' + (bad ? '✘ ' + bad + ' 条自证失败' : '✔ 八条判据都证明会红') + '\n');
+  /* 判据 5 自己那条路：喂它**假源码**，两类坏形状各一次 + 一次好形状（不该报） */
+  const fake = (text) => () => text;
+  const goodSrc = 'Storage.setNamespace(Workspace.namespace());';
+  const nsProbe = [
+    ['命名空间写成了字面量', fake("Storage.setNamespace('某个工作区');\n"), true],
+    ['调了 setNamespace 却没人读清单', fake('Storage.setNamespace(ns);\n'), true],
+    ['从清单读（好形状，不该报）', fake(goodSrc), false]
+  ];
+  for (const [name, read, wantBad] of nsProbe) {
+    const hit = checkNamespaceSource((f) => (f === HOSTS[0] ? read(f) : null)).length > 0;
+    const ok = hit === wantBad;
+    console.log('  ' + (ok ? '✔' : '✘') + ' [' + name + '] ' + (hit ? '报到了' : '没有报'));
+    if (!ok) bad++;
+  }
+  console.log('\n  ' + (bad ? '✘ ' + bad + ' 条自证失败' : '✔ 十一条判据都证明会红（含"好形状不该报"）') + '\n');
   process.exit(bad ? 1 : 0);
 }
 
 /* ---------------- 判据 ---------------- */
+/* 判据 5：宿主的命名空间必须来自清单（读盘的那一份，不是内存里的探针） */
+const nsProblems = checkNamespaceSource((f) => {
+  const abs = path.join(ROOT, f);
+  return fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : null;
+});
+for (const p of nsProblems) problems.push(p);
+
 const list = manifests();
 const problems = [];
 const hints = [];
@@ -132,7 +189,8 @@ if (hints.length) {
 
 if (!problems.length) {
   console.log('  ✔ 清单全部被引擎认下来' + (list.length ? '' : '（当前没有工作区，这条判据空跑为真）'));
-  console.log('  ✔ 自证：`node tools/workspace-audit.mjs --self-test` 注入八条坏数据，逐条确认会红\n');
+  console.log('  ✔ 宿主注入：三个宿主都从清单读身份（`Storage.setNamespace` 的实参不是字面量）');
+  console.log('  ✔ 自证：`node tools/workspace-audit.mjs --self-test` 注入十一条坏数据，逐条确认会红\n');
   process.exit(0);
 }
 console.log('  ✘ ' + problems.length + ' 处：\n');
