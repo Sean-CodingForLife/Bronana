@@ -149,6 +149,28 @@ T.section('7. `--dry` 只报不写');
   T.eq(read(p), 'var dry = 1;\n', '**文件没变**（dry 就是 dry）');
 }
 
+/* ---------------- ⑨ 原子性（2026-10-02 修的真问题） ---------------- */
+/*
+  文件头那句「失败一律不写盘」曾经**只对失败的那个 op 成立**：
+  每个 op 成功就立刻写盘，而失败的 op 只 `continue`。
+  实测症状：op1 合法 + op2 锚点不命中 ⇒ 文件已被改坏，而提示说「没写」。
+  修法是两阶段提交（先全在内存里跑，全成才写）。下面这条断言就是守它。
+*/
+{
+  const p = mk('atomic.ts', 'var a = 1;\nvar b = 2;\n');
+  const before = read(p);
+  const r = run({
+    ops: [
+      { op: 'replace', file: rel(p), from: 'var a = 1;', to: 'var a = 99;' },
+      { op: 'replace', file: rel(p), from: '根本不存在的锚点', to: 'x' }
+    ]
+  });
+  T.eq(r.code, 1, '有一项失败 ⇒ 退出码 1');
+  T.eq(read(p), before,
+    '**原子性**：op1 合法 + op2 非法 ⇒ 文件**逐字节不变**（修之前它已经被改成 var a = 99）');
+}
+
+
 /* ---------------- 清理 ---------------- */
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* 无所谓 */ }
 
