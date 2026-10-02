@@ -63,14 +63,28 @@ const crlfInIndex = [];
 const crlfInWork = [];
 const missingInWork = [];
 for (const f of files) {
-  /* --- 索引（blob）--- */
-  const buf = execFileSync('git', ['cat-file', 'blob', 'HEAD:' + f], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 });
-  let crlf = 0, lf = 0;
-  for (let i = 0; i < buf.length; i++) {
-    if (buf[i] !== 10) continue;
-    if (i > 0 && buf[i - 1] === 13) crlf++; else lf++;
+  /* --- 索引（blob）---
+     ⚠ **必须读索引（`:path`），不能读 HEAD（`HEAD:path`）** —— 实测栽过：
+     `git mv` 之后新路径在**索引**里、在 **HEAD** 里还不存在，于是 `HEAD:path` 直接抛，
+     于是这道门在"**重命名已暂存、尚未提交**"时**必然红** —— 它冤枉了一个完全合法的操作，
+     而且逼出一种古怪的顺序（"先提交再验"）。而它的注释本来写的就是"**索引里的 blob**"：
+     **判据一直是对的，读错了源。** 读索引之后它比的是"索引 ↔ 工作区"，两者都是当下状态。 */
+  let buf = null;
+  try {
+    buf = execFileSync('git', ['cat-file', 'blob', ':' + f], { cwd: ROOT, maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    /* 索引里没有这个路径（`ls-files` 与索引短暂不同步）—— 跳过它；
+       "被跟踪但工作区里不存在"那一条判据会兜住真正的问题。 */
+    buf = null;
   }
-  if (crlf > 0) crlfInIndex.push({ file: f, crlf, lf });
+  if (buf) {
+    let crlf = 0, lf = 0;
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] !== 10) continue;
+      if (i > 0 && buf[i - 1] === 13) crlf++; else lf++;
+    }
+    if (crlf > 0) crlfInIndex.push({ file: f, crlf, lf });
+  }
 
   /* --- 工作区 --- */
   const p = path.join(ROOT, f);

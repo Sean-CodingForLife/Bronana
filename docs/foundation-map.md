@@ -321,7 +321,7 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
 | `docs/external-game-mechanics.md` | 外部参考 | 现行 | 3111 | ✔ |
 | `docs/external-workspace-conventions.md` | 调研 | 现行 | 152 | ✔ |
-| `docs/foundation-audit.md` | 协作 | 现行 | 147 | ✔ |
+| `docs/foundation-audit.md` | 协作 | 现行 | 148 | ✔ |
 | `docs/history/01-长线化与三角.md` | 交付记录 | 现行 | 842 | —（分卷） |
 | `docs/history/02-地牢化与设计复查.md` | 交付记录 | 现行 | 1186 | —（分卷） |
 | `docs/history/03-体系化与数值曲线.md` | 交付记录 | 现行 | 756 | —（分卷） |
