@@ -244,7 +244,7 @@ const result = {
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
-console.log('\n=== Bronana · 引擎 / 内容边界门（R55）===\n');
+console.log('\n=== Teapot · 引擎 / 内容边界门（R55）===\n');
 console.log('  src/ 模块 ' + files.length + ' 个：引擎 ' + engineNames.length +
   ' · 混合 ' + result.mixedCount + ' · 显式内容 ' + Object.keys(CONTENT).length +
   ' · 数据表 ' + DATA_TABLES.length +

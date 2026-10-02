@@ -339,7 +339,7 @@ console.log('\n[3] 运行时错误兜底');
        ① 注入之后，注入的内容**出现在**提示语里（注入真的生效）
        ② 没有提供者时，用**兜底文案**而不是崩掉（兜底本身绝不受影响） */
   const text = Crash.describe(new Error('测试用的假错误'), 'window.error');
-  ok(/Bronana 出了点意外/.test(text), '提示语说清了"出了意外"');
+  ok(/出了点意外/.test(text), '提示语说清了"出了意外"');
   ok(/触发点：window\.error/.test(text), '提示语里有触发点');
   ok(/测试用的假错误/.test(text), '提示语里有原始的错信息');
   ok(/刷新页面/.test(text), '提示语给了可行动的一步');

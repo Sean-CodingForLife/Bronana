@@ -111,7 +111,7 @@ export function parseArgs(argv) {
 
 function usage() {
   return [
-    'Bronana 命令行',
+    'Teapot 命令行',
     '',
     '  node src/cli.ts sim   [--char 角色] [--wave N] [--seconds S] [--seed N] [--no-auto] [--json]',
     '      无头跑一局并打印报告（不会开窗口、不碰 canvas）',
@@ -274,7 +274,7 @@ export function runSim(o) {
 
 export function formatReport(r) {
   var L = [];
-  L.push('=== Bronana 无头跑局 ===');
+  L.push('=== Teapot 无头跑局 ===');
   L.push('  角色      ' + r.charName + '（' + r.char + '） · 种子 ' + r.seed +
     (r.startWave > 1 ? ' · 从第 ' + r.startWave + ' 波开始' : ''));
   L.push('  结果      ' + (r.survived ? '撑过 ' + r.simSeconds + ' 秒没死' : '阵亡') +

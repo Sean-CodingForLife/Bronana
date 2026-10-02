@@ -112,7 +112,7 @@ function formatRecipe() {
 
 /* ---- 输出 ---- */
 const A = sameFile(), B = crossFile(), C = formatRecipe();
-console.log('\n=== Bronana · 硬编码体检（同一个概念写了几遍）===');
+console.log('\n=== Teapot · 硬编码体检（同一个概念写了几遍）===');
 console.log('  排除渲染层 ' + files.filter(f => RENDER.test(f)).join(' / ') + '（那里的数字是几何）\n');
 
 console.log('[A] 同一文件里重复 >=3 次的算术表达式：' + A.length + ' 处');

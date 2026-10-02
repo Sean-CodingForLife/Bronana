@@ -25,7 +25,7 @@ const JOBS = {
     mods: 'SIM',
     cut: [/\/\/ 模拟层文件（不含任何 DOM 依赖）\nconst FILES = \[[\s\S]*?\n\];\n/,
       "/* ---------------- 加载 ---------------- */\n" +
-      "console.log('\\n=== Bronana · 无头冒烟测试 ===\\n');\n" +
+      "console.log('\\n=== Teapot · 无头冒烟测试 ===\\n');\n" +
       "console.log('[1] 加载模拟层');\n" +
       "let loadErr = null;\n" +
       "try { await loadAll(SIM); } catch (e) { loadErr = e.message; }\n" +

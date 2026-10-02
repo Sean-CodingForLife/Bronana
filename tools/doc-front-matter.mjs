@@ -164,7 +164,7 @@ for (const r of rows) (byCat[r.category] = byCat[r.category] || []).push(r.file)
 const result = { total: files.length, ok: rows.length, categories: Object.keys(CATEGORIES).length, byCat, problems };
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
-console.log('\n=== Bronana · 文档门（front matter）===\n');
+console.log('\n=== Teapot · 文档门（front matter）===\n');
 console.log('  .md 共 ' + files.length + ' 个 · front matter 齐全 ' + rows.length +
   ' 个 · 合法分类 ' + Object.keys(CATEGORIES).length + ' 档');
 

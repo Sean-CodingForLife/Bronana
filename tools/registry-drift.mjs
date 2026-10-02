@@ -452,7 +452,7 @@ if (JSON_OUT) {
 
 const PAD = (s, n) => { s = String(s); let w = 0; for (const c of s) w += c.charCodeAt(0) > 127 ? 2 : 1; return s + ' '.repeat(Math.max(0, n - w)); };
 
-console.log('\n=== Bronana · 登记漂移（工具与测试有没有入口）===\n');
+console.log('\n=== Teapot · 登记漂移（工具与测试有没有入口）===\n');
 console.log('  这条校验量的是"东西在不在账上"，不是"代码写得好不好"。');
 console.log('  症状很轻（不会让任何测试变红），代价很具体：下一个人找不到怎么跑它。\n');
 

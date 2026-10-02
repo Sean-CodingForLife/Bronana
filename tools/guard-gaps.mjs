@@ -215,7 +215,7 @@ if (JSON_OUT) {
 const PAD = (s, n) => { s = String(s); return s + ' '.repeat(Math.max(0, n - [...s].reduce((a, c) => a + (c.charCodeAt(0) > 127 ? 2 : 1), 0))); };
 const PADL = (s, n) => ' '.repeat(Math.max(0, n - String(s).length)) + String(s);
 
-console.log('\n=== Bronana · 家族与模块守卫 ===\n');
+console.log('\n=== Teapot · 家族与模块守卫 ===\n');
 console.log('  判据只有两条（都能当场验证）：');
 console.log('    A 模块自检：模块里有 `X.audit` **且** `SelfCheck.register` 登记了它');
 console.log('    B 跨表引用：别的模块的 `refs` 指向这个家族 ⇒ `Registry.audit()` 在启动期查它的值\n');

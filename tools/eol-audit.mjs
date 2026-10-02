@@ -94,7 +94,7 @@ const result = {
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
-console.log('\n=== Bronana · 行尾门（LF 是唯一形状）===\n');
+console.log('\n=== Teapot · 行尾门（LF 是唯一形状）===\n');
 console.log('  被跟踪文件 ' + tracked.length + ' 个（跳过二进制 ' + (tracked.length - files.length) + ' 个）');
 console.log('  .gitattributes 宣布 `* text=auto eol=lf`：' + (attrOk ? '✔' : '✘'));
 

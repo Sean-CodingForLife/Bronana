@@ -26,7 +26,7 @@ console.error = function () { };
 const PAD = (s, n) => { s = String(s); let w = 0; for (const c of s) w += c.charCodeAt(0) > 127 ? 2 : 1; return s + ' '.repeat(Math.max(0, n - w)); };
 const NAME = (s) => (Ledger.SYSTEMS[s] ? Ledger.SYSTEMS[s].name : s);
 
-console.log('=== Bronana · 三模块循环体检 ===\n');
+console.log('=== Teapot · 三模块循环体检 ===\n');
 
 const v = Economy.audit();
 console.log('聚合自检：' + (v.ok ? '通过 ✔' : '未通过 ✘'));

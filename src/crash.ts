@@ -54,7 +54,11 @@ Crash.describe = function (err, from, where) {
   var msg = String((err && (err.stack || err.message)) || err || '（没有错误信息）');
   if (msg.length > 1200) msg = msg.slice(0, 1200) + '…';
   var ctx = where === undefined ? Crash.where() : where;
-  return 'Bronana 出了点意外（这一局可能已经不可靠了）。\n\n' +
+  /* ⚠ 这里**刻意不写引擎名也不写游戏名**（E3 第 3 小步）：这张卡是给**玩家**看的，
+     而玩家玩的是**某个工作区**（今天叫 Bronana）—— 引擎不认识它的名字。
+     E5 之后由工作区清单的 `displayName` 注入；在那之前用中性措辞，
+     比「引擎自称某个游戏」安全（门 `naming` 与那句「不要混了」要拆的就是后者）。 */
+  return '出了点意外（这一局可能已经不可靠了）。\n\n' +
     ctx + '\n触发点：' + from + '\n\n' + msg +
     '\n\n刷新页面即可继续（存档里的一局会从最近一个商店恢复）。' +
     '\n如果反复出现，请把上面这段信息报上来 —— 它比"游戏崩了"有用得多。';
@@ -67,7 +71,7 @@ Crash.describe = function (err, from, where) {
 Crash.report = function (err, from) {
   Crash.count++;
   Crash.last = String((err && (err.message || err)) || '') .slice(0, 200);
-  try { console.error('[Bronana] 运行时错误（' + (from || '?') + '）', err); } catch (e) { }
+  try { console.error('[Teapot] 运行时错误（' + (from || '?') + '）', err); } catch (e) { }
   if (Crash.shown) return false;
   Crash.shown = true;
   try {

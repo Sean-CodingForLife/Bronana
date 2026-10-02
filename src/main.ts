@@ -509,7 +509,7 @@ function selfCheckFailPage(err) {
   box.setAttribute('style',
     'position:fixed;inset:0;overflow:auto;background:#e8dcc0;color:#100d0c;' +
     'font:13px/1.6 ui-monospace,Consolas,monospace;padding:24px;white-space:pre-wrap;z-index:99999');
-  box.textContent = 'Bronana 启动自检未通过 —— 这是**代码里的表**有问题，不是你的操作。\n\n' +
+  box.textContent = 'Teapot 启动自检未通过 —— 这是**代码里的表**有问题，不是你的操作。\n\n' +
     String((err && err.message) || err) +
     '\n\n（修好之后刷新即可；跑 `pnpm test` 能看到同一批问题。）';
   document.body.appendChild(box);

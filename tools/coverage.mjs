@@ -46,7 +46,7 @@ function run(args, env) {
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of fs.readdirSync(OUT)) fs.rmSync(path.join(OUT, f), { recursive: true, force: true });
 
-console.log('\n=== Bronana · 真实覆盖率（V8 原生）===\n');
+console.log('\n=== Teapot · 真实覆盖率（V8 原生）===\n');
 console.log('  正在收集：不变量探针（' + RUNS + ' 局）+ 全套 45 套测试 …');
 
 const env = { NODE_V8_COVERAGE: OUT };

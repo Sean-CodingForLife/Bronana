@@ -35,7 +35,7 @@ const { Game, Curves, Economy, Music, ArtShaders, Challenges, Talents, Boons, It
 
 const PAD = (s, n) => { s = String(s); return s + ' '.repeat(Math.max(0, n - [...s].reduce((a, c) => a + (c.charCodeAt(0) > 127 ? 2 : 1), 0))); };
 
-console.log('\n=== Bronana · 声明 ↔ 运行时对账 ===\n');
+console.log('\n=== Teapot · 声明 ↔ 运行时对账 ===\n');
 console.log('  跑一局真实对局（同一个自动玩家），把每张表的读出口包一层计数器\n');
 
 /* ---------------- 1. 包计数器 ---------------- */

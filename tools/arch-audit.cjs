@@ -470,7 +470,7 @@ function main() {
     return;
   }
 
-  console.log('=== Bronana · 架构体检 ===\n');
+  console.log('=== Teapot · 架构体检 ===\n');
   console.log('[1] 模块规模与耦合（按代码行倒序）\n');
   console.log('  ' + '模块'.padEnd(16) + '行数'.padStart(6) + '代码行'.padStart(8) +
     '扇入'.padStart(6) + '扇出'.padStart(6) + '  依赖 →');

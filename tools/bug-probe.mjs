@@ -135,7 +135,7 @@ function makeRoundTrip(where) {
 }
 
 /* ---------------- 跑 ---------------- */
-console.log('\n=== Bronana · 不变量随机探针 ===');
+console.log('\n=== Teapot · 不变量随机探针 ===');
 console.log('  ' + RUNS + ' 局 · 每局最多 ' + MAX_WAVE + ' 波\n');
 
 const t0 = Date.now();

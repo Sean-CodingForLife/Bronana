@@ -76,7 +76,7 @@ if (fs.existsSync(BASELINE_FILE)) {
   try {
     baseline = JSON.parse(fs.readFileSync(BASELINE_FILE, 'utf8'));
   } catch (e) {
-    console.log('\n=== Bronana · 用词门（R53-B）===\n');
+    console.log('\n=== Teapot · 用词门（R53-B）===\n');
     console.log('  ✘ 基线文件坏了，读不出来：' + BASELINE_FILE);
     console.log('    ' + String(e.message).split('\n')[0]);
     console.log('  ⚠ **不许把它当成空基线继续跑** —— 那会把已登记的条目报成"新增"，方向正好反了。');
@@ -84,7 +84,7 @@ if (fs.existsSync(BASELINE_FILE)) {
     process.exit(1);
   }
   if (!Array.isArray(baseline.sameNamePairs) || !Array.isArray(baseline.idPairs)) {
-    console.log('\n=== Bronana · 用词门（R53-B）===\n');
+    console.log('\n=== Teapot · 用词门（R53-B）===\n');
     console.log('  ✘ 基线文件结构不对：`sameNamePairs` 与 `idPairs` 必须都是数组');
     process.exit(1);
   }
@@ -297,7 +297,7 @@ if (TermsRef) {
 /* =========================================================
    输出与判绿
    ========================================================= */
-console.log('\n=== Bronana · 用词门（R53-B）===\n');
+console.log('\n=== Teapot · 用词门（R53-B）===\n');
 console.log('[A] 跨表中文名唯一 —— 扫了 ' + tables.length + ' 张有名字的表（' +
   tables.reduce((n, t) => n + t.items.length, 0) + ' 条条目）');
 console.log('    同一个实体在两处出现（`refId` / 同 `id`）按**不是撞名**处理：' +

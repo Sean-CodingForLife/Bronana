@@ -111,7 +111,7 @@ const result = { truth: { modules: MODULES, suites: SUITES, gates: GATES, famili
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
-console.log('\n=== Bronana · 文档数字门 ===\n');
+console.log('\n=== Teapot · 文档数字门 ===\n');
 console.log('  真值（全部从清单算）：模块 ' + MODULES + ' · 套件 ' + SUITES + ' · 门 ' + GATES +
   ' · 家族 ' + (FAMILIES === null ? '(未取到)' : FAMILIES));
 console.log('  被检查的文档：' + DOCS.join(' · '));

@@ -86,7 +86,7 @@ const result = {
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(0); }
 
-console.log('\n=== Bronana · 文字面普查（R49 阶段 4 的前置数据）===\n');
+console.log('\n=== Teapot · 文字面普查（R49 阶段 4 的前置数据）===\n');
 console.log('  扫了 ' + files.length + ' 个模块的**字符串字面量**（注释不算 —— 注释里的中文不显示给玩家）');
 console.log('\n  【字符集】一共 ' + result.total + ' 个不同字符');
 console.log('    · 中日韩 + 全角标点：**' + result.cjk + '** 个');

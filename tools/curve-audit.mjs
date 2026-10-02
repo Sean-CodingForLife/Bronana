@@ -41,7 +41,7 @@ const argOf = (name) => {
   return (v && !v.startsWith('--')) ? v : null;
 };
 
-console.log('=== Bronana · 数值曲线体检 ===\n');
+console.log('=== Teapot · 数值曲线体检 ===\n');
 
 /* ---------------- 0. 表本身 ---------------- */
 const v = Curves.audit();

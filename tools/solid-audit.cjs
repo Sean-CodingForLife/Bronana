@@ -189,7 +189,7 @@ function lp_dip() {
 /* ---------- 输出 ---------- */
 const S = srp(), O = ocp(), I = isp(), LD = lp_dip();
 const WIDE = O.filter(r => r.n >= 4);
-console.log('\n=== Bronana · SOLID 体检 ===\n');
+console.log('\n=== Teapot · SOLID 体检 ===\n');
 
 console.log('[S] 单一职责 —— "接口大 **且** 依赖多"的模块（改一件事要动它）：' + S.length + ' 个');
 for (const r of S) console.log('    ' + r.file.padEnd(16) + '接口 ' + String(r.api).padStart(3) +

@@ -241,7 +241,7 @@ const rows = AXES.map(a => {
   return { axis: a, value: v, score: sc, err: err };
 });
 
-console.log('\n=== Bronana · 打分（规则可复现：阈值取自公开基准）===\n');
+console.log('\n=== Teapot · 打分（规则可复现：阈值取自公开基准）===\n');
 console.log('  数据源：' + (MATRIX.length ? MATRIX.length + ' 个矩阵分片 · ' + runs.length + ' 局'
   : '**没有矩阵数据** —— 需要跑局的那几条轴会报 `—`（缺数据不给分）') + '\n');
 

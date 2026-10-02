@@ -47,7 +47,7 @@ const line = (s) => console.log(s);
 const pad = (s, n) => { s = String(s); return s + ' '.repeat(Math.max(0, n - [...s].reduce((a, c) => a + (c.charCodeAt(0) > 127 ? 2 : 1), 0))); };
 const bytes = (b) => b >= 1048576 ? (b / 1048576).toFixed(2) + 'MB' : Math.round(b / 1024) + 'KB';
 
-line('\n=== Bronana · 美术资源体检 ===\n');
+line('\n=== Teapot · 美术资源体检 ===\n');
 
 /* ---------------- [1] 规范 ---------------- */
 Art.requireOwners = true;

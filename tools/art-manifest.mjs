@@ -250,7 +250,7 @@ if (CSV) {
 
 const PAD = (s, n) => { s = String(s); let w = 0; for (const c of s) w += c.charCodeAt(0) > 127 ? 2 : 1; return s + ' '.repeat(Math.max(0, n - w)); };
 
-console.log('\n=== Bronana · 美术素材清单（从代码里的数据表现枚举）===\n');
+console.log('\n=== Teapot · 美术素材清单（从代码里的数据表现枚举）===\n');
 console.log('  这份清单回答"要准备哪些图"，不是"怎么接入"（接入的先决条件见 README：');
 console.log('  项目现在**没有资源加载层**，全仓 0 处图片加载代码）。\n');
 

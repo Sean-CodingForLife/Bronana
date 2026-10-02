@@ -190,7 +190,7 @@ const result = {
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(conflicts.length ? 1 : 0); }
 
 /* ---------------- 人读输出 ---------------- */
-console.log('\n=== Bronana · 环境与并行会话 ===\n');
+console.log('\n=== Teapot · 环境与并行会话 ===\n');
 console.log('  仓库     ' + ROOT);
 console.log('  分支     ' + result.branch + ' @ ' + result.head);
 console.log('  开工标记 ' + (session === null

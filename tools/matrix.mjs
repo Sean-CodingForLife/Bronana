@@ -266,7 +266,7 @@ try {
   curveRows = C.checkpoint([1, 3, 6, 10, 15, 20, 25, 30, 39]);
 } catch (e) { curveRows = null; }
 
-console.log('\n=== Bronana · 矩阵体检 ===\n');
+console.log('\n=== Teapot · 矩阵体检 ===\n');
 console.log('  ' + runs.length + ' 局 · 每格 ' + SEEDS_SHOWN + ' 个种子 · 每局最多 ' + MAXWAVE_SHOWN + ' 波' +
   ' · 同一个 runIndex = 同一个世界\n');
 

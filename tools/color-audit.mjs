@@ -170,7 +170,7 @@ const result = {
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
-console.log('\n=== Bronana · 颜色门（A07）===\n');
+console.log('\n=== Teapot · 颜色门（A07）===\n');
 console.log('  `PAL` 键 ' + result.palKeys + ' 个 · 源码里的颜色字面量 ' + literalTotal.n +
   ' 处（' + result.filesWithLiterals + ' 个文件）');
 console.log('  判据：**同一个颜色值不许有第二个出处**（照抄 `PAL` / 跨文件各写一份）');

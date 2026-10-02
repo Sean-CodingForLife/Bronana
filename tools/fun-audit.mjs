@@ -32,7 +32,7 @@ const med = (arr) => { const a = arr.slice().sort((x, y) => x - y); return a.len
 const mean = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 const pct = (arr, p) => { const a = arr.slice().sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * p))] : 0; };
 
-console.log('\n=== Bronana · 对局体检（好不好玩的可测代理）===\n');
+console.log('\n=== Teapot · 对局体检（好不好玩的可测代理）===\n');
 console.log('  ' + RUNS + ' 局全自动对局（种子可复现 · 与探针同一个自动玩家）· 每局最多 ' + MAX_WAVE + ' 波\n');
 
 const t0 = Date.now();

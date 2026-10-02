@@ -58,7 +58,7 @@ function once() {
   return { lines: lines };
 }
 
-console.log('\n=== Bronana · 跨进程可复现性（同一份代码、同一个种子，跑 ' + N + ' 个独立进程）===\n');
+console.log('\n=== Teapot · 跨进程可复现性（同一份代码、同一个种子，跑 ' + N + ' 个独立进程）===\n');
 console.log('  判据：**同一份代码 + 同一个种子 ⇒ 结果必须逐字节相同**');
 console.log('  （这正是单跑一遍的指纹原理上看不见的那一类：Set/Map 迭代顺序、');
 console.log('    进程级哈希种子、未重置的模块状态、读时钟参与数值）\n');

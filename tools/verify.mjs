@@ -336,7 +336,7 @@ const results = [];
 const t0 = Date.now();
 
 if (!JSON_OUT) {
-  console.log('\n\x1b[1m=== Bronana · 全门验证 ===\x1b[0m' + (QUICK ? '  \x1b[33m(--quick：跳过慢门)\x1b[0m' : ''));
+  console.log('\n\x1b[1m=== Teapot · 全门验证 ===\x1b[0m' + (QUICK ? '  \x1b[33m(--quick：跳过慢门)\x1b[0m' : ''));
   console.log('');
 }
 

@@ -246,7 +246,7 @@ if (JSON_OUT) {
   process.exit(neverCalled.length || notWired.length || unknownCalls.length || badForward.length ? 1 : 0);
 }
 
-console.log('\n=== Bronana · 音效调用普查 ===\n');
+console.log('\n=== Teapot · 音效调用普查 ===\n');
 console.log('  回答一个问题：**该响的时候，有没有人真的去按那个按钮。**');
 console.log('  ⚠ 它不回答"声音真的出来了" —— 无头环境没有 `AudioContext`，那一条只能靠人听。\n');
 

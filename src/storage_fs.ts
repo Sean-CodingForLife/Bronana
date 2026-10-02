@@ -112,9 +112,11 @@ export function fileAdapter(opts: FileAdapterOptions): StorageAdapter {
   };
 }
 
-/** 默认的存档目录：`$BRONANA_HOME`，否则 `~/.bronana` */
+/** 默认的存档目录：`$TEAPOT_HOME`（**旧名 `$BRONANA_HOME` 仍然读** —— 改名兼容），否则 `~/.bronana`
+ *  ⚠ 目录名与「工作区的数据住哪」是 **E5** 的事（见 `docs/workspace-spec.md` §二/§三）：
+ *    今天这里只把**引擎自己的环境变量名**改对，同时保住旧名的可用性。 */
 export function defaultSaveDir(): string {
-  const home = process.env.BRONANA_HOME ||
+  const home = process.env.TEAPOT_HOME || process.env.BRONANA_HOME ||
     path.join(process.env.HOME || process.env.USERPROFILE || '.', '.bronana');
   return home;
 }

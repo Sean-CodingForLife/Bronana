@@ -301,7 +301,7 @@ console.log('\n[5] CLI：参数解析与报告');
 console.log('\n[6] CLI 入口：真起进程（退出码 + 输出）');
 {
   const help = runNode(['src/cli.ts', 'help']);
-  ok(help.status === 0 && /Bronana 命令行/.test(help.out), 'help 退出码 0 且打印用法',
+  ok(help.status === 0 && /Teapot 命令行/.test(help.out), 'help 退出码 0 且打印用法',
     String(help.status) + ' ' + help.err);
   const sim = runNode(['src/cli.ts', 'sim', '--seconds', '8', '--json']);
   ok(sim.status === 0, 'sim --json 退出码 0', String(sim.status) + ' ' + sim.out.slice(0, 200));

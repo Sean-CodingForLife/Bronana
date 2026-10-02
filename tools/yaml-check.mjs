@@ -456,7 +456,7 @@ function main() {
 
   const PAD = (s, n) => { s = String(s); let w = 0; for (const c of s) w += c.charCodeAt(0) > 127 ? 2 : 1; return s + ' '.repeat(Math.max(0, n - w)); };
 
-  console.log('\n=== Bronana · YAML 校验（GitHub 配置）===\n');
+  console.log('\n=== Teapot · YAML 校验（GitHub 配置）===\n');
   console.log('  支持的语法：');
   for (const s of SYNTAX) console.log('    · ' + s);
   console.log('  明确不支持（碰到就报错，不做"尽力而为"）：');

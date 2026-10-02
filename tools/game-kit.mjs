@@ -409,7 +409,7 @@ if (JSON_OUT) {
 }
 
 const PAD = (s, n) => { s = String(s); return s + ' '.repeat(Math.max(0, n - [...s].reduce((a, c) => a + (c.charCodeAt(0) > 127 ? 2 : 1), 0))); };
-console.log('\n=== Bronana · "一款游戏该有的东西"对照盘 ===\n');
+console.log('\n=== Teapot · "一款游戏该有的东西"对照盘 ===\n');
 console.log('  共 ' + rows.length + ' 项 · \x1b[32m已有 ' + ok.length + '\x1b[0m · ' +
   '\x1b[33m缺 ' + todo.length + '\x1b[0m · ' +
   '\x1b[36m有意不做 ' + deferred.length + '\x1b[0m\n');
