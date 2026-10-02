@@ -309,7 +309,7 @@ links: ["README.md", "../AGENTS.md"]
 
 **测试加载集**：`MODULES` 99 个键 · SIM 97 · RENDER 98 · UI 99 · 清单键（persist/arch）51 个
 
-## 六、文档体系 —— 46 份 `.md`
+## 六、文档体系 —— 47 份 `.md`
 
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
@@ -320,7 +320,7 @@ links: ["README.md", "../AGENTS.md"]
 | `README.md` | 门面 | 现行 | 1886 | —（分卷） |
 | `SECURITY.md` | 安全 | 现行 | 103 | —（分卷） |
 | `design/README.md` | 决定 | 现行 | 165 | —（分卷） |
-| `docs/README.md` | 门面 | 现行 | 49 | ✔ |
+| `docs/README.md` | 门面 | 现行 | 50 | ✔ |
 | `docs/editor-roadmap.md` | 决定 | 现行 | 77 | ✔ |
 | `docs/engine-first.md` | 决定 | 现行 | 213 | ✔ |
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
@@ -349,7 +349,8 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/history/20-引擎的模块.md` | 交付记录 | 现行 | 85 | —（分卷） |
 | `docs/history/21-无感知-宿主身份从清单来.md` | 交付记录 | 现行 | 50 | —（分卷） |
 | `docs/history/README.md` | 交付记录 | 现行 | 52 | —（分卷） |
-| `docs/requirements.md` | 需求账本 | 现行 | 4352 | ✔ |
+| `docs/render-architecture-options.md` | 决定 | 草案 | 108 | ✔ |
+| `docs/requirements.md` | 需求账本 | 现行 | 4369 | ✔ |
 | `docs/scaling-benchmarks.md` | 外部参考 | 现行 | 246 | ✔ |
 | `docs/scaling-isaac-gungeon.md` | 外部参考 | 现行 | 61 | ✔ |
 | `docs/scaling-ror2-vs-sts.md` | 外部参考 | 现行 | 154 | ✔ |
