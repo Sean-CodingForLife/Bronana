@@ -118,7 +118,7 @@ function seedBlobPath(x, rx, ry, seed, bump) {
       + Math.sin(t * 3 - seed * 2.3) * bump * 0.55
       + Math.sin(t * 5 + seed * 0.9) * bump * 0.3;
     var yy = 1;
-    // 底部略宽（豆豆坐地感）
+    // 底部略宽（**坐地感**：压住重心，不靠阴影）
     if (Math.cos(t) > 0) yy *= 1 + (Math.cos(t) * 0.06);
     pts.push([Math.cos(t) * rx * w, Math.sin(t) * ry * w * yy]);
   }
@@ -286,7 +286,7 @@ D.capsule = function (c, x0, y0, x1, y1, w, color, o) {
   if (st) x.restore();
 };
 
-/* ================= 面部（豆豆与怪物共用简化五官） ================= */
+/* ================= 面部（**通用简化五官**：由调用方给 style，本层不认识谁的脸） ================= */
 /**
  * 眼睛：默认"坚毅冷峻"半月眼
  * @param style: 'stern' | 'round' | 'angry' | 'dead' | 'dot' | 'none'

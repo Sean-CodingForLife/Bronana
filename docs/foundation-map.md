@@ -306,7 +306,7 @@ links: ["README.md", "../AGENTS.md"]
 | undefined | 表现与界面 | 5 | `render.ts` `ui.ts` `input.ts` `diag.ts` `crash.ts` |
 | undefined | 入口 | 4 | `main.ts` `cli.ts` `demo.ts` `storage_fs.ts` |
 
-**引擎 / 内容分类**（门 `engine-boundary`）：引擎 27 · 混合 4 · 显式内容 39 · 数据表 31 · **未认领 0**
+**引擎 / 内容分类**（门 `engine-boundary`）：引擎 28 · 混合 3 · 显式内容 39 · 数据表 31 · **未认领 0**
 
 **测试加载集**：`MODULES` 99 个键 · SIM 97 · RENDER 98 · UI 99 · 清单键（persist/arch）51 个
 

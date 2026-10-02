@@ -33,7 +33,7 @@ links: ["README.md", "foundation-map.md", "../AGENTS.md"]
 | 2 | 自研**命令链** | `package.json` **136** 条脚本 | 门 `drift` · 门 `doc-num` | ⚠ **14 条谁都跑不到**（§三.2） |
 | 3 | 自研**框架**（判据层） | **30** 道门 · **67** 套测试 · CI **35** 步 | 门自己 + `verify.mjs` 的 CI 对账（`ciDrift`） | ✅ 最厚的一类；缺"门 → 编译器"那一级（§四 P2） |
 | 4 | 自研**功能** | `Registry` 家族 **148** 个（**运行时算的**）· `Registry.family` 调用处 **159** · `SelfCheck.register` **67** | 门 `guards` · 门 `registry-drift` · `test/data-contract.mjs` | ✅ **已修（2026-10-02）**：账本里那处 `154/63` 已改成实测的 **159/67**（§三.3） |
-| 5 | 自研**模块** | `src/` **100** 个 · **9** 层 · 引擎 26 / 混合 4 / 内容 39 / 数据表 31 / **未认领 0** | 门 `audit` · 门 `guards` · 门 `registration` · 门 `engine-boundary` | ✅ 覆盖完整（"未认领 0"是上一批的战果，现在**被门锁住了**） |
+| 5 | 自研**模块** | `src/` **101** 个 · **9** 层 · 引擎 28 / 混合 3 / 内容 39 / 数据表 31 / **未认领 0**（出处：`node tools/engine-boundary.mjs` **现算**） | 门 `audit` · 门 `guards` · 门 `registration` · 门 `engine-boundary` | ✅ 覆盖完整。⚠ 数字从 100/26/4 变成 101/28/3 有两个原因：**banner+module 三个模块进了引擎档**（各自那一轮），以及 **E4 批次 2a 第一刀**把 `draw2d.ts` 从混合升为引擎 |
 | 6 | 自研**引擎** | 98 模块的同一条清单 + RHI 面 5 块 35 成员 | 门 `engine-boundary` · 门 `audit` · 门 `naming` | ❌ **缺"模块 / 插件的加载期契约"**：清单类型里声明了 `plugins.enabled`，**但加载器不存在**（§三.4） |
 
 ## 三、这一轮**算出来**的发现（不是凭印象）
