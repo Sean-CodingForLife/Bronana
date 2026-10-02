@@ -204,13 +204,19 @@ if (!Array.isArray(ops) || !ops.length) {
 
 /* ---------------- 工具 ---------------- */
 /** 读成 LF（**行尾不猜** —— 失败模式 3 的根治）。
- *  返回 { text, eol } 并在写回时恢复**原来的**行尾风格。 */
+ *  ⚠ **同一个文件被多个 op 碰到时，读的是内存里的工作副本**（见下面那段注释）——
+ *  否则"三个 op 改一个文件"会变成"只有最后一个生效"，而报告上说三项都成功。 */
 function readLF(file) {
   const p = path.resolve(ROOT, file);
+  if (ORIG.has(p)) return { p, text: WORK.get(p).text, eol: ORIG.get(p).eol };
   if (!fs.existsSync(p)) return { err: '文件不存在：' + file };
   const raw = fs.readFileSync(p, 'utf8');
   const crlf = raw.indexOf('\r\n') >= 0;
-  return { p, text: raw.replace(/\r\n/g, '\n'), eol: crlf ? '\r\n' : '\n' };
+  const text = raw.replace(/\r\n/g, '\n');
+  const eol = crlf ? '\r\n' : '\n';
+  ORIG.set(p, { text, eol });
+  WORK.set(p, { text, eol });
+  return { p, text, eol };
 }
 /* ⚠ **两阶段提交 · 第一半**（2026-10-02 修的真问题）：这里**不写盘**，只记下来。
    以前每个 op 成功就**立刻**写盘，而失败的 op 只 `failed++; continue;` ——
@@ -218,10 +224,15 @@ function readLF(file) {
    实测：一份 op1 合法 + op2 锚点不命中的 patch 跑完，**文件已被改坏**，
    而工具打印的是「失败不写盘」—— 把「保证说了 A、实际做 B」演了一遍。
    现在：全部 op 先在内存里跑，**任何一个失败 ⇒ 一个字节都不写**（见循环之后的第二半）。 */
-const PENDING = [];
-function writeBack(r) {
-  PENDING.push(r);
-}
+/* ⚠ **第二次修（同一天）· 同一个文件里的多个 op**：两阶段提交本身带来一个新洞 ——
+   每个 op 都从**磁盘**读一遍（循环期间没人写盘），于是"同一个文件的两个 op"各自算出的
+   都是"原始文本 + 自己那处改动"，**最后一次写盘把前面的一起覆盖掉**，而工具报告"各项成功"。
+   实测：一份 7 个 op、其中 4 个落在 `AGENTS.md` 上的 patch，**只有最后一个生效，前三个静默丢失**
+   （是门 `doc-num` 变红才发现的 —— 也就是说"静默丢改动"这类错误连工具自己都不会叫）。
+   现在改成**内存工作副本**：`ORIG` 是磁盘原样、`WORK` 是当前值；op 从 `WORK` 读、结果写回 `WORK`；
+   **只有全部 op 都成功时才把 `WORK` 落盘**。两条性质同时成立：**累积生效** + **失败一个字节都不写**。 */
+const ORIG = new Map();   /* 绝对路径 → { text, eol }：**磁盘原样** */
+const WORK = new Map();   /* 绝对路径 → { text, eol }：**内存里的当前值** */
 /** 一行是不是注释（**失败模式 6 的根治**） */
 function isCommentLine(line) {
   const s = line.trimStart();
@@ -437,15 +448,19 @@ for (const op of ops) {
     report.push({ ok: false, file, op: kind, why: '**算完了但文本没变** —— 是不是 to 与 from 一样？', note });
     failed++; continue;
   }
-  if (!DRY) writeBack({ ...r, text: next });
+  WORK.get(r.p).text = next;   /* **累积**：下一个碰到这个文件的 op 读到的就是它 */
   report.push({ ok: true, file, op: kind, note, bytes: next.length - before.length, dry: DRY, hits: hitsInfo.slice(0, MAX_SHOWN_HITS) });
 }
 
 /* ---------------- 报告 ---------------- */
 /* ⚠ **两阶段提交 · 第二半**：只有**全部** op 都成功才写盘 ——
-   这才对得起文件头那句「失败一律不写盘」。失败时 `PENDING` 直接丢掉（内存里那点改动不影响磁盘）。 */
-if (!failed) {
-  for (const r of PENDING) fs.writeFileSync(r.p, r.text.replace(/\n/g, r.eol === '\r\n' ? '\r\n' : '\n'), 'utf8');
+   这才对得起文件头那句「失败一律不写盘」。失败时 `WORK` 直接丢掉（内存里那点改动不影响磁盘）。
+   写盘是**按文件**做的（`WORK` 已经累积了同一个文件上的所有改动），而且**没动过的文件不重写**。 */
+if (!failed && !DRY) {
+  for (const [p, w] of WORK) {
+    if (w.text === ORIG.get(p).text) continue;
+    fs.writeFileSync(p, w.text.replace(/\n/g, w.eol === '\r\n' ? '\r\n' : '\n'), 'utf8');
+  }
 }
 
 if (JSON_OUT) {

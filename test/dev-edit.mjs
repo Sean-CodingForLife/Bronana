@@ -252,6 +252,28 @@ T.section('10. **P3**：replaceAll 前缀碰撞 ⇒ 默认拒绝（就是那次�
     '多处命中时**每一处的行号都报出来**（以前只说"命中 2 处"，看不见改到了哪）');
 }
 
+/* ---------------- 11. 同一个文件里的多个 op 必须**累积**生效 ---------------- */
+/*
+  这是"两阶段提交"自己带出来的洞：每个 op 都从**磁盘**读，于是同一个文件上的多个 op
+  各自算出的都是"原始文本 + 自己那处改动"，**最后一次写盘把前面的一起覆盖掉**，
+  而报告上三项都写"成功"。实测：一份 7 个 op、其中 4 个落在同一个文件上的 patch，
+  **只有最后一个生效** —— 是门 `doc-num` 变红才发现的（工具自己**不会叫**）。
+  下面这条断言守两件事：**累积生效** · **报告的成功项数 == 真正生效的改动数**。
+*/
+T.section('11. 同一个文件里的多个 op **累积**生效（不是最后一个覆盖前几个）');
+{
+  const p = mk('multi.ts', 'var one = 1;\nvar two = 2;\nvar three = 3;\n');
+  const r = run({ ops: [
+    { op: 'replace', file: rel(p), from: 'var one = 1;', to: 'var one = 10;' },
+    { op: 'replace', file: rel(p), from: 'var two = 2;', to: 'var two = 20;' },
+    { op: 'insertAfter', file: rel(p), anchor: 'var three = 3;', text: 'var four = 4;' }
+  ] });
+  T.eq(r.code, 0, '三个 op 都成功 ⇒ 退出码 0');
+  T.eq(read(p), 'var one = 10;\nvar two = 20;\nvar three = 3;\nvar four = 4;\n',
+    '**三处改动都在**（修之前同一个文件只剩最后一个 op 生效 —— **静默丢改动**）');
+  T.eq(r.out && r.out.report.length, 3, '报告里也是三项（不是"报了三项、只落了一项"）');
+}
+
 /* ---------------- 清理 ---------------- */
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* 无所谓 */ }
 

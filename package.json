@@ -44,6 +44,7 @@
     "test:audio": "node test/audio.mjs",
     "art": "node tools/art-audit.mjs",
     "color:audit": "node tools/color-audit.mjs",
+    "registration:audit": "node tools/registration-audit.mjs",
     "test:curves": "node test/curves.mjs",
     "test:persist": "node test/persist.mjs",
     "test:profile": "node test/profile.mjs",
