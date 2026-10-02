@@ -26,6 +26,7 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import srcFiles from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -222,10 +223,15 @@ const DATA_TABLES = [
   'craft.ts', 'camp.ts', 'market.ts'
 ];
 
-/* ---------------- 读源码 ---------------- */
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+/* ---------------- 读源码（**跨根**） ----------------
+   ⚠ E4 批次 1：分类表用的是**裸名**（`game.ts`），所以键按 base 建；
+   但**读字节必须用 abs** —— 搬家之后文件在第二个根（或子目录）里，
+   拿裸名拼回 `src/` 会读不到，而读不到的表现是"分类表里全是幽灵条目"或"看着干净"。
+   这一条与门 `registration` 的覆盖判据共用同一个扫描器，不许各扫各的。 */
+const entries = srcFiles.entries().filter(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
+const files = entries.map(m => m.base);
 const source = {};
-for (const f of files) source[f] = fs.readFileSync(path.join(SRC, f), 'utf8');
+for (const m of entries) source[m.base] = fs.readFileSync(m.abs, 'utf8');
 
 /** 取一个模块 import 的**同目录模块名**（相对 import） */
 function importsOf(text) {

@@ -11,6 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { installDom } from './_ctx.mjs';
 import { loadAll, SIM_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：走共享扫描器（它再转发 tools/roots.cjs）。
+   下面每一处都**读 abs**，不拿裸名拼回 src/ —— 搬家之后那样会读漏（"校验没坏，只是读漏了"）。 */
+import srcFiles from '../tools/src-files.cjs';
+const modEntries = () => srcFiles.entries().filter(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts');
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 installDom();
@@ -267,12 +271,12 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
     /* 引擎地基的两条系统（R51）：都是"只挂函数与表的命名空间对象"。 */
     'World', 'Objects'];
 
-  const files = fs.readdirSync(path.join(ROOT, 'src'))
-    .filter(f => f.endsWith('.ts') && f !== 'types.d.ts' && f !== 'cli.ts');
+  const files = modEntries().filter(m => m.base !== 'cli.ts');
   const unexpected = [];
   let mutableCount = 0, constCount = 0;
-  for (const f of files) {
-    const src = readSrc(f);
+  for (const m of files) {
+    const f = m.base;
+    const src = fs.readFileSync(m.abs, 'utf8');
     const allow = ALLOWED[f] || [];
     for (const n of topLevelVars(src)) {
       if (API_CONTAINERS.indexOf(n) >= 0) continue;
@@ -304,10 +308,11 @@ console.log('[1] 全局状态盘点：模块级可变状态必须在清单里');
 
   // ESM 纪律：应用不得往 window 上挂东西
   const globals = [];
-  for (const f of files) {
-    const src = readSrc(f);
-    for (const m of src.matchAll(/(?:window|globalThis)\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) {
-      globals.push(f + '.' + m[1]);
+  for (const m of files) {
+    const f = m.base;
+    const src = fs.readFileSync(m.abs, 'utf8');
+    for (const mm of src.matchAll(/(?:window|globalThis)\.([A-Za-z_$][\w$]*)\s*=[^=]/g)) {
+      globals.push(f + '.' + mm[1]);
     }
   }
   ok(globals.length === 0, '没有任何模块往 window / globalThis 上挂全局（ESM 化之后只留 __still / __diag）',
@@ -325,12 +330,13 @@ console.log('\n[2] 公共常量：可调数值有没有重复定义 / 漂移');
   // main.ts 是浏览器入口、cli.ts 是 Node 入口：都刻意不被测试加载（导入即执行副作用），
   // 其余每个模块都必须被加载到，漏一个就等于没测
   const ENTRIES = ['main.ts', 'cli.ts'];
-  const filesOnDisk = fs.readdirSync(path.join(ROOT, 'src'))
-    .filter(f => f.endsWith('.ts') && f !== 'types.d.ts' && ENTRIES.indexOf(f) < 0);
+  const filesOnDisk = modEntries().map(m => m.base).filter(f => ENTRIES.indexOf(f) < 0);
   const notLoaded = filesOnDisk.filter(f => modsInLoader.indexOf(f) < 0);
   ok(notLoaded.length === 0, '测试加载器覆盖了全部 ' + filesOnDisk.length + ' 个非入口模块（漏一个就没被测到）',
     notLoaded.join(','));
-  const phantom = modsInLoader.filter(f => !fs.existsSync(path.join(ROOT, 'src', f)));
+  const present = {};
+  for (const m of modEntries()) present[m.base] = true;
+  const phantom = modsInLoader.filter(f => !present[f]);
   ok(phantom.length === 0, '加载器里没有指向不存在文件的条目', phantom.join(','));
 
   ok(g.Emit.VIS_CAP === 420 && g.Emit.TEXT_CAP === 28,
@@ -455,8 +461,9 @@ console.log('\n[2c] any 预算：类型漏洞不许长回来');
   const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const over = [];
   let total = 0;
-  for (const f of fs.readdirSync(srcDir).filter(x => x.endsWith('.ts') && x !== 'types.d.ts')) {
-    const code = stripComments(fs.readFileSync(path.join(srcDir, f), 'utf8'));
+  for (const m of modEntries()) {
+    const f = m.base;
+    const code = stripComments(fs.readFileSync(m.abs, 'utf8'));
     const n = [...code.matchAll(/:\s*any\b|as any\b/g)].length;
     total += n;
     const cap = BUDGET[f] === undefined ? 0 : BUDGET[f];
@@ -501,10 +508,10 @@ console.log('\n[2d] 启动期自检：写了 audit 就得登记');
         '代价是「没人替我们记得跑它」—— test/skill.mjs 有一条判据盯着 boot 里那两行的顺序。'
   };
   const srcDir = path.join(ROOT, 'src');
-  const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && f !== 'types.d.ts');
   const hasAudit = [];
-  for (const f of files) {
-    const code = fs.readFileSync(path.join(srcDir, f), 'utf8');
+  for (const m of modEntries()) {
+    const f = m.base;
+    const code = fs.readFileSync(m.abs, 'utf8');
     /* 定义期表检查的形态：**零参数**的 `X.audit = function ()`（或 scene 的 validate） */
     if (/\.audit\s*=\s*function\s*\(\s*\)/.test(code) || /\.validate\s*=\s*function\s*\(\s*\)/.test(code)) {
       hasAudit.push(f);
@@ -512,10 +519,11 @@ console.log('\n[2d] 启动期自检：写了 audit 就得登记');
   }
   const registered = new Set(SC.names());
   const byModule = {};
-  for (const f of files) {
-    const code = fs.readFileSync(path.join(srcDir, f), 'utf8');
-    const m = [...code.matchAll(/SelfCheck\.register\(\s*'([\w]+)'/g)].map(x => x[1]);
-    if (m.length) byModule[f] = m;
+  for (const m of modEntries()) {
+    const f = m.base;
+    const code = fs.readFileSync(m.abs, 'utf8');
+    const names = [...code.matchAll(/SelfCheck\.register\(\s*'([\w]+)'/g)].map(x => x[1]);
+    if (names.length) byModule[f] = names;
   }
   const noReg = hasAudit.filter(f => {
     if (NOT_TABLE_CHECK[f]) return false;

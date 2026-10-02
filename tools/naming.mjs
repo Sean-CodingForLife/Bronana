@@ -52,6 +52,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天它们会
+   **静默少看一半模块**（门照样全绿）。统一走共享扫描器；源码用 sources()，**只改这一行**。 */
+import srcScan from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -136,7 +139,8 @@ for (const mod of Object.keys(DEBT)) {
 }
 
 /* ---------------- 判据 2：**文件名不许带内容名**（这一条当场生效，无需欠账） ---------------- */
-const badNames = fs.readdirSync(SRC)
+const badNames = srcScan.entries()
+  .map(m => m.base)
   .filter(f => /bronana/i.test(f))
   .filter(f => engineModules.includes(f))
   .map(f => ({ file: f, why: '它在引擎模块清单里，而文件名带内容名' }));

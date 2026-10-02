@@ -29,6 +29,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天它们会
+   **静默少看一半模块**（门照样全绿）。统一走共享扫描器；源码用 sources()，**只改这一行**。 */
+import srcScan from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -71,7 +74,7 @@ const ALLOW_FILES = {
 };
 
 /* ---------------- 扫源码 ---------------- */
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts') && f !== 'utils.ts');
+const files = srcScan.sources(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts') && m.base !== 'utils.ts');
 /* 六位与三位十六进制、带 `#`、在引号里（只认字符串字面量：变量名 / 注释不算） */
 const HEX = /'#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})'|"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})"/g;
 
@@ -80,8 +83,7 @@ const notes = [];
 const byHex = {};      // 值 → [{file,line}]
 const literalTotal = { n: 0 };
 
-for (const f of files) {
-  const text = fs.readFileSync(path.join(SRC, f), 'utf8');
+for (const { base: f, code: text } of files) {
   const lines = text.split('\n');
   lines.forEach((line, i) => {
     /* 去掉行注释，避免把注释里的示例色算进来（历史叙述里会写 `#100d0c`） */

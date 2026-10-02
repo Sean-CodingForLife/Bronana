@@ -24,6 +24,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天它们会
+   **静默少看一半模块**（门照样全绿）。统一走共享扫描器；源码用 sources()，**只改这一行**。 */
+import srcScan from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const HAS_CJK = /[\u4e00-\u9fff]/;
@@ -59,9 +62,9 @@ function fromHtml() {
 function fromSrc() {
   const dir = path.join(ROOT, 'src');
   const out = [];
-  for (const f of fs.readdirSync(dir)) {
+  for (const { base: f, code } of srcScan.sources()) {
     if (!f.endsWith('.ts') || f === 'types.d.ts') continue;
-    let s = fs.readFileSync(path.join(dir, f), 'utf8');
+    let s = code;
     s = s.replace(/\/\*[\s\S]*?\*\//g, '');           // 块注释不算文案
     const lines = s.split('\n');
     for (let i = 0; i < lines.length; i++) {

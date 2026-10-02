@@ -29,9 +29,12 @@ const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'src');
 const STRICT = process.argv.indexOf('--strict') >= 0;
 
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && f !== 'types.d.ts').sort();
+/* ⚠ **跨根**（E4 批次 1）：同一类"只扫 src/ 就会静默读漏"的地方，统一走共享扫描器 */
+const srcScan = require('./src-files.cjs');
+const entries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts');
+const files = entries.map(m => m.base).sort();
 const srcOf = {};
-for (const f of files) srcOf[f] = fs.readFileSync(path.join(SRC, f), 'utf8');
+for (const m of entries) srcOf[m.base] = fs.readFileSync(m.abs, 'utf8');
 const typesSrc = fs.readFileSync(path.join(SRC, 'types.d.ts'), 'utf8');
 
 /* ---------- S：单一职责（外部接口有多大 + 依赖有多少） ---------- */

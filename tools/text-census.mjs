@@ -18,6 +18,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天它们会
+   **静默少看一半模块**（门照样全绿）。统一走共享扫描器；源码用 sources()，**只改这一行**。 */
+import srcScan from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'src');
@@ -38,10 +41,10 @@ function stripComments(src) {
 
 const chars = new Map();      // 字符 → 出现次数
 const emojis = new Map();     // emoji → 出现次数
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+const files = srcScan.sources(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
 
-for (const f of files) {
-  const src = stripComments(fs.readFileSync(path.join(SRC, f), 'utf8'));
+for (const { base: f, code } of files) {
+  const src = stripComments(code);
   for (const m of src.matchAll(/'([^'\\\n]*)'|"([^"\\\n]*)"|`([^`\\]*)`/g)) {
     const s = m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
     if (!s) continue;
@@ -56,8 +59,8 @@ for (const f of files) {
 
 /* ---------------- 字号档：`D.text(...)` 的 size 实参 ---------------- */
 const sizes = new Map();
-for (const f of files) {
-  const src = stripComments(fs.readFileSync(path.join(SRC, f), 'utf8'));
+for (const { base: f, code } of files) {
+  const src = stripComments(code);
   /* 形状：D.text(目标, 串, x, y, <size>, ...) —— 只认字面量数字 */
   for (const m of src.matchAll(/D\.text\([^,]+,[^,]+,[^,]+,[^,]+,\s*(\d+(?:\.\d+)?)\s*,/g)) {
     const v = Number(m[1]);

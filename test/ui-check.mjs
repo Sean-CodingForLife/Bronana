@@ -8,6 +8,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES, RENDER_MODULES, UI_MODULES } from './_load.mjs';
+/* ⚠ 跨根枚举（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天会静默读漏 */
+import srcFiles from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -48,13 +50,20 @@ ok(/<link[^>]*href="styles\.css"/.test(html) && fs.existsSync(path.join(ROOT, 's
    旧写法是"手写 <script> 顺序"，顺序错了才炸；现在由 import 决定顺序，
    但循环导入同样会让初始化顺序变得不可预测，所以这里把图本身测掉。
    ========================================================= */
+/* ⚠ **跨根**（E4 批次 1）：枚举走共享扫描器、读字节用 abs。
+   依赖名按**该文件所在目录**解析（`./x.ts` 对第二根 / 子目录同样成立）——
+   旧写法假定"全在 src/ 平铺"，搬家之后那条边会被**静默丢掉**（图少一条边 = 走漏一个环）。 */
 const srcDir = path.join(ROOT, 'src');
-const modFiles = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+const entries = srcFiles.entries().filter(m => !m.rel.endsWith('.d.ts'));
+const modFiles = entries.map(m => m.base);
 const graph = {};
-for (const f of modFiles) {
-  const code = fs.readFileSync(path.join(srcDir, f), 'utf8');
-  graph[f] = [...code.matchAll(/^import\s[^'"]*from\s*'\.\/([^']+)'/gm)]
-    .map(m => m[1]).filter(t => modFiles.indexOf(t) >= 0);
+for (const e of entries) {
+  const code = fs.readFileSync(e.abs, 'utf8');
+  graph[e.base] = [...code.matchAll(/^import\s[^'"]*from\s*'([^']+)'/gm)]
+    .map(m => m[1])
+    .filter(t => t.charAt(0) === '.')
+    .map(t => path.posix.basename(t))
+    .filter(t => modFiles.indexOf(t) >= 0);
 }
 
 const cycles = [];
@@ -145,9 +154,8 @@ ok(cliGraph.indexOf('render.ts') < 0 && cliGraph.indexOf('ui.ts') < 0,
    历史 bug：HTML 改成 id 后 CSS 仍写类选择器 → 样式整条失效
    ========================================================= */
 const cssSrc = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
-const jsAll = fs.readdirSync(path.join(ROOT, 'src'))
-  .filter(f => f.endsWith('.ts'))
-  .map(f => fs.readFileSync(path.join(ROOT, 'src', f), 'utf8')).join('\n');
+const jsAll = srcFiles.entries().filter(m => m.rel.endsWith('.ts'))
+  .map(e => fs.readFileSync(e.abs, 'utf8')).join('\n');
 
 // 从 CSS 中提取选择器里的 #id 与 .class（跳过属性/伪类等）
 const cssIds = new Set([...cssSrc.matchAll(/(^|[\s,>+~(])#([A-Za-z][\w-]*)/g)].map(m => m[2]));

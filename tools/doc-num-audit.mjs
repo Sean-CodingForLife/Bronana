@@ -21,6 +21,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
+/* ⚠ **跨根枚举**（E4 批次 1）：模块数的"真值"必须从**全部根**的清单算 */
+import srcScan from './src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const JSON_OUT = process.argv.includes('--json');
@@ -30,7 +32,10 @@ const suitesMod = await import(pathToFileURL(path.join(ROOT, 'test', 'suites.mjs
 const SUITES = suitesMod.SUITES.length;
 const verifySrc = fs.readFileSync(path.join(ROOT, 'tools', 'verify.mjs'), 'utf8');
 const GATES = (verifySrc.match(/GATES\s*=\s*\[([\s\S]*?)\n\];/)[1].match(/id:\s*'/g) || []).length;
-const srcFiles = fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+/* ⚠ **跨根**（E4 批次 1）：模块数从**全部根**的清单算 —— 只数 src/ 的话，
+   搬家那天这个"真值"会**静默变小**，而文档里的数字跟着一起错。 */
+const srcEntries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
+const srcFiles = srcEntries.map(m => m.base);
 const MODULES = srcFiles.length;
 /* 家族数要**加载之后**才准 —— 走与 `test/_load.mjs` 同一条路 */
 let FAMILIES = null;

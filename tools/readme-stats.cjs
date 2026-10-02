@@ -24,12 +24,15 @@ const SRC = path.join(ROOT, 'src');
 const CHECK = process.argv.indexOf('--check') >= 0;
 
 /* ---- 1. 数文件 ---- */
-const files = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && f !== 'types.d.ts');
+/* ⚠ **跨根**（E4 批次 1）：存量表里那个"模块数"必须从**全部根**算 */
+const srcScan = require('./src-files.cjs');
+const entries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts');
+const files = entries.map(m => m.base).sort();
 let total = 0;
 const rows = [];
-for (const f of files) {
-  const n = fs.readFileSync(path.join(SRC, f), 'utf8').split('\n').length;
-  total += n; rows.push([f, n]);
+for (const m of entries) {
+  const n = fs.readFileSync(m.abs, 'utf8').split('\n').length;
+  total += n; rows.push([m.base, n]);
 }
 rows.sort((a, b) => b[1] - a[1]);
 const dts = fs.readFileSync(path.join(SRC, 'types.d.ts'), 'utf8').split('\n').length;

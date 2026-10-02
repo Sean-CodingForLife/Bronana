@@ -26,6 +26,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：全仓二十多处各自 readdirSync('src') —— 搬家那天它们会
+   **静默少看一半模块**（门照样全绿）。统一走共享扫描器；源码用 sources()，**只改这一行**。 */
+import srcScan from './src-files.cjs';
 import { installDom } from '../test/_ctx.mjs';
 import { loadAll, UI_MODULES } from '../test/_load.mjs';
 
@@ -216,11 +219,11 @@ const ALIAS_WORDS = TermsRef ? TermsRef.ALIAS.map(a => a.word) : [];
 /** 别名域：`文件 → 该文件里允许的别名词`（**只豁免列出来的词**，别的弃用词照样红） */
 const aliasDomain = new Map();
 if (TermsRef) for (const d of (TermsRef.ALIAS_DOMAIN || [])) aliasDomain.set(d.file, new Set(d.words));
-const srcFiles = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+const srcEntries = srcScan.sources(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
 
 const retiredHits = [];
 const aliasKept = [];
-for (const f of srcFiles) {
+for (const { base: f, code } of srcEntries) {
   const lines = codeLinesOf(fs.readFileSync(path.join(SRC, f), 'utf8'));
   lines.forEach((code, i) => {
     /* 只认**单 / 双引号**：反引号在本仓库大量用于"文档里的代码片段"，

@@ -227,11 +227,11 @@ links: ["README.md", "../AGENTS.md"]
 | `registry-drift.mjs` | 门 | 门 `drift` · 脚本 `drift` · `tools/eol-audit.mjs` · `tools/verify.mjs` |  |
 | `rename-bronana.cjs` | 声明表 | `tools/oneoff/rename-doudou.cjs` |  |
 | `rename-inventory.mjs` | 普查 / 其他 | 脚本 `rename:inventory` |  |
-| `roots.cjs` | 声明表 | `tools/src-files.cjs` | ✔ |
+| `roots.cjs` | 声明表 | `tools/_tables.mjs` · `tools/src-files.cjs` | ✔ |
 | `run-suites.cjs` | 声明表 | 脚本 `suites` |  |
 | `score.mjs` | 普查 / 其他 | 脚本 `score` · `tools/registry-drift.mjs` |  |
 | `solid-audit.cjs` | 门 | 门 `solid` · 脚本 `solid` · `tools/verify.mjs` |  |
-| `src-files.cjs` | 声明表 | `tools/arch-audit.cjs` · `tools/audio-census.mjs` · `tools/foundation-map.mjs` · `tools/game-kit.mjs` · `tools/guard-gaps.mjs` |  |
+| `src-files.cjs` | 声明表 | `tools/_tables.mjs` · `tools/arch-audit.cjs` · `tools/audio-census.mjs` · `tools/color-audit.mjs` · `tools/doc-num-audit.mjs` · `tools/engine-boundary.mjs` · `tools/extract-ui-text.mjs` · `tools/foundation-map.mjs` · `tools/game-kit.mjs` · `tools/guard-gaps.mjs` · `tools/hardcode-audit.cjs` · `tools/name-audit.mjs` · `tools/naming.mjs` · `tools/readme-stats.cjs` · `tools/solid-audit.cjs` · `tools/text-census.mjs` |  |
 | `systems.cjs` | 声明表 | `tools/_tables.mjs` · `tools/arch-audit.cjs` · `tools/banner-audit.mjs` · `tools/engine-boundary.mjs` · `tools/foundation-map.mjs` · `tools/guard-gaps.mjs` · `tools/registration-audit.mjs` · `tools/src-files.cjs` · `tools/test-for.mjs` · `tools/verify.mjs` · `tools/workspace-audit.mjs` |  |
 | `test-for.mjs` | 普查 / 其他 | 脚本 `test:for` |  |
 | `text-census.mjs` | 普查 / 其他 | 脚本 `text:census` |  |

@@ -45,13 +45,15 @@ const BASELINE = { sameFile: 3, crossFile: 0, formatRecipe: 0 };
    同一个数字出现几十次是正常的，把它算进"重复"只会淹没真正的信号。 */
 const RENDER = /^(sprites|render|draw2d|art_[a-z]+)\.ts$/;
 
-const files = fs.readdirSync(SRC)
-  .filter(f => f.endsWith('.ts') && f !== 'types.d.ts')
-  .sort();
+/* ⚠ **跨根**（E4 批次 1）：枚举走共享扫描器（搬家那天只扫 src/ 会**静默漏掉一半模块**）；
+   读取用 abs —— 旧写法拿裸名拼回 src/，第二个根 / 子目录里会读不到。 */
+const srcScan = require('./src-files.cjs');
+const entries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts');
+const files = entries.map(m => m.base).sort();
 
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 const srcOf = {};
-for (const f of files) srcOf[f] = strip(fs.readFileSync(path.join(SRC, f), 'utf8'));
+for (const m of entries) srcOf[m.base] = strip(fs.readFileSync(m.abs, 'utf8'));
 const lineOf = (src, i) => src.slice(0, i).split('\n').length;
 
 /* ---- [A] 同一文件里重复 >=3 次的算术表达式 ---- */

@@ -53,6 +53,18 @@ function entries() { return roots.list(); }
 /** 模块路径（**相对各自那个根**，排序）—— 既有调用方要的就是这个 */
 function list() { return entries().map((m) => m.rel).sort(); }
 
+/**
+ * 全部模块的**源码**（跨根）：`[{ base, rel, abs, root, code }]`。
+ * 文本类审计用这个 —— **只改循环头**：
+ *   `for (const { base: f, code: src } of srcScan.sources(pred)) { … }`
+ * 循环体一个字都不用动。于是"搬家"在这些工具里只发生**一次**，而且看得见。
+ * @param {(m: {rel: string, base: string}) => boolean} [pred] 过滤（默认全要）
+ */
+function sources(pred) {
+  return entries().filter(pred || (() => true))
+    .map((m) => ({ base: m.base, rel: m.rel, abs: m.abs, root: m.root, code: fs.readFileSync(m.abs, 'utf8') }));
+}
+
 /** 任意深度的路径 → 模块名（与分层表同一种写法） */
 function relName(rel) { return rel.split('/').pop(); }
 
@@ -90,4 +102,4 @@ function parity(systems) {
   return { ok: problems.length === 0, problems, files, declared };
 }
 
-module.exports = { SRC, ROOT, list, entries, rootsAll, relName, parity, UNAFFILIATED };
+module.exports = { SRC, ROOT, list, entries, sources, rootsAll, relName, parity, UNAFFILIATED };

@@ -55,9 +55,13 @@ export const tsIn = (text) => [...String(text).matchAll(/'([A-Za-z0-9_.\-]+\.ts)
 /** 块里所有 `'bare'` 形状的名字 */
 export const bareIn = (text) => [...String(text).matchAll(/'([A-Za-z0-9_]+)'/g)].map((m) => m[1]);
 
-/** 盘上 `src/` 的模块（`types.d.ts` 不是模块 —— 它是全仓的类型声明） */
+/** 盘上的模块（**跨根**：引擎 src/ + 各工作区内容根；`types.d.ts` 不是模块 —— 它是全仓的类型声明）
+ *  ⚠ E4 批次 1：**只扫 src/ 的写法在搬家那天会静默少看一半模块**（门照样全绿，因为它没看见）——
+ *    统一走共享扫描器 `src-files.cjs`（它再转发 `roots.cjs`）。 */
 export function diskModules() {
-  return fs.readdirSync(path.join(ROOT, 'src'))
+  const require = createRequire(import.meta.url);
+  const srcFiles = require('./src-files.cjs');
+  return srcFiles.list()
     .filter((f) => f.endsWith('.ts') && f !== 'types.d.ts').sort();
 }
 
