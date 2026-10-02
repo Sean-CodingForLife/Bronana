@@ -28,12 +28,12 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 | --- | --- | --- |
 | 运行时依赖 | **零**（`dependencies` 为空） | 这是**设计约束**，不是巧合。加之前必须先讨论 |
 | 素材文件 | **零**（无 `public/`、无 `assets/`） | 全部画面**程序化绘制**。擅自引入图片会牵动测试链路与调色板 |
-| 代码规模 | `src/` 98 个模块 · 约 4.53 万行（另 `types.d.ts` 约 5.5 千行） | 是一个真项目，不是玩具，改动要按工程规矩来 |
+| 代码规模 | `src/` 100 个模块 · 约 4.62 万行（另 `types.d.ts` 约 5.5 千行） | 是一个真项目，不是玩具，改动要按工程规矩来 |
 | 模块格式 | 真 `import` / `export`（无 IIFE、无 `window.X`） | 依赖图能被静态校验，测试能直接 `import src/*.ts` |
 | Node | **24+**（原生类型擦除直接跑 `.ts`，不经打包器） | 不需要"先编译再跑" |
 | 包管理 | **pnpm 12.5.1**（`packageManager` 字段是唯一出处） | 不是 npm；`node_modules` 是链接布局 |
 | 测试 | **67 套无头测试**（清单唯一出处：`test/suites.mjs`） | 全在 Node 里跑，没有真浏览器 |
-| 验收门 | **29 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
+| 验收门 | **30 道**（清单唯一出处：`tools/verify.mjs` 的 `GATES`） | "改对了" = 这些门全绿 |
 
 三种运行形态共用同一份 `src/`：**web**（Vite）、**cli**（无头 `sim` / 静态 `serve`）、**desktop**（Electron 外壳）。
 
@@ -44,9 +44,9 @@ links: ["CONTRIBUTING.md", "docs/requirements.md", "docs/README.md"]
 ```bash
 pnpm i                 # 装依赖（只有 4 个 devDependencies）
 
-pnpm verify --list     # **先跑这个**：列出 29 道门、每道在挡什么
+pnpm verify --list     # **先跑这个**：列出 30 道门、每道在挡什么
 pnpm verify --quick    # **改一次就跑它**（约 20 秒）：跳过测试套件，并明说跳了什么
-pnpm verify            # **一阶段结束才跑**（约 220~250 秒）：全部 29 道门 → 然后才提交 + 推送
+pnpm verify            # **一阶段结束才跑**（约 220~250 秒）：全部 30 道门 → 然后才提交 + 推送
 ```
 
 ### ⚠ 粒度（用户 2026-10-02 定；同日第二次澄清后**修订**）
@@ -377,7 +377,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 ### 需求怎么走（五步，缺一步不算完）
 
 `1 提出（用户）→ 2 复述（AGENT：指认它属于哪个模块、跟已有的谁是同一类）→
-3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（29 道门全绿 + 行为指纹）`，
+3 讨论 → 4 动手（代码 + 测试 + 四步齐全）→ 5 验证（30 道门全绿 + 行为指纹）`，
 状态与证据都记在 `docs/requirements.md`。
 
 ### 用词纪律（**AGENT 必须遵守**，写在 `src/terms.ts` 里、由门 `name` 守）

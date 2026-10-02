@@ -44,6 +44,7 @@
     "test:audio": "node test/audio.mjs",
     "art": "node tools/art-audit.mjs",
     "color:audit": "node tools/color-audit.mjs",
+    "banner:audit": "node tools/banner-audit.mjs",
     "registration:audit": "node tools/registration-audit.mjs",
     "foundation:map": "node tools/foundation-map.mjs --check",
     "test:curves": "node test/curves.mjs",

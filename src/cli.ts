@@ -12,6 +12,7 @@
    这个文件只依赖模拟层，**不 import 渲染层 / 界面层**，因此在纯 Node 下可直接运行。
    ========================================================= */
 
+import { Banners } from './banner.ts';
 import { SelfCheck } from './selfcheck.ts';
 import path from 'node:path';
 import process from 'node:process';
@@ -34,19 +35,27 @@ import { Storage } from './storage.ts';
    参数解析（纯函数，测试直接调）
    ========================================================= */
 var SPEC = {
+  /* `help` 也要有一项：**`--no-color` 对 help 同样有效** —— 否则"主横幅能不能去色"
+     要看子命令（那是接口上的不一致）。它没有别的选项；用法文本是**手写**的，
+     不是从这张表生成的，所以这里加一项不会改用法。 */
+  help: {
+    color: { type: 'bool', def: true, desc: '给启动横幅上色（--no-color / NO_COLOR=1 关掉）' }
+  },
   sim: {
     char: { type: 'string', def: 'gladiator', desc: '角色 id' },
     wave: { type: 'int', def: 1, desc: '从第几波开始' },
     seconds: { type: 'number', def: 60, desc: '模拟多少秒游戏时间' },
     seed: { type: 'int', def: 12345, desc: '随机种子（同种子结果完全一致）' },
     auto: { type: 'bool', def: true, desc: '自动买商店货 / 选升级卡' },
-    json: { type: 'bool', def: false, desc: '输出 JSON 而不是表格' }
+    json: { type: 'bool', def: false, desc: '输出 JSON 而不是表格' },
+    color: { type: 'bool', def: true, desc: '给启动横幅上色（--no-color / NO_COLOR=1 关掉）' }
   },
   serve: {
     root: { type: 'string', def: 'dist', desc: '要提供的目录' },
     port: { type: 'int', def: 5180, desc: '端口（0 = 让系统分配）' },
     host: { type: 'string', def: '127.0.0.1', desc: '监听地址（默认只回环）' },
-    quiet: { type: 'bool', def: false, desc: '不打印请求日志' }
+    quiet: { type: 'bool', def: false, desc: '不打印请求日志' },
+    color: { type: 'bool', def: true, desc: '给启动横幅上色（--no-color / NO_COLOR=1 关掉）' }
   }
 };
 
@@ -109,6 +118,39 @@ export function parseArgs(argv) {
   return { cmd: cmd, opts: opts, errors: errors };
 }
 
+/* =========================================================
+   启动横幅（**引擎能力**，见 src/banner.ts 与 design/README.md）
+   ---------------------------------------------------------
+   宿主只做三件事：**算能力 → 问引擎 → 打印**。引擎侧不认识 Node，也不读环境变量。
+
+     · **颜色**：`--no-color` / `NO_COLOR`（跨工具约定：存在即"别上色"）/
+       输出不是 TTY ⇒ 无颜色档。管道与重定向都不是"没有颜色"那么简单 ——
+       所以判据是"**这个输出是给谁看的**"，不是"看起来像不像终端"。
+     · **宽度**：TTY 报的列数，否则按 80 —— 重定向时没人知道终端有多宽，
+       而引擎会按宽度**降级**（装不下就换小一档）。
+     · **纯 ASCII**：Windows 旧代码页**没法自动认**（Node 不给代码页），
+       所以给一个显式开关 `TEAPOT_BANNER_ASCII=1` —— **猜错比让人自己说更糟**：
+       猜错的表现是终端里吐一片豆腐块，而用户不知道该去关哪个开关。
+
+   ⚠ `--json` 一律不打横幅：机器可读的输出里不许掺装饰。
+   ⚠ 参数写错时也不打：那一屏的主角是"你哪里写错了"，不是横幅。
+   ========================================================= */
+function bannerEnv(tier, opts) {
+  var color = !(opts && opts.color === false);
+  if (process.env.NO_COLOR) color = false;
+  var raw = process.env.TEAPOT_BANNER_ASCII;
+  var ascii = !!raw && raw !== '0';
+  var cols = (process.stdout.isTTY && process.stdout.columns) ? process.stdout.columns : 80;
+  return { color: color, ascii: ascii, cols: cols, tier: tier };
+}
+
+/** 打一份启动横幅（引擎按能力**选**档；选不出来就不打，绝不抛） */
+function printBanner(tier, opts) {
+  var text = Banners.text(bannerEnv(tier, opts));
+  if (text) console.log(text);
+}
+
+
 function usage() {
   return [
     'Teapot 命令行',
@@ -120,6 +162,10 @@ function usage() {
     '  node src/cli.ts serve [--root 目录] [--port 端口] [--host 地址] [--quiet]',
     '      静态服务器（默认 dist/ + 5180 + 只回环）',
     '',
+    '',
+    '  横幅：help 打主横幅，sim / serve 打单行徽标（引擎选档，装不下自动降级）',
+    '        --no-color / NO_COLOR=1 / 重定向 ⇒ 无颜色档；TEAPOT_BANNER_ASCII=1 ⇒ 纯 ASCII 档',
+    '        --json 一律不打横幅（机器可读的输出里不掺装饰）',
     '  退出码：0 正常 · 1 参数错误 · 2 运行期错误 / 定义期自检未通过'
   ].join('\n');
 }
@@ -348,7 +394,11 @@ export async function main(argv) {
     console.error('\n' + usage());
     return 1;
   }
-  if (parsed.cmd === 'help') { console.log(usage()); return 0; }
+  if (parsed.cmd === 'help') {
+    printBanner('hero', parsed.opts);
+    console.log(usage());
+    return 0;
+  }
 
   /* **接存储**：在这一步之后 `Settings` / `Profile` 的读写才会落盘。
      放在参数校验**之后**：参数写错了不该顺手在用户家里建目录。
@@ -366,12 +416,15 @@ export async function main(argv) {
 
   try {
     if (parsed.cmd === 'sim') {
+      /* 徽标而不是主横幅：sim 的输出是给人读的**表格报告**，横幅只报"这是谁" */
+      if (!parsed.opts.json) printBanner('badge', parsed.opts);
       var r = runSim(parsed.opts);
       if (parsed.opts.json) console.log(JSON.stringify(r, null, 2));
       else console.log(formatReport(r));
       return 0;
     }
     if (parsed.cmd === 'serve') {
+      printBanner('badge', parsed.opts);
       await runServe(parsed.opts);
       return 0;                 // 进程靠 server 保持存活
     }

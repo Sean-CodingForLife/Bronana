@@ -165,6 +165,8 @@ jobs:
 
       - name: 附加 · 登记一致性（元门）
         run: pnpm run registration:audit
+      - name: 附加 · 引擎启动横幅（两个载体逐字节对账）
+        run: pnpm run banner:audit
 
 # =========================================================
 # 刻意**没有**放进 CI 的东西，以及为什么

@@ -76,7 +76,7 @@ pnpm run desktop -- --dev            # 外壳 + Vite 开发服务器
 
 ```bash
 pnpm run typecheck   # 两个 tsconfig：浏览器侧 + Node 侧，都 0 错误才继续
-pnpm test            # 三十九套无头测试，全部通过才继续
+pnpm test            # 67 套无头测试，全部通过才继续
 ```
 
 ### 包管理：pnpm，不是 npm
@@ -869,11 +869,11 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 98 个 · 45564 行（另有 `types.d.ts` 5507 行） |
+| 模块 | 100 个 · 46176 行（另有 `types.d.ts` 5571 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 69 · `selfcheck.ts` 66 · `utils.ts` 30 |
-| 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 30 |
-| 超过 700 行的模块 | `game.ts` 5380 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1711 · `sprites.ts` 1687 · `main.ts` 1036 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
+| 扇入最高的模块 | `registry.ts` 70 · `selfcheck.ts` 67 · `utils.ts` 30 |
+| 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 31 |
+| 超过 700 行的模块 | `game.ts` 5380 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1711 · `sprites.ts` 1687 · `main.ts` 1041 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |
 | 死接口 | **0**（[7]） · **声明了没人用：0**（[9]：数据表字段 0 · 未用 import 0） |
 | 向上的边 | **2 条**（都已登记理由：`enemies→danger` 的恒等修正、`game→bronana` 的枪口几何） |
@@ -1432,7 +1432,7 @@ end        end        否   是   否   否    none     结算：世界当背景
 
 **全局状态有多少，是被测出来的**：`test/persist.mjs` 扫描 `src/*.ts` 的顶层 `var`，
 先判定"声明之后还被赋值吗"把常量与状态分开，再把状态逐个对照白名单。
-当前结果是 **46 个模块级可变状态 / 142 个常量自动豁免**
+当前结果是 **85 个模块级可变状态 / 342 个常量自动豁免**
 （写这几行时是 6 / 74 —— 长线化四步一共加了 40 个状态，每一个都是显式登记的）：
 
 | 类别 | 例子 | 说明 |
@@ -1769,7 +1769,7 @@ pnpm verify --list     # 只是列出有哪些门、每道门在验什么
 
 | 维度 | 现状 |
 | --- | --- |
-| 门 | **29 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
+| 门 | **30 道**，全绿（`typecheck` / `test` / `fingerprint` / `audit` / `guards` / `drift` / `yaml` / `art` / **`audio`** / `reconcile` / `ui-text` / `curves` / `loop` / `flow` / `readme` / `hardcode` / `solid`） |
 | 测试套件 | **67 套**，全绿（清单在 `test/suites.mjs`，**数量由清单算出来**，不写死） |
 | 行为指纹 | `622d6ebf` / `a9c2902b` / `354cc83c`（纯重构的判据：改动后必须逐位不变） |
 | 模块 | 93 个 · 43k 行（另有 `types.d.ts` 5.2k 行） |

@@ -4192,6 +4192,70 @@ interface WorkspaceApi {
 }
 declare var Workspace: WorkspaceApi;
 
+/* ---------------- 终端启动横幅（banner.ts · banner_data.ts） ----------------
+   ⚠ 横幅是**引擎的**，不是游戏内容的：它讲引擎自己（版本 / 零依赖 / 三种宿主）。
+   数据在**生成物** `banner_data.ts` 里，唯一真相是 `design/banner.py`。 */
+/** 四档版式（**大 → 小**；装不下就按 `Banners.FALLBACK` 往小走） */
+type BannerTier = 'hero' | 'framed' | 'compact' | 'badge';
+/** 四种降级变体：`color` 深底真彩 · `light` 浅底真彩 · `nocolor` 无转义 · `ascii` 无转义且纯 ASCII */
+type BannerVariant = 'color' | 'light' | 'nocolor' | 'ascii';
+/** 一份产物（**生成物**：`design/banner.py` 同时写出 `design/<file>` 与 `src/banner_data.ts`） */
+interface BannerDataEntry {
+  /** `版式-变体`（如 `hero-color`）—— 总账家族与 `Banners.BY_ID` 的键 */
+  id: string;
+  tier: BannerTier;
+  variant: BannerVariant;
+  /** `design/` 下那份 `.txt` 的名字（门 `banner` 用它做**逐字节对账**） */
+  file: string;
+  /** 声明列数（**按显示宽度算**：CJK 与全角算 2 列） */
+  cols: number;
+  rows: number;
+  lines: string[];
+}
+/** 宿主告诉引擎"这个终端能干什么"（**引擎不认识 Node / DOM**：这些值由宿主算） */
+interface BannerEnv {
+  /** 这个终端有颜色吗（`NO_COLOR` / 输出重定向 / `--no-color` ⇒ false） */
+  color?: boolean;
+  /** 浅底终端（字标在深底上是白的，搬到浅底要换深色那一支） */
+  light?: boolean;
+  /** 纯 ASCII 终端（Windows 旧代码页 / 某些 SSH 客户端） */
+  ascii?: boolean;
+  /** 终端列数；不知道就别传（按 80 算） */
+  cols?: number;
+  /** 想要哪一档（缺省 `hero`）—— **装不下由引擎降级**，调用点不写 if */
+  tier?: BannerTier;
+}
+interface BannersApi {
+  /** 引擎版本（唯一声明处是 `design/banner.py` 顶部的 VERSION） */
+  VERSION: string;
+  LIST: BannerDataEntry[];
+  BY_ID: Record<string, BannerDataEntry>;
+  TIERS: BannerTier[];
+  VARIANTS: BannerVariant[];
+  /** 每个版式**该有**哪些变体（两个方向都由 `audit()` 守） */
+  REQUIRED: Record<BannerTier, BannerVariant[]>;
+  /** 装不下往哪走（表驱动，调用点不写 if） */
+  FALLBACK: Record<BannerTier, BannerTier[]>;
+  /** 变体缺了（例：`compact` 没有 `nocolor`）时的替补顺序 */
+  VARIANT_FALLBACK: Record<BannerVariant, BannerVariant[]>;
+  /** 宽度 2 列的码点区间（Unicode East_Asian_Width 的 W/F 两支） */
+  WIDE_RANGES: number[][];
+  /** 宽度 1 列的**非 ASCII** 装饰字符（逐个点名） */
+  NARROW_CHARS: string;
+  /** 去掉真彩转义（数宽度只数**可见**的那部分） */
+  strip(s: string): string;
+  /** 这一行有 ESC 吗 */
+  hasEsc(s: string): boolean;
+  /** 显示宽度；**宽度表外的字符返回 NaN**（`audit()` 会把它点名报出来） */
+  width(line: string): number;
+  /** 按宿主能力**选**一份（纯函数：不打印、不读环境） */
+  pick(env?: BannerEnv): BannerDataEntry;
+  /** 选出来那一份的文本（`\n` 连接；`tail` = 结尾要不要换行） */
+  text(env?: BannerEnv, tail?: boolean): string;
+  audit(): { ok: boolean; problems: string[] };
+}
+declare var Banners: BannersApi;
+
 interface DangerApi {
   LIST: DangerLevelDef[];
   BY_LEVEL: Record<number, DangerLevelDef>;

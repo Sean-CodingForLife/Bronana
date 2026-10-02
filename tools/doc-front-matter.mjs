@@ -136,10 +136,13 @@ for (const f of files) {
      ⚠ `confirmation` **允许写「无门 + 理由」** —— 否则会逼人写出一道**还不存在的门**
      （本仓库 A13 ② 的教训：文档说了一道不存在的门）。但**不许空着、也不许只写「无门」两个字**。
      ⚠ 编号按**首次提交时间**发、同日按文件名字典序，**发了不复用**（ADR 的规矩）。
-     ⚠ `design/**` **不适用**：那是用户自己的目录（未跟踪、由用户编辑），
-     我们不拿自家字段去要求它 —— 但它的 front matter 仍然照常校验。 */
+     ⚠ **`design/**` 的豁免已于 2026-10-02 撤掉**：那条豁免的理由是"那是**未跟踪**的用户草稿目录"，
+     而用户当天把它纳入了版本库（横幅也因此从"物料"变成了**引擎能力**）。
+     **理由消失，豁免就该消失** —— 否则它会退化成"某些决定文档可以不写代价与落点"的永久后门
+     （本项目记过多次：豁免表天然会长成永久豁免）。
+     `design/README.md` 现在自己带着 `id: D-005` / `consequences` / `confirmation`。 */
   const catName = fields.category ? fields.category.replace(/^["']|["']$/g, '') : '';
-  if (catName === '决定' && !f.startsWith('design/')) {
+  if (catName === '决定') {
     const plain = (k) => (fields[k] || '').replace(/^["']|["']$/g, '');
     const id = plain('id'), cons = plain('consequences'), conf = plain('confirmation');
     if (!/^D-\d{3}$/.test(id)) {

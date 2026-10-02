@@ -68,6 +68,10 @@ const REQUIRED = [
   'storyNpc', 'storyEnding', 'storySource', 'storyFlag',   // 剧情：枢纽/结局/碎片来源/flag
   'hubStation',                            // 枢纽站点（屋里站着的人与摆着的设施）
   'weaponFamily', 'synergyAxis',           // 武器联动：家族分组与轴
+  /* 引擎启动横幅（2026-10-02）：**引擎能力**，不是游戏内容 ——
+     它讲引擎自己（版本 / 零运行时依赖 / 零素材 / 三种宿主），三种宿主共用同一份。
+     `banner` 的每一条都引用 `bannerTier` / `bannerVariant`，所以三者一起要求存在。 */
+  'banner', 'bannerTier', 'bannerVariant',
 ];
 {
   const missing = REQUIRED.filter(n => !Registry.has(n));

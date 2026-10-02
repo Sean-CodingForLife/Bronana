@@ -5,6 +5,7 @@ main.ts — 引导与主循环
 所以高刷屏上不会看到"同一个逻辑帧被画两遍"的顿挫。
 ========================================================= */
 
+import { Banners } from './banner.ts';
 import { SelfCheck } from './selfcheck.ts';
 import { Sfx } from './audio.ts';
 import { Chars } from './data_chars.ts';
@@ -553,6 +554,10 @@ function boot() {
     selfCheckFailPage(e);
     throw e;
   }
+  /* **启动徽标进控制台**（web 与桌面共用这一份页面 ⇒ 两者走同一条路）。
+     ⚠ 用**无颜色**档：浏览器控制台不认识真彩转义序列，打出来是一堆 `[38;2;…]` 噪声 ——
+     "降级"这件事在宿主侧就是这么具体：同一个引擎产物，终端要色、控制台不要。 */
+  console.log(Banners.text({ tier: 'badge', color: false }));
   initPersistence();
   /* 本地化的两步**必须在 UI.init 之前**：
      ① `bindDom` 给 DOM 里的静态文案记下原文（它只认表里有的那些）

@@ -19,7 +19,7 @@ links: ["README.md", "../AGENTS.md"]
 > 为什么地图要生成：本项目的协作者里有 AI，**它会丢上下文、遗漏、偷懒**；
 > 对抗这件事的唯一可靠办法是"**从清单算**"，而不是"记住"。
 
-## 一、命令链（`package.json` 的 scripts）—— 135 条
+## 一、命令链（`package.json` 的 scripts）—— 136 条
 
 | 脚本 | 指向 | 类别 | 门 | 在 CI | 被文档提到 |
 | --- | --- | --- | --- | --- | --- |
@@ -61,6 +61,7 @@ links: ["README.md", "../AGENTS.md"]
 | `test:audio` | `test/audio.mjs` | 测试 |  |  | ⚠ |
 | `art` | `tools/art-audit.mjs` | 门 | `art` | ✔ | ✔ |
 | `color:audit` | `tools/color-audit.mjs` | 门 | `color` | ✔ | ⚠ |
+| `banner:audit` | `tools/banner-audit.mjs` | 门 | `banner` | ✔ | ⚠ |
 | `registration:audit` | `tools/registration-audit.mjs` | 门 | `registration` | ✔ | ⚠ |
 | `foundation:map` | `tools/foundation-map.mjs` | 工具 / 其他 |  |  | ⚠ |
 | `test:curves` | `test/curves.mjs` | 测试 |  |  | ⚠ |
@@ -159,11 +160,11 @@ links: ["README.md", "../AGENTS.md"]
 | `hooks:remove` | `tools/install-hooks.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 | `art-manifest` | `tools/art-manifest.mjs` | 工具 / 其他 · **manual** |  |  | ⚠ |
 
-> **可达性**（谁真的会跑到它）：门 29 · 套件（`pnpm test`）67 · CI 11 · 仅文档 13 · **谁都跑不到 11**
+> **可达性**（谁真的会跑到它）：门 30 · 套件（`pnpm test`）67 · CI 11 · 仅文档 13 · **谁都跑不到 11**
 >
 > ⚠ **谁都跑不到的命令**（11 条）：`test:for` · `desktop:gpu` · `desktop:nosandbox` · `typecheck:report` · `gen:curves` · `text:census` · `rename:inventory` · `hooks:install` · `hooks:status` · `hooks:remove` · `art-manifest`
 
-## 二、工具链（`tools/`）—— 72 个文件
+## 二、工具链（`tools/`）—— 73 个文件
 
 | 文件 | 角色 | 谁引用它 | `--self-test` |
 | --- | --- | --- | --- |
@@ -174,6 +175,7 @@ links: ["README.md", "../AGENTS.md"]
 | `art-manifest.mjs` | 普查 / 其他 | 脚本 `art-manifest` |  |
 | `audio-census.mjs` | 门 | 门 `audio` · 脚本 `audio:census` · `tools/verify.mjs` |  |
 | `balance.mjs` | 普查 / 其他 | 脚本 `bal` · `tools/curve-audit.mjs` · `tools/registry-drift.mjs` |  |
+| `banner-audit.mjs` | 门 | 门 `banner` · 脚本 `banner:audit` · `tools/verify.mjs` | ✔ |
 | `bug-probe.mjs` | 普查 / 其他 | 脚本 `probe` · 脚本 `run` · `tools/_run.mjs` · `tools/coverage.mjs` · `tools/fun-audit.mjs` |  |
 | `color-audit.mjs` | 门 | 门 `color` · 脚本 `color:audit` · `tools/verify.mjs` |  |
 | `coverage.mjs` | 普查 / 其他 | 脚本 `coverage` |  |
@@ -229,7 +231,7 @@ links: ["README.md", "../AGENTS.md"]
 | `score.mjs` | 普查 / 其他 | 脚本 `score` · `tools/registry-drift.mjs` |  |
 | `solid-audit.cjs` | 门 | 门 `solid` · 脚本 `solid` · `tools/verify.mjs` |  |
 | `src-files.cjs` | 声明表 | `tools/arch-audit.cjs` · `tools/audio-census.mjs` · `tools/foundation-map.mjs` · `tools/game-kit.mjs` · `tools/guard-gaps.mjs` |  |
-| `systems.cjs` | 声明表 | `tools/_tables.mjs` · `tools/arch-audit.cjs` · `tools/engine-boundary.mjs` · `tools/foundation-map.mjs` · `tools/guard-gaps.mjs` · `tools/registration-audit.mjs` · `tools/src-files.cjs` · `tools/test-for.mjs` · `tools/verify.mjs` · `tools/workspace-audit.mjs` |  |
+| `systems.cjs` | 声明表 | `tools/_tables.mjs` · `tools/arch-audit.cjs` · `tools/banner-audit.mjs` · `tools/engine-boundary.mjs` · `tools/foundation-map.mjs` · `tools/guard-gaps.mjs` · `tools/registration-audit.mjs` · `tools/src-files.cjs` · `tools/test-for.mjs` · `tools/verify.mjs` · `tools/workspace-audit.mjs` |  |
 | `test-for.mjs` | 普查 / 其他 | 脚本 `test:for` |  |
 | `text-census.mjs` | 普查 / 其他 | 脚本 `text:census` |  |
 | `tsc-report.cjs` | 声明表 | 脚本 `typecheck:report` |  |
@@ -244,7 +246,7 @@ links: ["README.md", "../AGENTS.md"]
 
 ## 三、验收门与测试（框架的判据层）
 
-### 门 —— 29 道（清单唯一出处：`tools/verify.mjs` 的 `GATES`）
+### 门 —— 30 道（清单唯一出处：`tools/verify.mjs` 的 `GATES`）
 
 | # | 门 | 脚本 | `--quick` 跳过 |
 | --- | --- | --- | --- |
@@ -276,23 +278,24 @@ links: ["README.md", "../AGENTS.md"]
 | 26 | `env` | `tools/env-declared.mjs` |  |
 | 27 | `color` | `tools/color-audit.mjs` |  |
 | 28 | `repro` | `tools/fp-repro.mjs` |  |
-| 29 | `registration` | `tools/registration-audit.mjs` |  |
+| 29 | `banner` | `tools/banner-audit.mjs` |  |
+| 30 | `registration` | `tools/registration-audit.mjs` |  |
 
 ### 测试 —— 67 套（清单唯一出处：`test/suites.mjs`）
 
 `模拟层 / 战斗循环` · `技能 / 技能树 / 技能构筑 / 战斗模式` · `存档迁移 / 用旧版本的档启动` · `打击感 / 命中定帧（唯一会改模拟时序的手感项）` · `扩展点总账 / 跨表引用` · `数值折叠 / 一张表四种折法 · 四张声明表跨表对账` · `数据契约 / 字段→家族 · 值域 · 未读字段` · `货币与循环 / 战斗·经营·养成三模块` · `大厅（站）/ 三道门 · 开门顺序 · 可达性` · `数值曲线 / 角色与怪物的成长表` · `容器与对象管理 / 回收与上限` · `调试工具 / 存档迁移 · 录制回放 · 诊断面板` · `怪物行为 / 弹幕模式注册表` · `组件系统 / 组合与校验` · `世界系统 / 坐标·区域·网格` · `对象系统 / 身份·普查·容器` · `开局流程 / 存档角色·外观（时装）·入门三选` · `对话引擎 / 打字机·分支·历史·战斗短句` · `NPC 交易 / 报价·关系门槛·§6.5 硬约束` · `状态系统 / 可叠层·定身·读数收口` · `用词门 / 权威名·弃用词·同名两物（自检）` · `骨架系统 / 骨头·部件·几何等价` · `碰撞体 / 帧模型 / 插值` · `三种运行形态 / web·cli·desktop` · `地牢地图 / 随机楼层与隐藏要素` · `房间接进对局 / 门·房型内容·暗门墙·翻层·存档` · `随机 Boss 池 / 四种应对方式` · `深度层 / 限时房·层间契约·隐藏要素` · `剧情 / 枢纽对话·碎片·结局` · `剧情接入 / 档案⇄剧情表⇄枢纽` · `武器联动 / 家族与四条轴` · `词条 / 前缀后缀·档位·折叠·存档` · `一局存档的编解码 / 数值卫生·字段顺序·校验·往返 + 升级池` · `美术资源体系 / 规范·瓦片·自动规则·着色器·归属` · `背景音乐与错误兜底 / 曲目表·场景映射·崩溃卡` · `武器合成 / 品级台阶与买武器的落位规则` · `制造 / 配方·费用·档位门槛·产线` · `全局状态 / 设置 / 存档` · `账号档案 / 挑战 / 局外成长` · `难度阶梯 / 通关条件 / 每角色进度` · `每日挑战 / 成绩码可复算` · `离线产出 / 每周挑战（附加内容）` · `角色天赋树 / 只改开局条件` · `局内营地 / 模拟经营第一级` · `跨局据点 / 两条循环互供` · `图纸工坊 / 合金·合成链的局外出口` · `状态机 / 转换表与守卫` · `信号总线 / 异常隔离与重入` · `粒子发生器 / 对象池` · `随机道具包 / 定价与概率` · `本地化（文案表 / 切换 / 缺键）` · `存档槽位（备份回退 / 导出导入）` · `文件存储后端 / 原子写 · 备份回退 · 写失败不破坏` · `NPC 关系（养成线产出 / 双轨 / 每波限次）` · `首局引导（时机 / 只说一次 / 落盘）` · `道具的取舍 / 有得有失·代价轴·接入` · `渲染层 / 美术宪法 / 绘制预算` · `Z 深度 / 层带与 y 排序` · `RHI 渲染硬件接口 / 透明性与面完整性` · `开发工具 / 结构化文本编辑（挡住 shell 的 6 类）` · `命名边界门 / 三种注入都会红` · `缓存 / 烘焙倍率 / 条目收敛` · `界面层 / DOM 流程` · `架构 / 系统分层与依赖方向` · `输入层 / 键鼠·手柄·触摸` · `性能基准 / 帧预算` · `YAML 校验器 / GitHub 配置`
 
-## 四、功能（`Registry` 家族 —— 扩展点的总账）—— 145 个
+## 四、功能（`Registry` 家族 —— 扩展点的总账）—— 148 个
 
-`actor` · `affix` · `affixFamily` · `affixMod` · `affixSlot` · `affixTag` · `aiBehaviour` · `aiPattern` · `animClip` · `archetype` · `artAnchor` · `artAtlas` · `artBlend` · `artKind` · `artStage` · `bark` · `barkWhen` · `bondStage` · `boon` · `boonGroup` · `boonMod` · `boss` · `bulletKind` · `campCombo` · `campEffect` · `campFacility` · `campLevelCount` · `challenge` · `challengeGroup` · `challengeMetric` · `char` · `charSpecial` · `charTag` · `character` · `codexLevel` · `component` · `container` · `coreLink` · `craftRecipe` · `currency` · `currencyRole` · `curve` · `curveDomain` · `curveShape` · `dailyField` · `dangerLevel` · `dangerMod` · `depthBand` · `depthDomain` · `element` · `elementEffect` · `enemy` · `enemyEye` · `enemyLegs` · `enemyMouth` · `enemyShape` · `exchange` · `floorTheme` · `foldOp` · `forgeMod` · `forgeNode` · `guideRule` · `hallRoom` · `hallSpot` · `hubStation` · `item` · `itemCost` · `itemCostAxis` · `itemIcon` · `itemSet` · `itemSpecial` · `keepFacility` · `keepMod` · `keyGroup` · `ledger` · `ledgerSystem` · `locale` · `lookAccessory` · `lookFace` · `lookPalette` · `manageSub` · `messageKey` · `moduleScreen` · `musicTrack` · `objectKind` · `offlineRate` · `openingChoice` · `openingColumn` · `overlay` · `parallaxLayer` · `particleKind` · `pickupKind` · `profileSection` · `rhiSurface` · `roomMod` · `roomType` · `saveSlot` · `scene` · `scoreField` · `screenAct` · `seasonField` · `setting` · `shader` · `shaderOp` · `skill` · `skillForm` · `skillPayload` · `skillRune` · `skillTreeCard` · `soundEffect` · `state` · `stationSite` · `status` · `statusKind` · `storyChoice` · `storyEnding` · `storyFlag` · `storyLine` · `storyNpc` · `storySource` · `synergyAxis` · `talent` · `talentEcon` · `talentSector` · `talentType` · `term` · `termAlias` · `termRetired` · `terrain` · `textSurface` · `themeProp` · `tier` · `tileShape` · `tradeOffer` · `trainingDrill` · `tutorialHint` · `upgradeCard` · `viewportScale` · `weapon` · `weaponFamily` · `weaponKind` · `weaponType` · `workspace` · `worldGrid` · `worldZone`
+`actor` · `affix` · `affixFamily` · `affixMod` · `affixSlot` · `affixTag` · `aiBehaviour` · `aiPattern` · `animClip` · `archetype` · `artAnchor` · `artAtlas` · `artBlend` · `artKind` · `artStage` · `banner` · `bannerTier` · `bannerVariant` · `bark` · `barkWhen` · `bondStage` · `boon` · `boonGroup` · `boonMod` · `boss` · `bulletKind` · `campCombo` · `campEffect` · `campFacility` · `campLevelCount` · `challenge` · `challengeGroup` · `challengeMetric` · `char` · `charSpecial` · `charTag` · `character` · `codexLevel` · `component` · `container` · `coreLink` · `craftRecipe` · `currency` · `currencyRole` · `curve` · `curveDomain` · `curveShape` · `dailyField` · `dangerLevel` · `dangerMod` · `depthBand` · `depthDomain` · `element` · `elementEffect` · `enemy` · `enemyEye` · `enemyLegs` · `enemyMouth` · `enemyShape` · `exchange` · `floorTheme` · `foldOp` · `forgeMod` · `forgeNode` · `guideRule` · `hallRoom` · `hallSpot` · `hubStation` · `item` · `itemCost` · `itemCostAxis` · `itemIcon` · `itemSet` · `itemSpecial` · `keepFacility` · `keepMod` · `keyGroup` · `ledger` · `ledgerSystem` · `locale` · `lookAccessory` · `lookFace` · `lookPalette` · `manageSub` · `messageKey` · `moduleScreen` · `musicTrack` · `objectKind` · `offlineRate` · `openingChoice` · `openingColumn` · `overlay` · `parallaxLayer` · `particleKind` · `pickupKind` · `profileSection` · `rhiSurface` · `roomMod` · `roomType` · `saveSlot` · `scene` · `scoreField` · `screenAct` · `seasonField` · `setting` · `shader` · `shaderOp` · `skill` · `skillForm` · `skillPayload` · `skillRune` · `skillTreeCard` · `soundEffect` · `state` · `stationSite` · `status` · `statusKind` · `storyChoice` · `storyEnding` · `storyFlag` · `storyLine` · `storyNpc` · `storySource` · `synergyAxis` · `talent` · `talentEcon` · `talentSector` · `talentType` · `term` · `termAlias` · `termRetired` · `terrain` · `textSurface` · `themeProp` · `tier` · `tileShape` · `tradeOffer` · `trainingDrill` · `tutorialHint` · `upgradeCard` · `viewportScale` · `weapon` · `weaponFamily` · `weaponKind` · `weaponType` · `workspace` · `worldGrid` · `worldZone`
 
 > 家族数是**运行时算出来的**（真加载模拟层后读 `Registry.names()`），不是抄的。
 
-## 五、模块与分层（`src/`）—— 98 个模块 · 9 层
+## 五、模块与分层（`src/`）—— 100 个模块 · 9 层
 
 | 层 | 系统 | 模块数 | 模块 |
 | --- | --- | --- | --- |
-| undefined | 工具与机制 | 25 | `utils.ts` `registry.ts` `selfcheck.ts` `viewport.ts` `rhi.ts` `workspace.ts` `text.ts` `fold.ts` `containers.ts` `envelope.ts` `comp.ts` `collide.ts` `rig.ts` `draw2d.ts` `depth.ts` `ai.ts` `world.ts` `object.ts` `appearance.ts` `openings.ts` `character.ts` `dialogue.ts` `status.ts` `curves.ts` `stats.ts` |
+| undefined | 工具与机制 | 27 | `utils.ts` `registry.ts` `selfcheck.ts` `viewport.ts` `rhi.ts` `workspace.ts` `text.ts` `fold.ts` `containers.ts` `envelope.ts` `comp.ts` `collide.ts` `rig.ts` `draw2d.ts` `depth.ts` `ai.ts` `world.ts` `object.ts` `appearance.ts` `openings.ts` `character.ts` `dialogue.ts` `status.ts` `curves.ts` `stats.ts` `banner.ts` `banner_data.ts` |
 | undefined | 数据表 | 19 | `data_tiers.ts` `data_elems.ts` `ledger.ts` `eco_combat.ts` `eco_manage.ts` `eco_grow.ts` `eco_global.ts` `link.ts` `economy.ts` `terms.ts` `station.ts` `art_spec.ts` `affixes.ts` `data_weapons.ts` `data_items.ts` `data_chars.ts` `enemies.ts` `levelup.ts` `run_save.ts` |
 | undefined | 地牢与内容 | 5 | `dungeon.ts` `art_tiles.ts` `arena.ts` `story.ts` `hall.ts` |
 | undefined | 局外成长（元进度） | 23 | `camp.ts` `stronghold.ts` `forge.ts` `craft.ts` `talents.ts` `training.ts` `bonds.ts` `exchange.ts` `guide.ts` `boons.ts` `synergy.ts` `challenges.ts` `profile.ts` `daily.ts` `season.ts` `danger.ts` `offline.ts` `settings.ts` `storage.ts` `trade.ts` `slots.ts` `i18n.ts` `tutorial.ts` |
@@ -302,11 +305,11 @@ links: ["README.md", "../AGENTS.md"]
 | undefined | 表现与界面 | 5 | `render.ts` `ui.ts` `input.ts` `diag.ts` `crash.ts` |
 | undefined | 入口 | 4 | `main.ts` `cli.ts` `demo.ts` `storage_fs.ts` |
 
-**引擎 / 内容分类**（门 `engine-boundary`）：引擎 24 · 混合 4 · 显式内容 39 · 数据表 31 · **未认领 0**
+**引擎 / 内容分类**（门 `engine-boundary`）：引擎 26 · 混合 4 · 显式内容 39 · 数据表 31 · **未认领 0**
 
-**测试加载集**：`MODULES` 96 个键 · SIM 94 · RENDER 95 · UI 96 · 清单键（persist/arch）51 个
+**测试加载集**：`MODULES` 98 个键 · SIM 96 · RENDER 97 · UI 98 · 清单键（persist/arch）51 个
 
-## 六、文档体系 —— 40 份 `.md`
+## 六、文档体系 —— 43 份 `.md`
 
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
@@ -316,12 +319,14 @@ links: ["README.md", "../AGENTS.md"]
 | `CONTRIBUTING.md` | 协作 | 现行 | 225 | —（分卷） |
 | `README.md` | 门面 | 现行 | 1886 | —（分卷） |
 | `SECURITY.md` | 安全 | 现行 | 103 | —（分卷） |
-| `docs/README.md` | 门面 | 现行 | 47 | ✔ |
+| `design/README.md` | 决定 | 现行 | 165 | —（分卷） |
+| `docs/README.md` | 门面 | 现行 | 48 | ✔ |
+| `docs/editor-roadmap.md` | 决定 | 现行 | 77 | ✔ |
 | `docs/engine-first.md` | 决定 | 现行 | 213 | ✔ |
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
 | `docs/external-game-mechanics.md` | 外部参考 | 现行 | 3111 | ✔ |
 | `docs/external-workspace-conventions.md` | 调研 | 现行 | 152 | ✔ |
-| `docs/foundation-audit.md` | 协作 | 现行 | 148 | ✔ |
+| `docs/foundation-audit.md` | 协作 | 现行 | 171 | ✔ |
 | `docs/history/01-长线化与三角.md` | 交付记录 | 现行 | 842 | —（分卷） |
 | `docs/history/02-地牢化与设计复查.md` | 交付记录 | 现行 | 1186 | —（分卷） |
 | `docs/history/03-体系化与数值曲线.md` | 交付记录 | 现行 | 756 | —（分卷） |
@@ -340,8 +345,9 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/history/16-批次2后半-draw2d那一刀.md` | 交付记录 | 现行 | 64 | —（分卷） |
 | `docs/history/17-工具层三个洞的结构性消除.md` | 交付记录 | 现行 | 145 | —（分卷） |
 | `docs/history/18-地基体检.md` | 交付记录 | 现行 | 91 | —（分卷） |
-| `docs/history/README.md` | 交付记录 | 现行 | 49 | —（分卷） |
-| `docs/requirements.md` | 需求账本 | 现行 | 4293 | ✔ |
+| `docs/history/19-引擎启动横幅与编辑器前置.md` | 交付记录 | 现行 | 104 | —（分卷） |
+| `docs/history/README.md` | 交付记录 | 现行 | 50 | —（分卷） |
+| `docs/requirements.md` | 需求账本 | 现行 | 4327 | ✔ |
 | `docs/scaling-benchmarks.md` | 外部参考 | 现行 | 246 | ✔ |
 | `docs/scaling-isaac-gungeon.md` | 外部参考 | 现行 | 61 | ✔ |
 | `docs/scaling-ror2-vs-sts.md` | 外部参考 | 现行 | 154 | ✔ |
@@ -357,7 +363,7 @@ links: ["README.md", "../AGENTS.md"]
 | --- | --- | --- |
 | `workspace/Bronana/` | `bronana` | `>=2.0.0 <3` |
 
-## 八、CI 步骤 —— 34 步
+## 八、CI 步骤 —— 35 步
 
 | 工作流 | 步骤 | 跑什么 |
 | --- | --- | --- |
@@ -395,4 +401,5 @@ links: ["README.md", "../AGENTS.md"]
 | `ci.yml` | 附加 · 命名边界（引擎前缀 vs 内容前缀） | `pnpm run naming:audit` |
 | `ci.yml` | 附加 · 跨进程可复现性 | `pnpm run fp:repro` |
 | `ci.yml` | 附加 · 登记一致性（元门） | `pnpm run registration:audit` |
+| `ci.yml` | 附加 · 引擎启动横幅（两个载体逐字节对账） | `pnpm run banner:audit` |
 

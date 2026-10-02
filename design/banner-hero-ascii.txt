@@ -1,0 +1,12 @@
+  --
+    ##### #####  ###  ####   ###  #####
+      #   #     #   # #   # #   #   #
+      #   #     #   # #   # #   #   #
+      #   ####  ##### ####  #   #   #
+      #   #     #   # #     #   #   #
+      #   #     #   # #     #   #   #
+      #   ##### #   # #      ###    #
+    EVERYTHING IS A MODULE
+    TypeScript / native ES modules
+    zero runtime deps / zero assets / no build step
+    three hosts: web / cli / desktop
