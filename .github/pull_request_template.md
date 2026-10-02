@@ -24,7 +24,7 @@ links: ["../CONTRIBUTING.md"]
 **这个项目的"改对了"不是"看起来能跑"，而是下面全绿。请逐条勾。**
 
 - [ ] `pnpm typecheck` —— 0 错
-- [ ] `pnpm test` —— 全绿（现在 **49 套**）
+- [ ] `pnpm test` —— 全绿（**套数看 `test/suites.mjs`**，本文不抄那个数）
 - [ ] `pnpm run fingerprint` —— **逐位不变**，或：我更新了 `test/smoke.mjs` 的基线**并**在 `CHANGELOG.md` 里写了为什么
 - [ ] `pnpm run audit` / `guards` / `drift` —— 全绿
 - [ ] 如果动了 `.github/` 下的 YAML：`pnpm run yaml` 绿
@@ -32,11 +32,9 @@ links: ["../CONTRIBUTING.md"]
 
 ## 关于行为指纹
 
-```
-ranger    seed 20240922 wave 5  1800 帧  →  8b90ed4f
-gladiator seed 777      wave 9  1800 帧  →  08205e33
-engineer  seed 4242     wave 13 1200 帧  →  f4f27172
-```
+> 真值**不抄在这里**：跑 `pnpm run fingerprint`（唯一出处是 `test/smoke.mjs` 的 `CASES`）。
+> ⚠ 本模板抄过三个哈希，实测漂成了上一代的值 —— **模板说的判据 ≠ 实际执行的判据**，
+> 而照它干活的 AI 会去「更新基线」，把一次真实漂移合法化。
 
 - **纯重构**：三个值必须一模一样。变了 = 你动了不该动的东西。
 - **有意改行为**：可以变，但要**同时**更新基线并写进 `CHANGELOG.md`。

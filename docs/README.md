@@ -31,6 +31,8 @@ links: ["../README.md", "../AGENTS.md", "requirements.md"]
 | [`skill-audit.md`](skill-audit.md) | 自检 | 按行业判据逐条体检本作，附"影响 ÷ 代价"排序 | 罕见 |
 | [`techstack-upgrade-research.md`](techstack-upgrade-research.md) | 调研 | 技术栈升级的**联网取证**（Canvas2D 的边界 / WebGL2 的成本 / WebGPU 支持 / 渲染抽象层 / 引擎与内容分离 / 像素游戏现状）。每条带来源链接与强度。⚠ **顶部有作废横幅：结论不要再用，取证仍然有效** | 罕见（结论已由下面的决定文档取代） |
 | [`techstack-upgrade-decision.md`](techstack-upgrade-decision.md) | **决定** | **拍板：渲染后端升级到 WebGL2（WebGPU 为目标态）**——用户的理由 / 原判据为什么不适用 / 四条硬约束（R1~R4）/ 接口形状（Target 一等对象）/ 文本与 3px 描边的真风险 / 预算 / 七阶段施工 | 施工时对照 |
+| [`foundation-map.md`](foundation-map.md) | **协作·生成物** | **地基地图**：六个类别（工具链 · 命令链 · 框架 · 功能 · 模块 · 引擎）的逐项清单 + 归属 + **谁守它**。由 `tools/foundation-map.mjs` **生成**，门 `doc-num` 校验"盘上副本 == 现算" | 任何时候跑 `pnpm run foundation:map` 自查；**刷新**用 `node tools/foundation-map.mjs --write` |
+| [`foundation-audit.md`](foundation-audit.md) | **协作·体检账本** | **地基体检**：六类逐项结论 · 算出来的发现（16 个无引用工具 / 14 条跑不到的命令 / 文档漂移）· **缺口账本（每条落到判据）** · 外部对照（联网 + skill）· **刻意不做** | 每轮体检后追加 |
 | [`history/`](history/README.md) | 交付记录 | 逐轮改了什么、踩了什么坑、量出了什么 | 每轮追加 |
 | [`../.github/`](../.github) | 协作 | PR 模板 · issue 模板 · CI | 罕见 |
 

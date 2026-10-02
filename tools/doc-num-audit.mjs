@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const JSON_OUT = process.argv.includes('--json');
@@ -48,7 +49,11 @@ try {
      那些和 docs/history 一样是**当时快照** —— 拿今天的值去比它是错的，
      等于篡改历史。
    **所以锚点必须是"基线行"的完整形状**（表头 + 列名），不是随便一个"N 套"。 */
-const DOCS = ['AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'docs/README.md', 'docs/requirements.md'];
+const DOCS = ['AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'docs/README.md', 'docs/requirements.md',
+  /* ⚠ `.github/**` 曾经**漏在白名单外**，而它恰恰是**AI 最先读**的东西（PR 模板就是它的检查表）——
+     实测后果：模板里写着「现在 49 套」（实际 67）与三个**上一代**的指纹哈希，**没有任何门看得见**。
+     清单类文档不分住在哪个目录：哪里写着"现在是多少"，哪里就得进这张表。 */
+  '.github/pull_request_template.md'];
 
 /* 每个数字都有**精确锚点**：锚点是那一整行的形状，于是"当时快照"与"当前状态"不会混 */
 const CHECKS = [
@@ -107,7 +112,51 @@ for (const f of DOCS) {
   }
 }
 
-const result = { truth: { modules: MODULES, suites: SUITES, gates: GATES, families: FAMILIES }, checked: checked.length, problems };
+/* ---------------- 第二类判据：**声明基线的那些行，哈希必须等于 CASES** ----------------
+   为什么单列一类：哈希不是"统计数字"，它是**判据自己的参数**。实测的害处 ——
+   `CONTRIBUTING.md`（家法正本）与 PR 模板各抄了一份**上一代**的哈希，而没有任何门看得见：
+   照它干活的 AI 会以为指纹该是那个值，于是去"更新基线"，把一次真实的行为漂移**合法化**
+   —— 正是 `AGENTS.md` 第五节要防的那件事。
+   判据**只认"基线行"的形状**（名字 + seed + wave + 帧 → 哈希），所以它不会误伤历史叙述里的哈希
+   （那些在 `docs/history/**` 与 `CHANGELOG.md` 里，本来就不在这张白名单内）。 */
+const smokeSrc = fs.readFileSync(path.join(ROOT, 'test', 'smoke.mjs'), 'utf8');
+const CASES = [...smokeSrc.matchAll(/\['(\w+)',\s*(\d+),\s*(\d+),\s*(\d+),\s*'([0-9a-f]{8})'\]/g)]
+  .map((m) => ({ who: m[1], seed: Number(m[2]), wave: Number(m[3]), frames: Number(m[4]), hash: m[5] }));
+const BASE_RE = /^[ \t]*(\w+)\s+seed\s+(\d+)\s+wave\s+(\d+)\s+(\d+)\s*帧\s*→\s*([0-9a-f]{8})/gm;
+let baseChecked = 0;
+if (CASES.length < 3) {
+  problems.push({ file: 'test/smoke.mjs', what: '基线哈希', got: '只解析到 ' + CASES.length + ' 条', want: '≥3',
+    at: 'CASES', hint: '读法没跟上 `CASES` 的写法 —— 空手而归必须是红的，不能是绿的' });
+}
+for (const f of DOCS) {
+  const p = path.join(ROOT, f);
+  if (!fs.existsSync(p)) continue;
+  for (const m of fs.readFileSync(p, 'utf8').matchAll(BASE_RE)) {
+    baseChecked++;
+    const c = CASES.find((x) => x.who === m[1] && x.seed === Number(m[2]) && x.wave === Number(m[3]) && x.frames === Number(m[4]));
+    if (!c) {
+      problems.push({ file: f, what: '基线哈希', got: m[5], want: '（CASES 里没有这一条）',
+        at: m[0].trim().slice(0, 60), hint: '唯一出处是 `test/smoke.mjs` 的 `CASES`' });
+    } else if (c.hash !== m[5]) {
+      problems.push({ file: f, what: '基线哈希', got: m[5], want: c.hash, at: m[0].trim().slice(0, 60),
+        hint: '唯一出处是 `test/smoke.mjs` 的 `CASES`；有意改行为要**同时**更新基线并写进 CHANGELOG' });
+    }
+  }
+}
+
+/* ---------------- 第三类判据：**生成物与现算一致** ----------------
+   生成的地图（`docs/foundation-map.md`）如果没人查，它自己就会漂 —— 而它正是"对抗 AI 丢上下文"的那张地图。
+   这里只判一条：**盘上副本 == 现算**（与 Prettier `--check`、K8s 生成文档对账同形，且这一条更硬：
+   它比的是**语义真值**而不是格式）。 */
+const fm = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'foundation-map.mjs'), '--check'], { encoding: 'utf8' });
+if (fm.status !== 0) {
+  problems.push({ file: 'docs/foundation-map.md', what: '生成物新鲜度', got: '盘上副本（旧）', want: '现算',
+    at: String(fm.stdout || '').trim().split('\n').slice(0, 2).join(' ').slice(0, 60),
+    hint: '`node tools/foundation-map.mjs --write` 刷新（**不要手改生成物**）' });
+}
+
+const result = { truth: { modules: MODULES, suites: SUITES, gates: GATES, families: FAMILIES },
+  checked: checked.length, baseChecked, problems };
 
 if (JSON_OUT) { console.log(JSON.stringify(result)); process.exit(problems.length ? 1 : 0); }
 
@@ -116,7 +165,8 @@ console.log('  真值（全部从清单算）：模块 ' + MODULES + ' · 套件
   ' · 家族 ' + (FAMILIES === null ? '(未取到)' : FAMILIES));
 console.log('  被检查的文档：' + DOCS.join(' · '));
 console.log('  豁免：`docs/history/**`（那是**当时**的快照，拿今天的值比它是篡改历史）');
-console.log('\n  扫到 ' + checked.length + ' 处数字声明');
+console.log('\n  扫到 ' + checked.length + ' 处数字声明 · ' + baseChecked +
+  ' 处**基线哈希** · 1 处**生成物新鲜度**（地基地图）');
 
 if (problems.length) {
   console.log('\n  ✘ ' + problems.length + ' 处与清单不一致：');

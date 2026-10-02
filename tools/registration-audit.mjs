@@ -49,71 +49,27 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { MODULES, SIM_MODULES, RENDER_MODULES, UI_MODULES } from '../test/_load.mjs';
+import {
+  ROOT, FLOOR, stripComments, block, tsIn, diskModules,
+  readSystems, readBoundary, readLoader, readTableKeys
+} from './_tables.mjs';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
 const JSON_OUT = process.argv.includes('--json');
 const SELF_TEST = process.argv.includes('--self-test');
 
 /* ---------------- 读表 ---------------- */
-const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+/* ⚠ **表的读法只有一份**：全部来自 `tools/_tables.mjs`（本轮抽出来的）。
+   理由写在那份文件头上：同一张表被两处各解析一遍 = 迟早漂开 —— 而我自己先犯了一次
+   （给这道门写第二遍表解析时）。它同时被 `tools/foundation-map.mjs` 用。 */
 
-/** 去掉注释后再解析。
- *  ⚠ 为什么必须去注释：这几张表的注释里**真的会提到文件名**（"改造前是 x.ts"之类），
- *  带着注释解析会把"注释里提过"当成"登记过" —— 那就是假绿。 */
-function stripComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-}
-
-/** 取一个**顶层声明块**：从 `const NAME = {` / `= [` 到**同缩进**的收尾行。
- *  用同缩进而不是"列 0"，是因为有的表写在函数里（缩进了一层）。 */
-function block(src, name) {
-  const re = new RegExp('(?:^|\\n)([ \\t]*)(?:export\\s+)?(?:const|var|let)\\s+' + name + '\\s*=\\s*([\\{\\[])');
-  const m = re.exec(src);
-  if (!m) return null;
-  const indent = m[1];
-  const close = new RegExp('^' + indent + (m[2] === '{' ? '\\}' : '\\]') + '\\s*;?\\s*$');
-  const lines = src.slice(m.index + m[0].length).split('\n');
-  let end = lines.length;
-  for (let i = 0; i < lines.length; i++) if (close.test(lines[i])) { end = i; break; }
-  return lines.slice(0, end).join('\n');
-}
-/** 块里所有 `'x.ts'` 形状的名字 */
-const tsIn = (text) => [...String(text).matchAll(/'([A-Za-z0-9_.\-]+\.ts)'/g)].map((m) => m[1]);
-
-/** 盘上 `src/` 的模块（`types.d.ts` 不是模块 —— 它是全仓的类型声明） */
-function diskModules() {
-  return fs.readdirSync(path.join(ROOT, 'src'))
-    .filter((f) => f.endsWith('.ts') && f !== 'types.d.ts').sort();
-}
-
-/** 读齐各张表 */
-function parse() {
-  const require = createRequire(import.meta.url);
-  const { SYSTEMS } = require('../tools/systems.cjs');
-  const systems = new Set();
-  for (const s of SYSTEMS) for (const f of (s.modules || [])) systems.add(f);
-
-  /* `engine-boundary.mjs` 是**门**：import 它会直接跑那道门并 process.exit ⇒ 只能文本解析 */
-  const boundSrc = stripComments(read('tools/engine-boundary.mjs'));
-  const ENGINE = new Set(tsIn(block(boundSrc, 'ENGINE')));
-  const MIXED = new Set(tsIn(block(boundSrc, 'ENGINE_MIXED')));
-  const CONTENT = new Set(tsIn(block(boundSrc, 'CONTENT')));
-  const TABLES = new Set(tsIn(block(boundSrc, 'DATA_TABLES')));
-  const boundary = new Set([...ENGINE, ...MIXED, ...CONTENT, ...TABLES]);
-
-  /* 加载器：**import 真表**（它无副作用）。加载集是**派生的**（RENDER = SIM + 1），
-     所以谁都不能靠文本解析它们 —— 这是本门第一版真踩过的假红。 */
-  const loadModules = new Map(Object.entries(MODULES).map(([k, v]) => [k, String(v).replace(/^\.\.\/src\//, '')]));
-  const loadSets = { sim: new Set(SIM_MODULES), render: new Set(RENDER_MODULES), ui: new Set(UI_MODULES) };
-
-  /* 这两份是**测试主体**（import 即执行断言）⇒ 只能文本解析 */
-  const persistSrc = stripComments(read('test/persist.mjs'));
-  const archSrc = stripComments(read('test/arch.mjs'));
-  const persistKeys = new Set([...tsIn(block(persistSrc, 'ALLOWED')), ...tsIn(block(persistSrc, 'BUDGET'))]);
-  const archKeys = new Set(tsIn(block(archSrc, 'ALLOWED')));
-
-  return { ENGINE, MIXED, CONTENT, TABLES, boundary, loadModules, loadSets, systems, persistKeys, archKeys,
+/** 读齐各张表（**读法全在 `tools/_tables.mjs`**，本文件不再自己解析一遍） */
+async function parse() {
+  const { systems, layers } = readSystems();
+  const { ENGINE, MIXED, CONTENT, TABLES, boundary } = readBoundary();
+  const { loadModules, loadSets } = await readLoader();
+  const persistKeys = readTableKeys('test/persist.mjs', ['ALLOWED', 'BUDGET']);
+  const archKeys = readTableKeys('test/arch.mjs', ['ALLOWED']);
+  return { ENGINE, MIXED, CONTENT, TABLES, boundary, loadModules, loadSets, systems, layers, persistKeys, archKeys,
     parsed: { systems: systems.size, boundary: boundary.size, loadModules: loadModules.size,
       uiSet: loadSets.ui.size, persistKeys: persistKeys.size, archKeys: archKeys.size } };
 }
@@ -152,13 +108,13 @@ function checks(d) {
 }
 
 /* ---------------- 跑 ---------------- */
-const d = parse();
+const d = await parse();
 const disk = diskModules();
 d.disk = disk;
 d.exempt = LOAD_SET_EXEMPT;
 
 /* ⚠ 解析自检：任何一张表**空手而归**都必须当场红 —— 否则这道门会永远"全绿" */
-const floor = { systems: 50, boundary: 50, loadModules: 50, uiSet: 50, persistKeys: 20, archKeys: 3 };
+const floor = FLOOR;
 const shapeProblems = [];
 for (const [k, min] of Object.entries(floor)) {
   if (d.parsed[k] < min) shapeProblems.push(k + '：只解析到 ' + d.parsed[k] + ' 条（少于 ' + min + '）—— 表换了写法，本门的读法没跟上');
