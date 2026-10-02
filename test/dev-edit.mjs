@@ -34,6 +34,15 @@ function run(patch, extra) {
   try { out = JSON.parse(String(r.stdout).trim().split('\n').pop()); } catch (e) { out = { parseErr: e.message, raw: String(r.stdout).slice(0, 300) }; }
   return { code: r.status, out, stderr: String(r.stderr).slice(0, 200) };
 }
+/* 直接把**手写的原始文本**当 patch 写盘（用来喂"人真的会写出来的坏 patch"） */
+function runRaw(text, extra, ext) {
+  const pf = path.join(TMP, 'patch-' + Math.random().toString(36).slice(2) + (ext || '.json'));
+  fs.writeFileSync(pf, text, 'utf8');
+  const r = spawnSync(process.execPath, [TOOL, ext === '.mjs' ? '--patch-js' : '--patch', pf].concat(extra || []),
+    { cwd: ROOT, encoding: 'utf8' });
+  try { fs.unlinkSync(pf); } catch (e) { /* 无所谓 */ }
+  return { code: r.status, stdout: String(r.stdout), stderr: String(r.stderr) };
+}
 function mk(name, content, crlf) {
   const p = path.join(TMP, name);
   fs.writeFileSync(p, crlf ? content.replace(/\n/g, '\r\n') : content, 'utf8');
@@ -170,6 +179,78 @@ T.section('7. `--dry` 只报不写');
     '**原子性**：op1 合法 + op2 非法 ⇒ 文件**逐字节不变**（修之前它已经被改成 var a = 99）');
 }
 
+
+/* ---------------- ⑩ P1 / P2 / P3：patch 这一层自己咬过的 3 类 ---------------- */
+/*
+   上面 1~7 守的是"shell 不该做文本编辑"；下面这三节守的是**我自己用这个工具时反复犯的错**。
+   它们的处置方式**不是**"记进注释、下次注意"（那正是家法反对的：靠人记住的规范都会漂），
+   而是**让错误不可能发生、或者发生时当场自证**。每条都注入真的坏输入，证明它真的会红。
+*/
+
+/* ---------------- 8. P1：JSON patch 里的裸双引号 ---------------- */
+T.section('8. **P1**：JSON patch 里没转义的 ASCII 双引号 ⇒ 指出行列（或改用 .mjs 零转义）');
+{
+  const p = mk('p1.ts', 'var s = "旧";\n');
+  /* 手写的坏 JSON：中文文案里夹了一个**没转义**的 ASCII 双引号 —— 这就是实测发生 6 次的那一类 */
+  const bad = '{\n  "ops": [\n    { "op": "replace", "file": "' + rel(p) +
+    '", "from": "var s = \\"旧\\";", "to": "var s = "新";" }\n  ]\n}\n';
+  const r = runRaw(bad);
+  T.eq(r.code, 1, '坏 JSON ⇒ 退出码 1（以前只丢一句 JSON.parse 原文，看不出错在哪）');
+  T.ok(/第 \d+ 行 第 \d+ 列/.test(r.stderr), '报错**指出第几行第几列**');
+  T.ok(r.stderr.includes('没转义的 ASCII 双引号'), '并**点明这是 P1**，还给出两条出路');
+  T.eq(read(p), 'var s = "旧";\n', '解析失败时不写盘');
+
+  /* 同一件事改用 .mjs 写 ⇒ 反引号包文本，**零转义**，一次成功 */
+  const jsSrc = 'export default { ops: [\n' +
+    "  { op: 'replace', file: " + JSON.stringify(rel(p)) +
+    ', from: `var s = "旧";`, to: `var s = "新"（含 "引号"）` }\n' +
+    '] };\n';
+  const j = runRaw(jsSrc, ['--json'], '.mjs');
+  T.eq(j.code, 0, '**写成 .mjs（`--patch-js`）就不用转义任何引号** ⇒ 退出码 0');
+  T.ok(read(p).includes('var s = "新"（含 "引号"）'), '带引号的中文文案原样写进去了（P1 的根治）');
+}
+
+/* ---------------- 9. P2：锚点对不上时给出"最接近的几行" ---------------- */
+T.section('9. **P2**：锚点对不上 ⇒ 工具自己列出文件里最接近的几行');
+{
+  const p = mk('p2.ts', 'var alpha = 1;\nvar beta = 2;\n');
+  const r = run({ ops: [{ op: 'replace', file: rel(p), from: 'var alpha = 2;', to: 'var alpha = 3;' }] });
+  T.eq(r.code, 1, '锚点对不上 ⇒ 退出码 1');
+  const near = r.out && r.out.report && r.out.report[0] && r.out.report[0].near;
+  T.ok(Array.isArray(near) && near.some((n) => n.text.includes('var alpha = 1;')),
+    '**报告里带上了文件里真实的那一行**（`var alpha = 1;`）—— 以前只有"一次都没命中"，等于没给线索');
+  const c = runRaw(JSON.stringify({ ops: [{ op: 'replace', file: rel(p), from: 'var alpha = 2;', to: 'x' }] }));
+  T.ok(c.stdout.includes('文件里最接近的'), '人读的输出里也把这几行摆出来了（含行号）');
+  T.eq(read(p), 'var alpha = 1;\nvar beta = 2;\n', '仍然不写盘');
+}
+
+/* ---------------- 10. P3：replaceAll 的前缀碰撞 ---------------- */
+T.section('10. **P3**：replaceAll 前缀碰撞 ⇒ 默认拒绝（就是那次把源码改坏的操作）');
+{
+  const SRC = 'var dy = r * 0.1;\nvar a = r * 0.15;\nvar b = r * 0.12;\n';
+  const p = mk('p3.ts', SRC);
+  const bad = run({ ops: [{ op: 'replaceAll', file: rel(p), from: 'r * 0.1', to: 'Q' }] });
+  T.eq(bad.code, 1, '`r * 0.1` 会咬到 `r * 0.15` / `r * 0.12` ⇒ **默认拒绝**（旧版默默改坏 3 处）');
+  T.eq(read(p), SRC, '拒绝时**逐字节不写盘**');
+  T.ok(String(bad.out.report[0].why).includes('前缀碰撞'), '理由点明这是"前缀碰撞"并给出两条出路');
+  T.eq(bad.out.report[0].hits.length, 3, '报告里列出**全部 3 处**命中的行号与上下文');
+
+  const forced = run({ ops: [{ op: 'replaceAll', file: rel(p), from: 'r * 0.1', to: 'Q' }] }, ['--allow-risk']);
+  T.eq(forced.code, 0, '`--allow-risk` 是**显式认账**才生效的口子');
+  T.ok(read(p).includes('Q5') && read(p).includes('Q2'),
+    '（这就是那个坑的形状：`r * 0.15` 变成了 `Q5`）—— 所以默认**必须**拦');
+
+  const good = mk('p3b.ts', SRC);
+  const okr = run({ ops: [{ op: 'replaceAll', file: rel(good), from: 'r * 0.1', to: 'dy', word: true }] });
+  T.eq(okr.code, 0, '`"word": true` ⇒ 通过');
+  T.eq(read(good), 'var dy = dy;\nvar a = r * 0.15;\nvar b = r * 0.12;\n',
+    '**整词护栏只改真正那一处**：`r * 0.15` / `r * 0.12` 原样保留（P3 的正确解法）');
+
+  const p4 = mk('p3c.ts', 'var a = 1;\nvar b = 1;\n');
+  const show = run({ ops: [{ op: 'replaceAll', file: rel(p4), from: '= 1;', to: '= 2;' }] });
+  T.ok(show.out.report[0].hits.length === 2 && show.out.report[0].hits[0].line === 1 && show.out.report[0].hits[1].line === 2,
+    '多处命中时**每一处的行号都报出来**（以前只说"命中 2 处"，看不见改到了哪）');
+}
 
 /* ---------------- 清理 ---------------- */
 try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (e) { /* 无所谓 */ }

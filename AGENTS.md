@@ -377,7 +377,7 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 
 | 你要改的东西 | 用什么 |
 | --- | --- |
-| **含非 ASCII**（中文注释 / 文案）· 含引号 / 反斜杠 / 反引号 · 跨多行 | **`node tools/dev-edit.mjs --patch <patch.json>`**，或 `write` / `edit` 工具 |
+| **含非 ASCII**（中文注释 / 文案）· 含引号 / 反斜杠 / 反引号 · 跨多行 | **`node tools/dev-edit.mjs --patch-js <patch.mjs>`**（推荐：反引号包文本 ⇒ **零转义**），或 `--patch <patch.json>`，或 `write` / `edit` 工具 |
 | 跑命令、看输出、`git`、查文件 | shell 没问题 |
 
 **为什么**：实测 shell（PowerShell）在文本编辑上咬过 **6 类**，每类都真发生过：
@@ -396,21 +396,38 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
 > 于是下面几行落到代码位置，`SyntaxError`。**本项目在写 `tools/dev-edit.mjs`
 > 的文件头时真踩了这一次。** 所以：**块注释里不要写那个结束符**，要描述就说"块注释的结束符"。
 
+#### patch 这一层自己咬过的 3 类（**已结构性消除**，不再靠"下次注意"）
+
+> 判据：**凡是靠人记住的规范，都会漂**（见 `CONTRIBUTING.md`）。所以下面三类**不是**
+> "记录在案、下次小心"，而是**让错误不可能发生、或者发生时当场自证** ——
+> 处置全落在 `tools/dev-edit.mjs` 与它的门 `test:dev-edit` 里。
+
+| # | 失败模式 | 当时的症状 | 现在的处置 |
+| --- | --- | --- | --- |
+| P1 | **JSON patch 里没转义的 ASCII 双引号** | 整份 patch 被 `JSON.parse` 拒掉（实测一轮里 **6 次**，每次白烧一轮） | ① 推荐 `--patch-js`：patch 写成 `.mjs`、文本用反引号包 ⇒ **零转义**；② 仍然写 JSON 时，报错**指出第几行第几列**、把那一行与插入符打出来，并点明这是 P1 |
+| P2 | **手打的长锚点对不上** | 只说"一次都没命中"，等于没给任何线索（实测 **3 次**） | 失败的 op 会自己在文件里找**最接近的几行**（双字组相似度 + 子串探测），连行号与原文一起列出来 |
+| P3 | **`replaceAll` 的前缀碰撞** | `r * 0.1` 把 `r * 0.15` / `r * 0.12` 一起吃成 `dy5` / `dy2`，**改坏源码**，而且**毫无声音** | ① 每一处命中都连**行号与上下文**打出来；② 命中边界**紧邻标识符/数字字符**时**默认拒绝**（退出码 1、不写盘）；③ 正确解法是 `"word": true`（整词护栏），要硬来就显式 `--allow-risk` 认账 |
+
+> 一句话原则：**看不见的替换就是危险本身** —— 所以本工具"宁可吵，不可静默"：
+> 命中 0 次要说、多处命中要说、命中在哪几行要说、有前缀碰撞风险要拦。
+
 **用法（关键：文本进 patch 文件，命令行上只有 ASCII 路径）**：
 
-1. 用 `write` 工具写一个 patch（它保证 UTF-8 + LF，不经 shell）：
+1. 用 `write` 工具写 patch —— **推荐 `.mjs`**（文本用反引号包住 ⇒ 引号/中文/反斜杠**零转义**）：
 
-   ```json
-   { "ops": [
-     { "op": "replace",      "file": "src/x.ts", "from": "旧文本", "to": "新文本" },
-     { "op": "replaceAll",   "file": "src/x.ts", "from": "旧", "to": "新" },
-     { "op": "insertBefore", "file": "src/x.ts", "anchor": "某行", "text": "新内容" },
-     { "op": "insertAfter",  "file": "src/x.ts", "anchor": "某行", "text": "新内容" },
-     { "op": "writeLine",    "file": "src/x.ts", "match": "^import", "line": "新行" }
-   ] }
+   ```js
+   export default { ops: [
+     { op: 'replace',      file: 'src/x.ts', from: `旧文本"带引号"`, to: `新文本"也带引号"` },
+     { op: 'replaceAll',   file: 'src/x.ts', from: `旧`, to: `新`, word: true },
+     { op: 'insertBefore', file: 'src/x.ts', anchor: `某行`, text: `新内容` },
+     { op: 'insertAfter',  file: 'src/x.ts', anchor: `某行`, text: `新内容` },
+     { op: 'writeLine',    file: 'src/x.ts', match: '^import', line: `新行` },
+   ] };
    ```
 
-2. `node tools/dev-edit.mjs --patch .tmp-patch.json`（可加 `--code-only` / `--dry`）
+   JSON 写法同样支持（`{ "ops": [ … ] }`），只是字符串里的 ASCII 双引号必须写成 `\"` —— P1 就是从这儿来的。
+
+2. `node tools/dev-edit.mjs --patch-js .tmp-patch.mjs`（JSON 用 `--patch`；可加 `--code-only` / `--dry` / `--allow-risk`）
 
 **它比 shell 的字符串替换安全在哪**（这四条正是上表 1 / 2 / 3 / 6 的根治）：
 
@@ -420,10 +437,12 @@ engineer  seed 4242     wave 13 1200 帧  →  354cc83c
   而 shell 的 `.Replace()` 不命中时**静默成功**；
 - **`--code-only` 只改代码行**，跳过注释（失败模式 6）。
 
-> 门 `test:dev-edit`（`test/dev-edit.mjs`，**27 条断言** —— 加的 2 条守**原子性**）**逐条证明它能挡住上面那 6 类** ——
-> 拿真 CRLF 文件、真中文引号、真注释行跑。**这条测试本身也修过两版**：
-> 第一版有两条断言**把工具的正确行为写成了反面**（一处少写了反斜杠、一处描述了一个
-> 因为搜索串形状而根本不会发生的命中），已按实测形状改正。
+> 门 `test:dev-edit`（`test/dev-edit.mjs`）**逐条证明它能挡住上面 6 类 shell 坑 + P1/P2/P3 三类 patch 坑** ——
+> 拿真 CRLF 文件、真中文引号、真注释行、**真的坏 patch** 跑（P1/P2/P3 三节都是**先注入坏输入、
+> 再证明它会红** —— 家法：一条不会失败的审计等于装饰）。
+> **条数不写在这里**（它漂过）：跑那条测试，看它最后一行自己报。
+> **这条测试本身也修过两版**：第一版有两条断言**把工具的正确行为写成了反面**
+> （一处少写了反斜杠、一处描述了一个因为搜索串形状而根本不会发生的命中），已按实测形状改正。
 
 ### ⚠ 行尾与「刷新工作区」（**踩过两次，所以单列一节**）
 
