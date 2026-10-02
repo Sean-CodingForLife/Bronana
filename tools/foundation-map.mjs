@@ -114,8 +114,45 @@ const COMMANDS_STATUS = new Map([
   ['art-manifest', ['manual', '导出美术清单 —— 手工档']],
 ]);
 
-/** 判据：**无引用 ⇒ 必须有状态与理由**（工具的 `refs` / 命令的 `reach` 都是"有人在用它"的证据） */
-function dispositions(m) {
+/* =========================================================
+   子目录声明表：**只读一层的门看不见它们** —— 所以要显式写下来
+   ---------------------------------------------------------
+   实测的洞：门 `drift` 的 `readDir` **只读一层**，于是 `tools/` 与 `test/` 的**子目录里的东西
+   不进任何清单**（`test/fixtures/` 就是靠这一点绕过去的；被 `.gitignore` 忽略的
+   `tools/tmp-readme-rows.mjs` 是另一种隐身）。要把 15 个一次性脚本挪进 `tools/oneoff/`，
+   **前提就是先让子目录可见** —— 否则"整理"等于"把东西藏起来"，比不动更坏。
+   判据：**每个子目录都要在这里写一句它是什么、为什么不需要被当成工具 / 套件登记**；
+   反向也判：声明表里不许有盘上已经不存在的目录。
+   ========================================================= */
+const SUBDIRS_STATUS = new Map([
+  ['test/fixtures', '迁移测试用的**夹具**（生成物），不是测试套件 —— 门 `drift` 只读一层，所以它不进"每套测试都有名字"那张清单'],
+]);
+
+/** 盘上 `tools/` 与 `test/` **下一层**的子目录（与门 `drift` 的视野同一深度，只算有版本库文件的） */
+function realSubdirs() {
+  const out = [];
+  for (const top of ['tools', 'test']) {
+    for (const e of fs.readdirSync(path.join(ROOT, top), { withFileTypes: true })) {
+      if (!e.isDirectory()) continue;
+      if ([...TRACKED].some((t) => t.startsWith(top + '/' + e.name + '/'))) out.push(top + '/' + e.name);
+    }
+  }
+  return [...new Set(out)].sort();
+}
+
+/** 判据：子目录必须被声明 —— **没被看见 ≠ 没问题** */
+function subdirProblems(list) {
+  const problems = [];
+  for (const d of list) {
+    const why = SUBDIRS_STATUS.get(d);
+    if (!why) problems.push('`' + d + '/` 是个子目录，但**没有任何地方声明它** —— 只读一层的门看不见里面（那不是"没问题"，是"没被看见"）');
+    else if (why.length < 12) problems.push('`' + d + '/` 的说明太短（要写清"它是什么、为什么不用登记"）');
+  }
+  for (const k of SUBDIRS_STATUS.keys()) if (!list.includes(k)) problems.push('声明表里的 `' + k + '/` 已经不在盘上了');
+  return problems;
+}
+
+/** 判据：**无引用 ⇒ 必须有状态与理由**（工具的 `refs` / 命令的 `reach` 都是"有人在用它"的证据） */function dispositions(m) {
   const problems = [];
   for (const t of m.tools) {
     if (t.refs.length) continue;
@@ -287,7 +324,8 @@ async function build() {
     }
   }
 
-  return { gates, suites, systems, boundary, loader, disk, persistKeys, archKeys, families, tools, commands, docs, workspaces, ciSteps };
+  return { gates, suites, systems, boundary, loader, disk, persistKeys, archKeys, families, tools, commands, docs, workspaces, ciSteps,
+    subdirs: realSubdirs() };
 }
 
 /* ---------------- 渲成 Markdown ---------------- */
@@ -426,13 +464,18 @@ if (SELF_TEST) {
   /* 自证之二：**没有归属**的东西必须被点名（拿一份只多出一个无引用工具的数据去问） */
   const dispCaught = dispositions({ tools: [...M.tools, { f: 'zzz_fake.cjs', refs: [] }], commands: [] }).length > 0;
   const ghostCaught = dispositions({ tools: [], commands: [] }).length > 0;   /* 声明表里的东西全不在盘上 ⇒ 幽灵 */
+  /* 自证之三：**没被声明的子目录**必须被点名（只读一层的门看不见它） */
+  const sdCaught = subdirProblems(['tools/zzz_undeclared']).length > 0;
+  const sdGhost = subdirProblems([]).length > 0;
   console.log('\n=== foundation-map --self-test ===\n');
   console.log('  ' + (caught ? '✔' : '✘') + ' 文件被改一个字 ⇒ 比较判据能发现（**地图不会漂**）');
   console.log('  ' + (floored ? '✔' : '✘') + ' 生成物非空（' + text.length + ' 字节 / ' +
     String(text).split('\n').length + ' 行）—— 空手而归必须红');
   console.log('  ' + (dispCaught ? '✔' : '✘') + ' 一个**无引用且无状态**的工具 ⇒ 被点名（"手工档"与"死命令"分得开）');
   console.log('  ' + (ghostCaught ? '✔' : '✘') + ' 声明表指向盘上没有的东西 ⇒ 也红（**幽灵声明**）');
-  process.exit(caught && floored && dispCaught && ghostCaught ? 0 : 1);
+  console.log('  ' + (sdCaught ? '✔' : '✘') + ' 一个**没声明的子目录** ⇒ 被点名（"没被看见"不等于"没问题"）');
+  console.log('  ' + (sdGhost ? '✔' : '✘') + ' 子目录声明指向盘上没有的目录 ⇒ 也红');
+  process.exit(caught && floored && dispCaught && ghostCaught && sdCaught && sdGhost ? 0 : 1);
 }
 
 if (WRITE) {
@@ -453,6 +496,14 @@ if (CHECK) {
     for (const x of und.slice(0, 20)) console.log('    · ' + x);
     console.log('  两条出路：① 让它**被引用**（进 JSON 脚本 / 门 / CI / 另一份工具）；');
     console.log('             ② 在 `tools/foundation-map.mjs` 的 `TOOLS_STATUS` / `COMMANDS_STATUS` 里写状态与理由。');
+    process.exit(1);
+  }
+  /* 再判**子目录**：只读一层的门看不见里面 —— 没被看见 ≠ 没问题 */
+  const sd = subdirProblems(M.subdirs);
+  if (sd.length) {
+    console.log('✘ 有 ' + sd.length + ' 个子目录**没有任何声明**（`tools/` 与 `test/` 下一层）：');
+    for (const x of sd) console.log('    · ' + x);
+    console.log('  修法：在 `tools/foundation-map.mjs` 的 `SUBDIRS_STATUS` 里写一句"它是什么、为什么不用登记"。');
     process.exit(1);
   }
   const onDisk = fs.readFileSync(abs, 'utf8');
