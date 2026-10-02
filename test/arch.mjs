@@ -300,6 +300,131 @@ console.log('\n[6] 依赖图');
     (down / Math.max(1, up)).toFixed(1) + ':1）');
 }
 
+/* ---------------- 7. 引擎的模块表 ↔ 审计的系统表 ↔ 真实的 import 图 ---------------- */
+console.log('\n[7] 模块表（`src/module.ts`）与系统表（`tools/systems.cjs`）对账');
+{
+  /* 为什么需要这一节：**同一个事实有两张表，而它们谁也读不到谁** ——
+       · `tools/systems.cjs` —— **审计视角**（9 个系统 · 层号 · 例外清单），住在 `tools/`；
+       · `src/module.ts`     —— **引擎视角**（引擎有哪 9 块 · 自己声明依赖），住在 `src/`。
+     `src/` 不许 import `tools/`（那是宿主侧的东西），所以"两份真相"只能靠**对账**消掉：
+     这里拿**真实的 import 图**当裁判，把两张表钉在一起。
+
+     判据的主体写成**纯函数** `auditTables()`（给表、回问题）—— 于是本节的最后一段能
+     **注入坏数据跑同一段判据**，证明它真的会红（家法：一条不会失败的审计等于装饰）。 */
+  const { Module } = await import('../src/module.ts');
+  const lvl = {};
+  for (const s of SYSTEMS) lvl[s.id] = s.level;
+
+  /* 真实依赖：系统级的**直接**边（含向上的那些 —— 向上的必须逐条登记） */
+  const real = {};
+  for (const s of SYSTEMS) real[s.id] = [];
+  for (const e of Object.values(A.systems.edges)) real[e.from].push(e.to);
+  for (const k of Object.keys(real)) real[k] = [...new Set(real[k])].sort();
+
+  const clone = () => Module.LIST.map(m => ({
+    id: m.id, note: m.note,
+    requires: (m.requires || []).slice(), alsoNeeds: (m.alsoNeeds || []).slice()
+  }));
+
+  function auditTables(mods, realDeps, systems, exceptions) {
+    const p = [];
+    const lv = {}; for (const s of systems) lv[s.id] = s.level;
+    const sysIds = systems.map(s => s.id).slice().sort();
+    const modIds = mods.map(m => m.id).slice().sort();
+    if (modIds.join(',') !== sysIds.join(',')) {
+      p.push('id 集合不一致：模块表 [' + modIds.join(' ') + '] vs 系统表 [' + sysIds.join(' ') + ']');
+    }
+    for (const m of mods) {
+      const req = (m.requires || []).slice().sort();
+      const up = (m.alsoNeeds || []).slice().sort();
+      for (const r of req) {
+        if (lv[r] === undefined) p.push(m.id + '：`requires` 指向一个不存在的模块 ' + r);
+        else if (!(lv[r] < lv[m.id])) {
+          p.push(m.id + '（L' + lv[m.id] + '）：`requires` 必须指向**严格更低层**，而 ' +
+            r + ' 是 L' + lv[r] + ' —— 向上的依赖只能写进 `alsoNeeds` 并登记例外');
+        }
+      }
+      for (const u of up) {
+        if (lv[u] === undefined) p.push(m.id + '：`alsoNeeds` 指向一个不存在的模块 ' + u);
+        else if (!(lv[u] > lv[m.id])) {
+          p.push(m.id + '（L' + lv[m.id] + '）：`alsoNeeds` 是**向上**的例外，而 ' + u + ' 是 L' + lv[u]);
+        }
+      }
+      const want = req.concat(up).sort().join(' ');
+      const got = (realDeps[m.id] || []).slice().sort().join(' ');
+      if (want !== got) {
+        p.push(m.id + '：**声明与真实的 import 图对不上** —— 声明 [' + want + '] vs 真实 [' + got + ']');
+      }
+    }
+    /* 向上的真实边必须**逐条**登记在 EXCEPTIONS 里（与门 `audit` 那条纪律同一个出处） */
+    const reg = exceptions.map(e => e.from + '→' + e.to).sort();
+    const realUp = [];
+    for (const m of mods) {
+      for (const d of (realDeps[m.id] || [])) if (lv[d] > lv[m.id]) realUp.push(m.id + '→' + d);
+    }
+    realUp.sort();
+    if (realUp.join(' ') !== reg.join(' ')) {
+      p.push('向上的真实边 [' + realUp.join(' ') + '] 与 EXCEPTIONS [' + reg.join(' ') + '] 对不上');
+    }
+    return p;
+  }
+
+  const bad = auditTables(clone(), real, SYSTEMS, EXCEPTIONS);
+  ok(bad.length === 0,
+    '模块表 · 系统表 · **真实 import 图** 三者一致（id 集合 / requires 向下 / alsoNeeds 向上 / 例外逐条登记）',
+    bad.join(' | '));
+
+  /* 顺序：拓扑序必须真的满足 `requires`，而且**确定**（同一份表跑两次一样） */
+  const order = Module.order();
+  ok(order.length === Module.LIST.length, '拓扑序排出了全部 ' + Module.LIST.length + ' 个模块', order.join(' '));
+  const pos = {}; order.forEach((id, i) => { pos[id] = i; });
+  const late = Module.LIST.filter(m => (m.requires || []).some(r => pos[r] > pos[m.id]));
+  ok(late.length === 0, '每个模块都排在它 `requires` 的后面（顺序不是 import 顺序，是算出来的）',
+    late.map(m => m.id).join(','));
+  ok(Module.order().join(',') === order.join(','), '拓扑序是**确定**的（同层按 id 字典序，跑两次一样）');
+  ok(Module.audit().ok, '引擎自己的 `Module.audit()` 通过（表自洽 + 当前清单的开关成立）',
+    Module.audit().problems.join(' | '));
+
+  /* 开关判据**真的接在真实图上**：禁用 X 时报出的模块，必须恰好是真实依赖 X 的那些 */
+  const wrong = [];
+  for (const X of Module.LIST.map(m => m.id)) {
+    const reported = Module.check({ modules: { disabled: [X] } })
+      .map(s => (/^`([a-z]+)` 是启用的/.exec(s) || [])[1]).filter(Boolean).sort();
+    const dependents = Module.LIST.map(m => m.id).filter(id => (real[id] || []).indexOf(X) >= 0).sort();
+    if (reported.join(',') !== dependents.join(',')) {
+      wrong.push(X + '：报出 [' + reported.join(' ') + '] vs 真实依赖者 [' + dependents.join(' ') + ']');
+    }
+  }
+  ok(wrong.length === 0,
+    '「被禁用的模块不得被任何启用的模块依赖」在 9 个模块上逐一与**真实图**对齐',
+    wrong.join(' | '));
+
+  /* ---- 注入坏数据：证明上面这段判据会红（四条，各对应一类真错）---- */
+  const injections = [
+    ['声明漏了一条依赖（删掉 data 的 mech）', () => {
+      const c = clone(); c.find(m => m.id === 'data').requires = [];
+      return auditTables(c, real, SYSTEMS, EXCEPTIONS);
+    }],
+    ['依赖写了个不存在的模块', () => {
+      const c = clone(); c.find(m => m.id === 'art').requires.push('ghost');
+      return auditTables(c, real, SYSTEMS, EXCEPTIONS);
+    }],
+    ['把一条**向上**的依赖写成 `requires`（该进 alsoNeeds 的）', () => {
+      const c = clone(); c.find(m => m.id === 'art').requires.push('view');
+      return auditTables(c, real, SYSTEMS, EXCEPTIONS);
+    }],
+    ['example 例外没登记（清掉 sim 的 alsoNeeds）', () => {
+      const c = clone(); c.find(m => m.id === 'sim').alsoNeeds = [];
+      return auditTables(c, real, SYSTEMS, EXCEPTIONS);
+    }],
+    ['两张表的 id 集合漂了（系统表少一个）', () => auditTables(clone(), real, SYSTEMS.slice(1), EXCEPTIONS)]
+  ];
+  const missed = injections.filter(([, run]) => run().length === 0).map(([name]) => name);
+  ok(missed.length === 0,
+    '五种注入（漏依赖 / 幽灵依赖 / 向上写成 requires / 例外没登记 / 两表漂开）**都会红**',
+    missed.join(' | '));
+}
+
 console.log('\n=== 结果 ===');
 if (failures === 0) { console.log('\x1b[32m全部通过 ✔\x1b[0m\n'); process.exit(0); }
 console.log('\x1b[31m' + failures + ' 项失败 ✘\x1b[0m\n');

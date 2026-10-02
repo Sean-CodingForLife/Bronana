@@ -28,6 +28,11 @@ links: ["external-workspace-conventions.md", "teapot-restructure.md", "engine-fi
 > 抄的是 **Bevy「引擎功能全是 Plugin」+ libGDX「同一机制 + 归属标签」**，
 > **不抄 Godot 的"两套机制"**（C++ module 要重编引擎 vs addon 不用 —— 代价是两套 API、两套构建、两套文档）。
 > 出处见 external-workspace-conventions.md §二.4。
+>
+> ⚠ **与 `AGENTS.md` 的术语纪律对齐**：那一节说的"**模块** = 用户定义游戏机制与玩法的方式
+> （战斗 / 经营 / 养成）"是**内容侧**的那一类；本节的"模块"是**功能单元**这个**上位词**——
+> 引擎原生的、插件、内容侧的，**都是模块**。两者不冲突，但**写的时候要带限定词**
+> （「引擎模块」/「玩法模块」），否则读者会猜。出处：`AGENTS.md` §八 末尾那条术语纪律。
 
 ## 二、四层归属（**谁进版本库**，一层都不能混）
 

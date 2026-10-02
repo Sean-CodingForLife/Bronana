@@ -869,9 +869,9 @@ pnpm test                  # 全部一起跑
 
 | 指标 | 值 |
 | --- | --- |
-| 模块 | 100 个 · 46176 行（另有 `types.d.ts` 5571 行） |
+| 模块 | 101 个 · 46584 行（另有 `types.d.ts` 5597 行） |
 | 依赖环 | **0** |
-| 扇入最高的模块 | `registry.ts` 70 · `selfcheck.ts` 67 · `utils.ts` 30 |
+| 扇入最高的模块 | `registry.ts` 71 · `selfcheck.ts` 68 · `utils.ts` 30 |
 | 依赖最重的模块 | `game.ts` 48 · `ui.ts` 44 · `main.ts` 31 |
 | 超过 700 行的模块 | `game.ts` 5380 · `ui.ts` 4139 · `profile.ts` 1863 · `render.ts` 1711 · `sprites.ts` 1687 · `main.ts` 1041 · `dungeon.ts` 996 · `affixes.ts` 868 · `skills.ts` 742 · `hall.ts` 724 · `story.ts` 705 |
 | 类型字符串分支最多的 | `sprites.ts` 90（造型分派，属美术内部） · `game.ts` 66 · `main.ts` 52 · `ui.ts` 26 |

@@ -13,6 +13,7 @@
    ========================================================= */
 
 import { Banners } from './banner.ts';
+import { Module } from './module.ts';
 import { SelfCheck } from './selfcheck.ts';
 import path from 'node:path';
 import process from 'node:process';
@@ -50,6 +51,12 @@ var SPEC = {
     json: { type: 'bool', def: false, desc: '输出 JSON 而不是表格' },
     color: { type: 'bool', def: true, desc: '给启动横幅上色（--no-color / NO_COLOR=1 关掉）' }
   },
+  /* `module` 是唯一有**位置参数**的子命令（`module list` / `module why <id>`）——
+     见下面 parseArgs 里 `positional` 那张表：其余子命令的裸参数一律报错（不许静默吞掉）。 */
+  module: {
+    json: { type: 'bool', def: false, desc: '输出 JSON 而不是表格' },
+    color: { type: 'bool', def: true, desc: '给启动横幅上色（--no-color / NO_COLOR=1 关掉）' }
+  },
   serve: {
     root: { type: 'string', def: 'dist', desc: '要提供的目录' },
     port: { type: 'int', def: 5180, desc: '端口（0 = 让系统分配）' },
@@ -69,7 +76,7 @@ export function parseArgs(argv) {
   else rest = argv.slice();
 
   if (cmd !== 'help' && !SPEC[cmd]) {
-    errors.push('未知子命令「' + cmd + '」（可用：sim / serve / help）');
+    errors.push('未知子命令「' + cmd + '」（可用：' + Object.keys(SPEC).join(' / ') + '）');
     return { cmd: 'help', opts: {}, errors: errors };
   }
 
@@ -78,10 +85,18 @@ export function parseArgs(argv) {
   var spec = SPEC[cmd] || {};
   for (var k in spec) opts[k] = spec[k].def;
 
+  /* 位置参数：只给**声明了**的子命令（今天只有 `module why <id>`）。
+     ⚠ 别的子命令照旧报错 —— "看不懂的参数"这条判据不许因为加了 module 而松掉。 */
+  var POSITIONAL: Record<string, boolean> = { module: true };
+  var args: string[] = [];
+
   for (i = 0; i < rest.length; i++) {
     var a = rest[i];
     if (a === '--help' || a === '-h') { cmd = 'help'; break; }
-    if (a.slice(0, 2) !== '--') { errors.push('看不懂的参数「' + a + '」（选项一律 --name value）'); continue; }
+    if (a.slice(0, 2) !== '--') {
+      if (POSITIONAL[cmd]) { args.push(a); continue; }
+      errors.push('看不懂的参数「' + a + '」（选项一律 --name value）'); continue;
+    }
     var body = a.slice(2);
     var eq = body.indexOf('=');
     var name = eq >= 0 ? body.slice(0, eq) : body;
@@ -110,6 +125,15 @@ export function parseArgs(argv) {
     } else {
       opts[name] = val;
     }
+  }
+
+  opts.args = args;
+
+  if (cmd === 'module' && args.length && args[0] !== 'list' && args[0] !== 'why') {
+    errors.push('未知的 module 子命令「' + args[0] + '」（可用：list / why <id>）');
+  }
+  if (cmd === 'module' && args[0] === 'why' && !args[1]) {
+    errors.push('module why 需要一个模块 id（可用：' + Module.ids().join(' / ') + '）');
   }
 
   if (cmd === 'sim' && opts.char && !Chars.BY_ID[String(opts.char)]) {
@@ -162,6 +186,8 @@ function usage() {
     '  node src/cli.ts serve [--root 目录] [--port 端口] [--host 地址] [--quiet]',
     '      静态服务器（默认 dist/ + 5180 + 只回环）',
     '',
+    '  node src/cli.ts module list [--json]      引擎的功能单元（拓扑序 + 各自的依赖）',
+    '  node src/cli.ts module why <id> [--json]  它为什么在 / 谁需要它（插件系统唯一的调试入口）',
     '',
     '  横幅：help 打主横幅，sim / serve 打单行徽标（引擎选档，装不下自动降级）',
     '        --no-color / NO_COLOR=1 / 重定向 ⇒ 无颜色档；TEAPOT_BANNER_ASCII=1 ⇒ 纯 ASCII 档',
@@ -170,6 +196,81 @@ function usage() {
   ].join('\n');
 }
 
+/* =========================================================
+   module：模块面（`teapot module list` / `module why <id>`）
+   ---------------------------------------------------------
+   规范里的命令面见 `docs/workspace-spec.md` §六（`teapot module list` / `module enable|disable` /
+   `module why`）。今天落地的是**只读的那两条**：`list` 与 `why` ——
+   `enable` / `disable` 要**写清单**，而清单的写入路径是批次 ⑤（工作区命令面）的事，
+   先做一半会造出"改了不生效"的假开关（那正是本仓库最忌的一类）。
+   ⚠ 状态一栏说的是**引擎的默认**（全部启用）：工作区各自的开关住在
+   `teapot.workspace.json` 的 `modules.enabled / disabled`，而**今天还没有宿主读它**
+   （批次 ⑤）。所以这里**不假装**读了清单 —— 它明说自己是默认态。
+   ========================================================= */
+export function runModuleCmd(o) {
+  var sub = (o.args && o.args[0]) || 'list';
+
+  if (sub === 'list') {
+    var rows = Module.order().map(function (id) {
+      var m = Module.BY_ID[id];
+      return {
+        id: id,
+        requires: (m.requires || []).slice(),
+        alsoNeeds: (m.alsoNeeds || []).slice(),
+        note: m.note
+      };
+    });
+    if (o.json) { console.log(JSON.stringify({ modules: rows }, null, 2)); return 0; }
+    console.log('=== Teapot 引擎模块 ===');
+    console.log('  共 ' + rows.length + ' 个 · **拓扑序**（依赖在前，同层按 id）· 状态：引擎默认（全部启用）');
+    console.log('  开关住在工作区清单的 modules.enabled / disabled（见 docs/workspace-spec.md §三）');
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var need = r.requires.concat(r.alsoNeeds.map(function (x) { return x + '（例外）'; }));
+      console.log('  ' + r.id.padEnd(8) + (need.length ? '需要 ' + need.join(' ') : '需要 （无）'));
+      console.log('  ' + ' '.repeat(8) + r.note);
+    }
+    return 0;
+  }
+
+  if (sub === 'why') {
+    var id = String(o.args[1]);
+    var m = Module.BY_ID[id];
+    if (!m) {
+      console.error('未知模块「' + id + '」（可用：' + Module.ids().join(' / ') + '）');
+      return 1;
+    }
+    var users = [];
+    for (var j = 0; j < Module.LIST.length; j++) {
+      var other = Module.LIST[j];
+      if ((other.requires || []).indexOf(id) >= 0) users.push(other.id);
+      else if ((other.alsoNeeds || []).indexOf(id) >= 0) users.push(other.id + '（例外）');
+    }
+    var payload = {
+      id: id,
+      note: m.note,
+      requires: (m.requires || []).slice(),
+      alsoNeeds: (m.alsoNeeds || []).slice(),
+      neededBy: users,
+      order: Module.order().indexOf(id) + 1
+    };
+    if (o.json) { console.log(JSON.stringify(payload, null, 2)); return 0; }
+    console.log('=== Teapot 模块 · ' + id + ' ===');
+    console.log('  说明      ' + m.note);
+    console.log('  需要      ' + ((m.requires || []).length ? m.requires.join(' · ') : '（无）'));
+    console.log('  例外依赖  ' + ((m.alsoNeeds || []).length
+      ? m.alsoNeeds.join(' · ') + '（**向上**的边，理由登记在 tools/systems.cjs 的 EXCEPTIONS）' : '（无）'));
+    console.log('  谁需要它  ' + (users.length ? users.join(' · ') : '（没有别的模块需要它 —— 它可以被单独关掉）'));
+    console.log('  启动序    ' + payload.order + ' / ' + Module.LIST.length + '（依赖拓扑序，不是 import 顺序）');
+    return 0;
+  }
+
+  console.error('未知的 module 子命令「' + sub + '」（可用：list / why <id>）');
+  return 1;
+}
+
+/* =========================================================
+   sim：无头跑局
 /* =========================================================
    sim：无头跑局
    ========================================================= */
@@ -422,6 +523,10 @@ export async function main(argv) {
       if (parsed.opts.json) console.log(JSON.stringify(r, null, 2));
       else console.log(formatReport(r));
       return 0;
+    }
+    if (parsed.cmd === 'module') {
+      if (!parsed.opts.json) printBanner('badge', parsed.opts);
+      return runModuleCmd(parsed.opts);
     }
     if (parsed.cmd === 'serve') {
       printBanner('badge', parsed.opts);

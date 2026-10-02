@@ -72,6 +72,9 @@ const REQUIRED = [
      它讲引擎自己（版本 / 零运行时依赖 / 零素材 / 三种宿主），三种宿主共用同一份。
      `banner` 的每一条都引用 `bannerTier` / `bannerVariant`，所以三者一起要求存在。 */
   'banner', 'bannerTier', 'bannerVariant',
+  /* 引擎的功能单元（2026-10-02）：`module` 的每一条都**指向它自己**
+     （`requires` / `alsoNeeds`），于是"依赖写了个不存在的模块名"由总账免费抓住。 */
+  'module',
 ];
 {
   const missing = REQUIRED.filter(n => !Registry.has(n));

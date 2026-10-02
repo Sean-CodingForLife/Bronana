@@ -25,6 +25,9 @@ export const MODULES = {
      只 import registry / selfcheck + 生成物 `banner_data.ts`（它什么都不 import）。 */
   banner: '../src/banner.ts',
   banner_data: '../src/banner_data.ts',
+  /* 引擎的功能单元（2026-10-02）：**引擎自己的知识**（有哪 9 块 + 依赖），
+     只 import registry / selfcheck / workspace（都是 L0）。 */
+  module: '../src/module.ts',
   containers: '../src/containers.ts',
   envelope: '../src/envelope.ts',
   fold:    '../src/fold.ts',
@@ -135,7 +138,7 @@ export const SIM_MODULES = [
   /* `world`（世界系统）只需要 registry / selfcheck；`object`（对象系统）需要 comp / containers。
      两者都是 L0 地基，所以排在最前面 —— 后面的 arena / hall / game / render 都读它们。 */
   'utils',
-  'viewport', 'rhi', 'text', 'registry', 'selfcheck', 'workspace', 'banner', 'banner_data', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
+  'viewport', 'rhi', 'text', 'registry', 'selfcheck', 'workspace', 'module', 'banner', 'banner_data', 'fold', 'containers', 'envelope', 'dungeon', 'boons', 'story',
   'world', 'comp', 'object', 'rig', 'draw2d', 'collide', 'bronana', 'input', 'audio', 'stats',
   /* **外观与入门三选**（R50）：两者都只依赖 registry / selfcheck（openings 还读 stats），
      所以它们坐在这一批的最前面 —— `character` 读 `appearance`，顺序必须如此。 */

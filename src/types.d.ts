@@ -4256,6 +4256,32 @@ interface BannersApi {
 }
 declare var Banners: BannersApi;
 
+/* ---------------- 引擎的功能单元（module.ts） ----------------
+   ⚠ 「模块」在 `docs/workspace-spec.md` §一 的定义是**引擎原生的功能单元**（插件走同一套加载器）；
+   `hall.ts` 的 `module: 'combat'` 那类是**玩法模块**（内容侧）—— 同一个词的两层含义，不是混用。 */
+/** 一个引擎模块（原生 9 个；与 `tools/systems.cjs` 的系统一一对应） */
+interface ModuleDef {
+  /** 稳定 id（= 系统 id；两张表由 `test/arch.mjs` 第 [7] 节对账） */
+  id: string;
+  /** 一句话说清它是干什么的（自检要求 ≥ 8 字） */
+  note: string;
+  /** **向下**的依赖：它起来时这些也必须启用 */
+  requires: string[];
+  /** **向上**的例外依赖（缺了它起不来；理由逐条登记在 `tools/systems.cjs` 的 `EXCEPTIONS`） */
+  alsoNeeds?: string[];
+}
+interface ModuleApi {
+  LIST: ModuleDef[];
+  BY_ID: Record<string, ModuleDef>;
+  ids(): string[];
+  /** 依赖**拓扑排序**（不是 import 顺序；同层按 id 字典序 ⇒ 顺序是确定的） */
+  order(): string[];
+  /** 纯函数：这份清单的模块开关成不成立（未知 id / enabled 与 disabled 撞车 / 被禁用的模块被启用模块依赖） */
+  check(manifest: WorkspaceManifest): string[];
+  audit(): { ok: boolean; problems: string[] };
+}
+declare var Module: ModuleApi;
+
 interface DangerApi {
   LIST: DangerLevelDef[];
   BY_LEVEL: Record<number, DangerLevelDef>;

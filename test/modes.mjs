@@ -315,6 +315,26 @@ console.log('\n[6] CLI 入口：真起进程（退出码 + 输出）');
   const table = runNode(['src/cli.ts', 'sim', '--seconds', '6']);
   ok(table.status === 0 && /无头跑局/.test(table.out) && /性能/.test(table.out),
     '默认输出是表格报告（不是 JSON）');
+
+  /* ---- 模块面（`teapot module list|why`）：规范里的命令面，见 docs/workspace-spec.md §六 ----
+     判据只判**能跑 + 说得出话 + 错的输入要红**这三件 —— 内容由 `src/module.ts` 自己负责。 */
+  const modList = runNode(['src/cli.ts', 'module', 'list', '--json']);
+  let mods = null;
+  try { mods = JSON.parse(modList.out.slice(modList.out.indexOf('{'))); } catch (e) { /* 下面断言 */ }
+  ok(modList.status === 0 && mods && Array.isArray(mods.modules) && mods.modules.length > 0,
+    'module list --json 可被机器解析（' + (mods && mods.modules ? mods.modules.length : '?') + ' 个模块）',
+    modList.out.slice(0, 160));
+  /* 拓扑序：每个模块的 requires 必须排在它**前面**（"顺序是算出来的，不是 import 顺序"） */
+  const pos = {};
+  (mods ? mods.modules : []).forEach((m, i) => { pos[m.id] = i; });
+  const late = (mods ? mods.modules : []).filter(m => m.requires.some(r => pos[r] > pos[m.id]));
+  ok(late.length === 0, 'module list 是**拓扑序**（依赖排在前面）', late.map(m => m.id).join(','));
+  const why = runNode(['src/cli.ts', 'module', 'why', 'art', '--json']);
+  ok(why.status === 0 && /"neededBy"/.test(why.out), 'module why <id> 退出码 0 且说出谁需要它');
+  const whyBad = runNode(['src/cli.ts', 'module', 'why', 'nope']);
+  ok(whyBad.status === 1 && /未知模块/.test(whyBad.out), 'module why 未知 id 退出码 1');
+  const modBad = runNode(['src/cli.ts', 'module', 'frobnicate']);
+  ok(modBad.status === 1 && /未知的 module 子命令/.test(modBad.out), 'module 未知子命令退出码 1');
 }
 
 /* =========================================================

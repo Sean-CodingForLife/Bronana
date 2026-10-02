@@ -125,7 +125,14 @@ const SYSTEMS = [
          三者**一个玩法概念都不认识**：横幅讲的是引擎自己（版本 / 零依赖 / 三种宿主），
          而"什么时候打、终端有没有颜色"由宿主算好传进来（引擎不认识 Node / DOM）。
          ⚠ 它被三种宿主读（cli / web / desktop）—— 所以它必须在最底下。 */
-      'banner.ts', 'banner_data.ts']
+      'banner.ts', 'banner_data.ts',
+      /* `module.ts`（**引擎的功能单元**，2026-10-02）坐在 L0 的理由与 `workspace.ts` 同一条：
+         它只 import `registry` / `selfcheck` / `workspace`（都是 L0），是"一张声明表 + 几条纯函数"，
+         **一个玩法概念都不认识** —— 它认识的是"引擎有哪 9 块"这件事本身。
+         ⚠ 它与本文件**不是**主从关系：本文件是**审计视角**（层号 + 例外清单），
+           它是**引擎视角**（模块依赖），两边由 `test/arch.mjs` 第 [7] 节逐条对账 ——
+           因为 `src/` 不许 import `tools/`。 */
+      'module.ts']
   },
   {
     id: 'data', name: '数据表', level: 1,
