@@ -163,11 +163,10 @@ links: ["README.md", "../AGENTS.md"]
 >
 > ⚠ **谁都跑不到的命令**（11 条）：`test:for` · `desktop:gpu` · `desktop:nosandbox` · `typecheck:report` · `gen:curves` · `text:census` · `rename:inventory` · `hooks:install` · `hooks:status` · `hooks:remove` · `art-manifest`
 
-## 二、工具链（`tools/`）—— 73 个文件
+## 二、工具链（`tools/`）—— 72 个文件
 
 | 文件 | 角色 | 谁引用它 | `--self-test` |
 | --- | --- | --- | --- |
-| `.session.json` | 普查 / 其他 | `tools/env.mjs` · `tools/where.mjs` |  |
 | `_run.mjs` | 库（共用） | `tools/bug-probe.mjs` · `tools/curve-audit.mjs` · `tools/fun-audit.mjs` · `tools/matrix.mjs` · `tools/reconcile.mjs` · `tools/registry-drift.mjs` |  |
 | `_tables.mjs` | 库（共用） | `tools/foundation-map.mjs` · `tools/registration-audit.mjs` |  |
 | `apply-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
@@ -307,17 +306,16 @@ links: ["README.md", "../AGENTS.md"]
 
 **测试加载集**：`MODULES` 96 个键 · SIM 94 · RENDER 95 · UI 96 · 清单键（persist/arch）51 个
 
-## 六、文档体系 —— 41 份 `.md`
+## 六、文档体系 —— 40 份 `.md`
 
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
 | `AGENTS.md` | 协作 | 现行 | 533 | —（分卷） |
-| `CHANGELOG.md` | 变更史 | 现行 | 2207 | —（分卷） |
+| `CHANGELOG.md` | 变更史 | 现行 | 2220 | —（分卷） |
 | `CODE_OF_CONDUCT.md` | 协作 | 现行 | 71 | —（分卷） |
 | `CONTRIBUTING.md` | 协作 | 现行 | 225 | —（分卷） |
 | `README.md` | 门面 | 现行 | 1886 | —（分卷） |
 | `SECURITY.md` | 安全 | 现行 | 103 | —（分卷） |
-| `design/README.md` | 决定 | 现行 | 112 | —（分卷） |
 | `docs/README.md` | 门面 | 现行 | 47 | ✔ |
 | `docs/engine-first.md` | 决定 | 现行 | 213 | ✔ |
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |

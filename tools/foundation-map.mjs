@@ -29,6 +29,7 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { ROOT, read, diskModules, readSystems, readBoundary, readLoader, readTableKeys } from './_tables.mjs';
 
 const OUT = 'docs/foundation-map.md';
@@ -36,6 +37,32 @@ const WRITE = process.argv.includes('--write');
 const CHECK = process.argv.includes('--check');
 const SELF_TEST = process.argv.includes('--self-test');
 const SKIP_DIR = new Set(['node_modules', '.git', 'dist', '.agents', 'ui-shots', '.tmp-npm-cache']);
+
+/* =========================================================
+   **只认版本库里的文件**（`git ls-files`）—— 生成物必须是**版本库内输入**的纯函数
+   ---------------------------------------------------------
+   为什么：实测栽在这里。地图在本地把两个"**盘上有、版本库里没有**"的东西算了进去：
+   `tools/.session.json`（会话层，被 `.gitignore` 忽略）与 `design/README.md`（用户未跟踪的目录），
+   而**干净检出里没有这两个** ⇒ 地图逐字节对不上 ⇒ **门在 CI 上必红**（本地却全绿）。
+   这就是"生成物"这一类东西最容易犯的错：**把自己的输入偷偷扩大到了工作区**。
+
+   口径与门 `drift` 保持一致：**`.gitignore` 是这个仓库唯一的"哪些文件不该入库"声明** ——
+   一份声明在 `.gitignore` 里、门却在抱怨它，那两边本来就对不上。
+   ⚠ 代价要说清：**被 gitignore 的文件不在任何门的视野里**（`tools/tmp-*.mjs` 就是靠这条隐身的），
+   所以"临时件验完即删"这条规范**只能靠人**，门帮不上 —— 这条限制写在 `docs/foundation-audit.md` 里。
+
+   取不到 git 索引时**硬失败**（不像 `drift` 那样 fail-open）：一张算不准的地图比没有地图更坏，
+   而这张地图的全部价值就是"**在 CI 上也能算出同一张图**"。
+   ========================================================= */
+function tracked() {
+  const r = spawnSync('git', ['ls-files', '-z'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0 || !r.stdout) {
+    console.error('✘ 取不到 `git ls-files` —— 地图必须只由**版本库里的文件**算出来（否则本地绿、CI 红）。');
+    process.exit(1);
+  }
+  return new Set(r.stdout.split('\0').filter(Boolean));
+}
+const TRACKED = tracked();
 
 /* =========================================================
    状态声明表：**无引用 ⇒ 必须有状态与理由**
@@ -138,8 +165,13 @@ function walkMd(dir, out = []) {
     if (e.isDirectory()) walkMd(p, out);
     /* ⚠ **自指陷阱**：地图里有一行"文档体系 —— N 份 .md"，而地图**自己**就是一份 .md。
        不排除它 ⇒ `--write` 之后 `--check` 立刻不一致（写一次涨一份）—— 生成物自己把自己弄漂。
-       实测踩过：写出来 39 份，再算就是 40 份。 */
-    else if (e.name.endsWith('.md') && path.relative(ROOT, p).split(path.sep).join('/') !== OUT) out.push(path.relative(ROOT, p).split(path.sep).join('/'));
+       实测踩过：写出来 39 份，再算就是 40 份。
+       ⚠ **第二个坑**：只能算**版本库里的** `.md`（见文件头 `tracked()`）——
+       未跟踪的 `design/README.md` 会把本地算成 40 份、CI 算成 38 份。 */
+    else if (e.name.endsWith('.md')) {
+      const rel = path.relative(ROOT, p).split(path.sep).join('/');
+      if (rel !== OUT && TRACKED.has(rel)) out.push(rel);
+    }
   }
   return out.sort();
 }
@@ -173,8 +205,10 @@ async function build() {
   }
 
   /* 工具：谁引用它 + 有没有自证 */
+  /* ⚠ **只算版本库里的**（见文件头）：`tools/.session.json` 这类被 gitignore 的本地文件
+     在干净检出里不存在，算进去就会本地绿、CI 红。 */
   const toolFiles = fs.readdirSync(path.join(ROOT, 'tools'), { withFileTypes: true })
-    .filter((e) => e.isFile()).map((e) => e.name).sort();
+    .filter((e) => e.isFile() && TRACKED.has('tools/' + e.name)).map((e) => e.name).sort();
   const ciText = fs.readdirSync(path.join(ROOT, '.github', 'workflows'))
     .map((f) => fs.readFileSync(path.join(ROOT, '.github', 'workflows', f), 'utf8')).join('\n');
   const toolTexts = new Map(toolFiles.map((f) => [f, f.endsWith('.mjs') || f.endsWith('.cjs') ? read('tools/' + f) : '']));
