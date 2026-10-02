@@ -4,6 +4,9 @@ category: 决定
 status: 现行
 scope: "引擎与工作区的关系 · `teapot.workspace.json` 的最小字段集 · 三条硬规范（改名=改一处清单 / 注册表只放派生数据 / 两套机制只许多一套发现）· 「编排」的两个口径 · 命令面 · **逐条可执行判据**"
 source: "用户 2026-10-01~02 的要求（「内容命名空间由工作区注入」·「让这类改名问题变得更简单」·「编排都可以加上」）＋ 三路联网调研（见 external-workspace-conventions.md，每条规范在那里有出处与强度）"
+id: D-004
+consequences: "代价：引擎启动处不得再硬编码内容名（`Storage.setNamespace` 那一批已还清），改名改成「改一处清单」；收益：同一台引擎能认多个工作区"
+confirmation: "门 `workspace`（每份清单都要被引擎认下来）· 门 `registration`（表与盘两个方向都对得上）。三条硬规范里「注册表只放派生数据」**无门**，靠评审"
 links: ["external-workspace-conventions.md", "teapot-restructure.md", "engine-first.md", "requirements.md"]
 ---
 # 工作区规范

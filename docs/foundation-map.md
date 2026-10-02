@@ -319,7 +319,7 @@ links: ["README.md", "../AGENTS.md"]
 | `SECURITY.md` | 安全 | 现行 | 103 | —（分卷） |
 | `design/README.md` | 决定 | 现行 | 112 | —（分卷） |
 | `docs/README.md` | 门面 | 现行 | 47 | ✔ |
-| `docs/engine-first.md` | 决定 | 现行 | 210 | ✔ |
+| `docs/engine-first.md` | 决定 | 现行 | 213 | ✔ |
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
 | `docs/external-game-mechanics.md` | 外部参考 | 现行 | 3111 | ✔ |
 | `docs/external-workspace-conventions.md` | 调研 | 现行 | 152 | ✔ |
@@ -341,17 +341,17 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/history/15-批次2-内容模块显式认领.md` | 交付记录 | 现行 | 67 | —（分卷） |
 | `docs/history/16-批次2后半-draw2d那一刀.md` | 交付记录 | 现行 | 64 | —（分卷） |
 | `docs/history/17-工具层三个洞的结构性消除.md` | 交付记录 | 现行 | 145 | —（分卷） |
-| `docs/history/18-地基体检.md` | 交付记录 | 现行 | 74 | —（分卷） |
+| `docs/history/18-地基体检.md` | 交付记录 | 现行 | 91 | —（分卷） |
 | `docs/history/README.md` | 交付记录 | 现行 | 49 | —（分卷） |
 | `docs/requirements.md` | 需求账本 | 现行 | 4293 | ✔ |
 | `docs/scaling-benchmarks.md` | 外部参考 | 现行 | 246 | ✔ |
 | `docs/scaling-isaac-gungeon.md` | 外部参考 | 现行 | 61 | ✔ |
 | `docs/scaling-ror2-vs-sts.md` | 外部参考 | 现行 | 154 | ✔ |
 | `docs/skill-audit.md` | 自检 | 现行 | 271 | ✔ |
-| `docs/teapot-restructure.md` | 决定 | 现行 | 311 | ✔ |
-| `docs/techstack-upgrade-decision.md` | 决定 | 现行 | 351 | ✔ |
+| `docs/teapot-restructure.md` | 决定 | 现行 | 314 | ✔ |
+| `docs/techstack-upgrade-decision.md` | 决定 | 现行 | 354 | ✔ |
 | `docs/techstack-upgrade-research.md` | 调研 | 已取代 | 1761 | ✔ |
-| `docs/workspace-spec.md` | 决定 | 现行 | 150 | ✔ |
+| `docs/workspace-spec.md` | 决定 | 现行 | 153 | ✔ |
 
 ## 七、工作区清单 —— 1 份
 

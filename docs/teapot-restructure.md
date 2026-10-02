@@ -4,6 +4,9 @@ category: 决定
 status: 现行
 scope: "引擎与内容的定位、术语、目标目录、模块与插件机制、八项引擎能力、E1~E10 批次与每批判据"
 source: "用户 2026-10-01 正式决定（本阶段只做引擎、停止扩张内容）"
+id: D-002
+consequences: "代价：十批改造（E1~E10）要动目录、加载器与命名空间，期间引擎与内容暂时同居一仓；收益：同一台引擎能被第二个工作区复用，内容不再反向污染引擎"
+confirmation: "门 `engine-boundary`（分类 + 边）· 门 `registration`（登记一致）· 门 `workspace`（清单要被引擎认下来）。**批次进度：无门**，靠本文件的批次表 + `docs/history/`"
 links: ["engine-first.md", "requirements.md", "README.md", "../AGENTS.md"]
 ---
 

@@ -95,6 +95,9 @@ const files = walk(ROOT).map(p => path.relative(ROOT, p).split(path.sep).join('/
 const problems = [];
 const rows = [];
 const statusRows = [];
+/* 决定记录（ADR-lite）：`id` 要唯一 ⇒ 得有一次遍历才知道撞没撞号 */
+const decisionRows = [];
+const seenIds = new Map();
 
 for (const f of files) {
   const text = fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -122,6 +125,42 @@ for (const f of files) {
     } else {
       rows.push({ file: f, category: cat });
     }
+  }
+
+  /* ---- 决定记录：**身份 · 代价 · 落点**（ADR-lite，2026-10-02 加）----
+     外部对照（Nygard ADR / MADR 4.0 / adr-tools）的结论：本仓库**不缺"决策"这一层**
+     （`status` 状态机 + `superseded-by` + 横幅已经比多数项目严），缺的是三样：
+     ① **身份**（编号 ⇒ 别的文件——注释 / 提交信息 / 需求账本——能**引用**这条决定）；
+     ② **代价**（`consequences`：正负都写，抄 MADR）；
+     ③ **落点**（`confirmation`：**哪道门 / 哪条测试守它** —— 这是 ADR 与"架构适应度函数"接起来的那一格）。
+     ⚠ `confirmation` **允许写「无门 + 理由」** —— 否则会逼人写出一道**还不存在的门**
+     （本仓库 A13 ② 的教训：文档说了一道不存在的门）。但**不许空着、也不许只写「无门」两个字**。
+     ⚠ 编号按**首次提交时间**发、同日按文件名字典序，**发了不复用**（ADR 的规矩）。
+     ⚠ `design/**` **不适用**：那是用户自己的目录（未跟踪、由用户编辑），
+     我们不拿自家字段去要求它 —— 但它的 front matter 仍然照常校验。 */
+  const catName = fields.category ? fields.category.replace(/^["']|["']$/g, '') : '';
+  if (catName === '决定' && !f.startsWith('design/')) {
+    const plain = (k) => (fields[k] || '').replace(/^["']|["']$/g, '');
+    const id = plain('id'), cons = plain('consequences'), conf = plain('confirmation');
+    if (!/^D-\d{3}$/.test(id)) {
+      problems.push(f + '：`category: 决定` 必须写 `id: D-NNN`（三位数字，**不复用**）—— ' +
+        '没有编号，别的文件就没法引用这条决定');
+    } else if (seenIds.has(id)) {
+      problems.push(f + '：决定编号 `' + id + '` 与 ' + seenIds.get(id) + ' **撞号**（编号单调不复用）');
+    } else {
+      seenIds.set(id, f);
+    }
+    if (!cons) {
+      problems.push(f + '：`category: 决定` 必须写 `consequences`（**代价**：正的负的都要）—— ' +
+        '只写"为什么这么定"的决定，下一个人看不出它付了什么');
+    }
+    if (!conf) {
+      problems.push(f + '：`category: 决定` 必须写 `confirmation`（**落点**：哪道门 / 哪条测试守它）—— ' +
+        '没有判据就写「无门 + 理由」，但**不许空着**');
+    } else if (/^无门/.test(conf) && conf.length < 12) {
+      problems.push(f + '：`confirmation` 写了「无门」却**没带理由**（空话比不写更坏）');
+    }
+    decisionRows.push({ file: f, id, conf });
   }
 
   /* ---- 状态机（不是"值合法"就完事：状态**决定**别的东西必须怎么写）---- */

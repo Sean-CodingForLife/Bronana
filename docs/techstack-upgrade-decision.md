@@ -4,6 +4,9 @@ category: 决定
 status: 现行
 scope: "用户 2026-10-01 拍板 —— **换 WebGL2，shader 是一等能力，不是可选收益**；引擎与内容分离为硬约束"
 source: "用户原话（本轮）＋ 仓库现场实测（`test/modes.mjs` / `src/draw2d.ts` / `src/*.ts` 的 `D.*` 普查）"
+id: D-003
+consequences: "代价：RHI 要按「Target 一等对象」改造（七阶段施工），3px 描边与文本在 WebGL2 下要另做；收益：渲染后端可换（WebGL2 → WebGPU 为目标态），shader 成为一等能力"
+confirmation: "美术宪法（零渐变 / 零阴影）由 `test/render-check.mjs` 与门 `color` 守。**后端可替换性：目前无门** —— 施工完成后由 `pnpm typecheck` 与 `test/modes.mjs` 的体积预算守"
 links: ["docs/techstack-upgrade-research.md", "docs/requirements.md", "AGENTS.md"]
 ---
 
