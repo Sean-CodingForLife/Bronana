@@ -425,6 +425,46 @@ console.log('\n[7] 模块表（`src/module.ts`）与系统表（`tools/systems.c
     missed.join(' | '));
 }
 
+/* ---------------- 8. 模块根（E4 批次 1：搬家前先把"根"收成一处） ---------------- */
+console.log('\n[8] 模块根：引擎 src/ + 每个工作区的内容根');
+{
+  /* 为什么要有这一节：`docs/workspace-migration.md` 要把内容搬进 `workspace/<Name>/src/`，
+     而全仓有二十多处各自 `readdirSync('src')` —— 搬家那天它们会**静默地少看一半文件**
+     （门照样全绿，因为它根本没看见那些模块）。"根"收进 `tools/roots.cjs` 之后，
+     这里拿**临时目录里的假布局**证明三件事：第二根会被看见 · 指向引擎根的那份清单会去重 ·
+     引擎根的文件只数一次。⚠ 假布局写在**系统临时目录**里，跑完即删（不碰仓库）。 */
+  const os = require('node:os');
+  const rootsMod = require('../tools/roots.cjs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'teapot-arch-roots-'));
+  try {
+    fs.mkdirSync(path.join(tmp, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'src', 'engine_only.ts'), 'export var a = 1;\n');
+    const mf = (dir, id, contentSrc) => {
+      fs.mkdirSync(path.join(tmp, 'workspace', dir), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'workspace', dir, 'teapot.workspace.json'), JSON.stringify({
+        schema: 1, id, displayName: id, engine: '>=1', entry: 'src/main.ts',
+        storage: { namespace: id }, content: { src: contentSrc }
+      }));
+    };
+    mf('Probe', 'probe', 'src');
+    fs.mkdirSync(path.join(tmp, 'workspace', 'Probe', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'workspace', 'Probe', 'src', 'probe_mod.ts'), 'export var b = 2;\n');
+    mf('Shadow', 'shadow', '../../src');            // 过渡态：内容根就是引擎根 ⇒ 去重
+
+    const rs = rootsMod.rootsFrom(tmp);
+    ok(rs.length === 2 && rs[0].kind === 'engine',
+      '两个根：引擎 + 工作区 Probe（Shadow 那份指向引擎根，**已去重**）', rs.map(r => r.id).join(','));
+    const seen = [];
+    for (const r of rs) for (const rel of rootsMod.walkTs(r.abs, '', [])) seen.push(r.id + ':' + rel);
+    ok(seen.indexOf('ws:probe:probe_mod.ts') >= 0, '第二根里的模块**被枚举到了**（不是静默漏掉）',
+      seen.join(' '));
+    ok(seen.filter(x => x.endsWith('engine_only.ts')).length === 1,
+      '引擎根的文件只被数**一次**（去重真的生效）');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 console.log('\n=== 结果 ===');
 if (failures === 0) { console.log('\x1b[32m全部通过 ✔\x1b[0m\n'); process.exit(0); }
 console.log('\x1b[31m' + failures + ' 项失败 ✘\x1b[0m\n');

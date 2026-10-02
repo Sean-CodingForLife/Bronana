@@ -9,7 +9,11 @@
    审计照样全绿，因为它根本没看见那些文件。
    这类"校验没坏、只是读漏了"的失效，本项目已经栽过多次（见 README 的失败史）。
 
-   所以扫描收成一处，并且**递归**。顺带提供两件事：
+   所以扫描收成一处，并且**递归** —— 而"根"这件事本身又收进 tools/roots.cjs
+   （E4 批次 1：引擎的 src/ + 每个工作区的内容根，出处是该工作区的 content.src）。
+   于是这个文件只回答"这些根下有哪些模块"，**不再自己知道 src/ 在哪**。
+
+   顺带提供两件事：
 
      · `relName(file)` —— 把任意深度的路径压成"模块名"（`sim/game.ts` → `game.ts`）。
        分层表（`systems.cjs`）用的是**裸文件名**，两种写法必须能对上。
@@ -21,7 +25,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
+const roots = require('./roots.cjs');
+
+const ROOT = roots.ROOT;
+/* ⚠ **保留 SRC 这个导出**（兼容既有调用方），但它已经不是"唯一的根"了 ——
+   要枚举全部模块请用 list() / entries()，要根清单用 rootsAll()。 */
 const SRC = path.join(ROOT, 'src');
 
 /** 不属于任何"系统"的文件，**逐条写清为什么**（不是随手加白名单） */
@@ -33,18 +41,17 @@ const UNAFFILIATED = {
   'types.d.ts': '全局 ambient 类型声明（无运行时依赖边，故不进分层表）'
 };
 
-/** 递归收集 src 下的 .ts（排除 .d.ts 之外的都算模块；调用方自己决定要不要排 .d.ts） */
-function list() {
-  const out = [];
-  (function walk(dir, prefix) {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) walk(p, prefix + e.name + '/');
-      else if (e.name.endsWith('.ts')) out.push(prefix + e.name);
-    }
-  })(SRC, '');
-  return out.sort();
-}
+/** 全部模块根（引擎 + 各工作区）—— 转发 roots.cjs，**别在这里再实现一遍** */
+function rootsAll() { return roots.roots(); }
+
+/**
+ * 全部模块（**跨根**递归；每项带它属于哪个根）。
+ * @returns {{ rel: string, base: string, root: string, kind: string, abs: string }[]}
+ */
+function entries() { return roots.list(); }
+
+/** 模块路径（**相对各自那个根**，排序）—— 既有调用方要的就是这个 */
+function list() { return entries().map((m) => m.rel).sort(); }
 
 /** 任意深度的路径 → 模块名（与分层表同一种写法） */
 function relName(rel) { return rel.split('/').pop(); }
@@ -83,4 +90,4 @@ function parity(systems) {
   return { ok: problems.length === 0, problems, files, declared };
 }
 
-module.exports = { SRC, ROOT, list, relName, parity, UNAFFILIATED };
+module.exports = { SRC, ROOT, list, entries, rootsAll, relName, parity, UNAFFILIATED };

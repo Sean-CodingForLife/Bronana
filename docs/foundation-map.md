@@ -164,7 +164,7 @@ links: ["README.md", "../AGENTS.md"]
 >
 > ⚠ **谁都跑不到的命令**（11 条）：`test:for` · `desktop:gpu` · `desktop:nosandbox` · `typecheck:report` · `gen:curves` · `text:census` · `rename:inventory` · `hooks:install` · `hooks:status` · `hooks:remove` · `art-manifest`
 
-## 二、工具链（`tools/`）—— 73 个文件
+## 二、工具链（`tools/`）—— 74 个文件
 
 | 文件 | 角色 | 谁引用它 | `--self-test` |
 | --- | --- | --- | --- |
@@ -227,6 +227,7 @@ links: ["README.md", "../AGENTS.md"]
 | `registry-drift.mjs` | 门 | 门 `drift` · 脚本 `drift` · `tools/eol-audit.mjs` · `tools/verify.mjs` |  |
 | `rename-bronana.cjs` | 声明表 | `tools/oneoff/rename-doudou.cjs` |  |
 | `rename-inventory.mjs` | 普查 / 其他 | 脚本 `rename:inventory` |  |
+| `roots.cjs` | 声明表 | `tools/src-files.cjs` | ✔ |
 | `run-suites.cjs` | 声明表 | 脚本 `suites` |  |
 | `score.mjs` | 普查 / 其他 | 脚本 `score` · `tools/registry-drift.mjs` |  |
 | `solid-audit.cjs` | 门 | 门 `solid` · 脚本 `solid` · `tools/verify.mjs` |  |
