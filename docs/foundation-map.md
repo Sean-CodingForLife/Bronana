@@ -309,7 +309,7 @@ links: ["README.md", "../AGENTS.md"]
 
 **测试加载集**：`MODULES` 99 个键 · SIM 97 · RENDER 98 · UI 99 · 清单键（persist/arch）51 个
 
-## 六、文档体系 —— 44 份 `.md`
+## 六、文档体系 —— 45 份 `.md`
 
 | 文件 | 分类 | 状态 | 行数 | 在主索引 |
 | --- | --- | --- | --- | --- |
@@ -320,7 +320,7 @@ links: ["README.md", "../AGENTS.md"]
 | `README.md` | 门面 | 现行 | 1886 | —（分卷） |
 | `SECURITY.md` | 安全 | 现行 | 103 | —（分卷） |
 | `design/README.md` | 决定 | 现行 | 165 | —（分卷） |
-| `docs/README.md` | 门面 | 现行 | 48 | ✔ |
+| `docs/README.md` | 门面 | 现行 | 49 | ✔ |
 | `docs/editor-roadmap.md` | 决定 | 现行 | 77 | ✔ |
 | `docs/engine-first.md` | 决定 | 现行 | 213 | ✔ |
 | `docs/external-benchmarks.md` | 外部参考 | 现行 | 446 | ✔ |
@@ -356,6 +356,7 @@ links: ["README.md", "../AGENTS.md"]
 | `docs/teapot-restructure.md` | 决定 | 现行 | 314 | ✔ |
 | `docs/techstack-upgrade-decision.md` | 决定 | 现行 | 354 | ✔ |
 | `docs/techstack-upgrade-research.md` | 调研 | 已取代 | 1761 | ✔ |
+| `docs/workspace-migration.md` | 决定 | 现行 | 105 | ✔ |
 | `docs/workspace-spec.md` | 决定 | 现行 | 158 | ✔ |
 
 ## 七、工作区清单 —— 1 份

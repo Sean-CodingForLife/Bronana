@@ -29,6 +29,7 @@ links: ["../README.md", "../AGENTS.md", "requirements.md"]
 | [`engine-first.md`](engine-first.md) | **判据** | **引擎优先**：为什么"内容用不上"**不是**否决引擎能力的理由 —— 禁用判据表 / 替代的三问 / 唯一真约束（抽象不能是死代码）/ **引擎能力包**这个落地形态 / 与门 `engine-boundary` 的分工 | **提引擎需求或评审时必读** |
 | [`teapot-restructure.md`](teapot-restructure.md) | **决定·战略** | **把项目战略重构为 Teapot Engine**：引擎与内容的两层定位 · 术语（模块 / 插件 / 工作区 / 扩展 / 包）· 目标目录 · 八项能力的落点 · **E1~E10 批次表** · **§六之一：E3 的完整入口**（门内 + 门外六类 + 三条硬约束） | **做引擎化改造前必读** |
 | [`editor-roadmap.md`](editor-roadmap.md) | **决定·排期** | **引擎编辑器**：为什么"**先完善引擎、再设计编辑器**"是顺序而不是拖延 · **前置条件清单**（工作区 · 数据可回写 · 模块加载器 · 场景格式 · 资产 · 热重载 · 命令层 · **编辑器产物自己的判据**）· 刻意不做 · **开工判据** | 提编辑器需求 / 评审"该不该先做界面"时必读 |
+| [`workspace-migration.md`](workspace-migration.md) | **决定·执行计划** | **工作区搬家（E4）**：把所有 Bronana 的东西搬进 `workspace/Bronana/` —— 目标布局 · 要搬什么（清单从门现算）· **无感知的两条硬要求** · **四批**（0 无感知 → 1 工具链双根 → 2 `git mv` → 3 测试与文档，每批带判据与回滚点）· 刻意不做 | **动工作区/目录结构前必读** |
 | [`skill-audit.md`](skill-audit.md) | 自检 | 按行业判据逐条体检本作，附"影响 ÷ 代价"排序 | 罕见 |
 | [`techstack-upgrade-research.md`](techstack-upgrade-research.md) | 调研 | 技术栈升级的**联网取证**（Canvas2D 的边界 / WebGL2 的成本 / WebGPU 支持 / 渲染抽象层 / 引擎与内容分离 / 像素游戏现状）。每条带来源链接与强度。⚠ **顶部有作废横幅：结论不要再用，取证仍然有效** | 罕见（结论已由下面的决定文档取代） |
 | [`techstack-upgrade-decision.md`](techstack-upgrade-decision.md) | **决定** | **拍板：渲染后端升级到 WebGL2（WebGPU 为目标态）**——用户的理由 / 原判据为什么不适用 / 四条硬约束（R1~R4）/ 接口形状（Target 一等对象）/ 文本与 3px 描边的真风险 / 预算 / 七阶段施工 | 施工时对照 |
