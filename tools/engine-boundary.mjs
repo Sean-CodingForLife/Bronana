@@ -57,6 +57,13 @@ const ENGINE = {
   'containers.ts': '容器与对象管理（回收/上限/账目）',
 
   'collide.ts': '碰撞体形状与判定（纯数学）',
+
+  /* ---- 批次 2（2026-10-02）补认领：这 7 个一直是引擎，只是**没写进表** ---- */
+  'workspace.ts': '工作区清单的校验器（引擎机制：它认的是**格式**，不认识任何具体游戏）',
+  'rhi.ts': '渲染硬件接口：声明**引擎允许用哪些绘制成员**（面是引擎的，不是宿主的）',
+  'viewport.ts': '窗口 / 视口 / 相机：纯几何（Window ⊃ Viewport ⊃ Layer ⊃ Item），不认识玩法',
+  'text.ts': '文字排版与字形（通用能力：字形数据由内容侧给）',
+  'crash.ts': '崩溃上报（引擎能力：卡面文案已改成中性，E5 由工作区 `displayName` 注入）',
   /* ⚠ `draw2d.ts` **不在这里** —— 它是"混合"（原语是引擎，同一文件里夹带一个游戏名
      与一层表情语义）。第一版我把它同时写进两张表，门当场报"分类表自相矛盾" ——
      **门抓到了我的分类错误**。见 1b 的 `ENGINE_MIXED`。 */
@@ -146,9 +153,46 @@ const ENGINE_MIXED = {
      一个模块进这里，就意味着它**换游戏要改** —— 那是一个可陈述的事实，
      不是分类者的妥协。
    ========================================================= */
+/* ⚠ **批次 2（2026-10-02）把 35 个内容模块显式认领了。**
+   以前它们**不在表里**，门只报一句提示级「它们算内容，但没显式认领」 ——
+   那不是「分类完成」，是**分类没做完**：判据说得对（它们算内容），但**没有任何地方写下这件事**，
+   于是读这张表的人会以为这个仓库只有 2 个内容模块。
+
+   ⚠ **同一组的理由写一遍，不写 35 遍**：分组常量 + 逐文件指向它。
+   理由相同的东西抄 35 份，改的时候必然漏掉几份（本项目记过多次「两份真相」）。 */
+const C = {
+  play: '**玩法与对局**：这个游戏的规则就写在这里（换游戏等于重写）',
+  meta: '**局外成长与经营**：本作的货币、据点、天赋、关系与引导（数据在 `DATA_TABLES`，逻辑在这里）',
+  view: '**表现与界面**：本作的画面、界面布局、输入映射与造型',
+  host: '**宿主入口**：今天它**知道这个游戏**（硬编码存储命名空间、直接 import 游戏模块）。'
+    + 'E4/E5 之后宿主变成引擎侧的通用入口、由工作区清单驱动 —— 那时它们会从这张表搬去 ENGINE'
+};
 const CONTENT = {
   'record.ts': '输入录制/回放：它把**这个游戏的 COMMANDS 表**逐条包一层（`Game[name] = wrapper`），换游戏要换命令表',
-  'ai.ts': '怪物行为：`AI.behaviour(chase, …)` 把本作行为直接注册进去（控制流里带着游戏规则，搬走等于重写）'
+  'ai.ts': '怪物行为：`AI.behaviour(chase, …)` 把本作行为直接注册进去（控制流里带着游戏规则，搬走等于重写）',
+
+  /* ---- 批次 2 认领 ---- */
+  'game.ts': C.play, 'arena.ts': C.play, 'chamber.ts': C.play, 'scene.ts': C.play,
+  'emit.ts': C.play, 'impact.ts': C.play, 'save.ts': C.play, 'run_save.ts': C.play,
+  'score.ts': C.play, 'slots.ts': C.play, 'status.ts': C.play, 'stats.ts': C.play,
+
+  'profile.ts': C.meta, 'settings.ts': C.meta, 'danger.ts': C.meta, 'daily.ts': C.meta,
+  'season.ts': C.meta, 'bonds.ts': C.meta, 'dialogue.ts': C.meta, 'station.ts': C.meta,
+  'hall.ts': C.meta, 'offline.ts': C.meta, 'training.ts': C.meta, 'tutorial.ts': C.meta,
+  'guide.ts': C.meta,
+
+  'render.ts': C.view, 'ui.ts': C.view, 'input.ts': C.view, 'sprites.ts': C.view,
+  'appearance.ts': C.view, 'character.ts': C.view, 'bronana.ts': C.view,
+  /* 诊断叠加层：它**读 Game 与 sprites**，所以按「依赖决定归属」算内容 ——
+     这是门当场抓的（我先按性质划成引擎，判据立刻指出它 import 了 comp/game/sprites）。 */
+  'diag.ts': C.view,
+  /* ⚠ `storage_fs.ts` 我原本按「它是通用后端」划成引擎，**门 `naming` 当场纠正**：
+     一旦它被划进引擎，门就开始扫它 —— 而它自己的源码里带着内容名（默认目录名与旧环境变量名）。
+     按本门判据「**引擎模块里出现内容名就是耦合**」，它今天算**内容**。
+     等批次 1 收尾把这两处改成从清单读之后，再搬回引擎侧。 */
+  'storage_fs.ts': C.host,
+
+  'main.ts': C.host, 'cli.ts': C.host, 'demo.ts': C.host
 };
 
 /* =========================================================

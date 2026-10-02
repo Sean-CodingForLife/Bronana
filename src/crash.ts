@@ -55,7 +55,7 @@ Crash.describe = function (err, from, where) {
   if (msg.length > 1200) msg = msg.slice(0, 1200) + '…';
   var ctx = where === undefined ? Crash.where() : where;
   /* ⚠ 这里**刻意不写引擎名也不写游戏名**（E3 第 3 小步）：这张卡是给**玩家**看的，
-     而玩家玩的是**某个工作区**（今天叫 Bronana）—— 引擎不认识它的名字。
+     而玩家玩的是**某个工作区**（名字由清单给，引擎**不认识**它）—— 所以这里两个名字都不写。
      E5 之后由工作区清单的 `displayName` 注入；在那之前用中性措辞，
      比「引擎自称某个游戏」安全（门 `naming` 与那句「不要混了」要拆的就是后者）。 */
   return '出了点意外（这一局可能已经不可靠了）。\n\n' +
