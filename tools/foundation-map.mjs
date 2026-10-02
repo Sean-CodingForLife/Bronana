@@ -156,7 +156,7 @@ function subdirProblems(list) {
   const problems = [];
   for (const t of m.tools) {
     if (t.refs.length) continue;
-    const d = TOOLS_STATUS.get(t.f);
+    const d = TOOLS_STATUS.get(t.f) || TOOLS_STATUS.get(path.basename(t.f));
     if (!d) problems.push('`tools/' + t.f + '` **没有任何引用**，也没在 `TOOLS_STATUS` 里写状态与理由');
     else if (!d[1] || d[1].length < 12) problems.push('`tools/' + t.f + '` 的状态理由太短（要说清"这是什么、为什么还留着"）');
   }
@@ -167,7 +167,9 @@ function subdirProblems(list) {
     else if (!d[1] || d[1].length < 12) problems.push('命令 `' + c.name + '` 的状态理由太短');
   }
   /* 反向：声明表里不许有盘上不存在的东西（**幽灵声明** —— 与门 `registration` 的幽灵条目同一个病） */
-  for (const k of TOOLS_STATUS.keys()) if (!m.tools.some((t) => t.f === k)) problems.push('`TOOLS_STATUS` 里的 `' + k + '` 已经不在盘上了');
+  for (const k of TOOLS_STATUS.keys()) {
+    if (!m.tools.some((t) => t.f === k || path.basename(t.f) === k)) problems.push('`TOOLS_STATUS` 里的 `' + k + '` 已经不在盘上了');
+  }
   for (const k of COMMANDS_STATUS.keys()) if (!m.commands.some((c) => c.name === k)) problems.push('`COMMANDS_STATUS` 里的 `' + k + '` 已经不是脚本了');
   return problems;
 }
@@ -242,10 +244,18 @@ async function build() {
   }
 
   /* 工具：谁引用它 + 有没有自证 */
-  /* ⚠ **只算版本库里的**（见文件头）：`tools/.session.json` 这类被 gitignore 的本地文件
-     在干净检出里不存在，算进去就会本地绿、CI 红。 */
-  const toolFiles = fs.readdirSync(path.join(ROOT, 'tools'), { withFileTypes: true })
-    .filter((e) => e.isFile() && TRACKED.has('tools/' + e.name)).map((e) => e.name).sort();
+  /* ⚠ 列**两层**（`tools/` 与 `tools/<子目录>/`）：只列一层的话，搬进 `tools/oneoff/` 的东西
+     会**从地图里消失** —— 那不是整理，那是藏起来。子目录**本身**由 `SUBDIRS_STATUS` 声明。 */
+  const toolFiles = [];
+  for (const e of fs.readdirSync(path.join(ROOT, 'tools'), { withFileTypes: true })) {
+    if (e.isFile()) { if (TRACKED.has('tools/' + e.name)) toolFiles.push(e.name); }
+    else if (e.isDirectory()) {
+      for (const s of fs.readdirSync(path.join(ROOT, 'tools', e.name), { withFileTypes: true })) {
+        if (s.isFile() && TRACKED.has('tools/' + e.name + '/' + s.name)) toolFiles.push(e.name + '/' + s.name);
+      }
+    }
+  }
+  toolFiles.sort();
   const ciText = fs.readdirSync(path.join(ROOT, '.github', 'workflows'))
     .map((f) => fs.readFileSync(path.join(ROOT, '.github', 'workflows', f), 'utf8')).join('\n');
   const toolTexts = new Map(toolFiles.map((f) => [f, f.endsWith('.mjs') || f.endsWith('.cjs') ? read('tools/' + f) : '']));
@@ -259,10 +269,13 @@ async function build() {
     for (const [other, txt] of toolTexts) if (other !== f && txt.includes(f)) refs.push('`tools/' + other + '`');
     if (ciText.includes(f)) refs.push('CI');
     const selfTest = (toolTexts.get(f) || '').includes('--self-test');
-    const role = g ? '门' : f.startsWith('_') ? '库（共用）' : f.startsWith('tmp-') ? '⚠ 临时件（不该留在盘上）'
-      : f.endsWith('.cjs') || f === 'systems.cjs' || f === 'src-files.cjs' ? '声明表'
-        : f.startsWith('dev-') ? '开发工具' : '普查 / 其他';
-    const st = TOOLS_STATUS.get(f);
+    /* 状态/理由按**全路径**查，查不到再按**文件名**查 —— 这样"文件搬进子目录"不会让
+       15 条声明一夜之间变成幽灵声明（声明说的是"这个东西是什么"，不是"它住在哪一层"）。 */
+    const role = f.includes('/') ? '子目录（见 `SUBDIRS_STATUS`）'
+      : g ? '门' : f.startsWith('_') ? '库（共用）' : f.startsWith('tmp-') ? '⚠ 临时件（不该留在盘上）'
+        : f.endsWith('.cjs') || f === 'systems.cjs' || f === 'src-files.cjs' ? '声明表'
+          : f.startsWith('dev-') ? '开发工具' : '普查 / 其他';
+    const st = TOOLS_STATUS.get(f) || TOOLS_STATUS.get(path.basename(f));
     return { f, role, refs: [...new Set(refs)], selfTest, status: st ? st[0] : '', why: st ? st[1] : '' };
   });
 
