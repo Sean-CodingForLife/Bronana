@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES, RENDER_MODULES, UI_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -254,11 +256,10 @@ console.log('\n[6] 非法转换不会推进模拟');
 /* ---------------- 静态检查：唯一写入口 ---------------- */
 console.log('\n[7] 唯一写入口（静态检查）');
 {
-  const files = fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.ts'));
+  const files = srcScan.sources(m => m.rel.endsWith('.ts'));
   const writers = [];
   let gameWrites = 0;
-  for (const f of files) {
-    const src = fs.readFileSync(path.join(ROOT, 'src', f), 'utf8');
+  for (const { base: f, code: src } of files) {
     // 只匹配赋值，不匹配 === / !==
     const hits = [...src.matchAll(/Game\.state\s*=\s*[^=]/g)];
     if (!hits.length) continue;

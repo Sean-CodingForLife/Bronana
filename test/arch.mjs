@@ -17,6 +17,9 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：测试也是"会静默读漏"的地方 —— 只扫 `src/` 的话，搬家之后
+   这些断言会**看着全绿、其实没看那些模块**。统一走共享扫描器（它再转发 `tools/roots.cjs`）。 */
+import srcScan from '../tools/src-files.cjs';
 import { createRequire } from 'node:module';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -34,7 +37,8 @@ const { SYSTEMS, EXCEPTIONS, BY_ID, SYS_OF } = require('../tools/systems.cjs');
 
 console.log('\n=== Bronana · 架构 / 系统分层 ===\n');
 const A = analyze();
-const srcFiles = fs.readdirSync(SRC).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+const srcEntries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
+const srcFiles = srcEntries.map(m => m.base);
 
 /* ---------------- 1. 系统模型本身要自洽 ---------------- */
 console.log('[1] 系统模型');

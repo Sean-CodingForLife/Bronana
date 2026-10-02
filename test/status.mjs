@@ -216,9 +216,11 @@ T.section('6. 静态判据：写进去的状态字段必须真的有人读');
 {
   const fs = await import('node:fs');
   const path = await import('node:path');
+  /* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+  const srcScan = (await import('../tools/src-files.cjs')).default;
   const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
   const root = process.cwd();
-  const files = fs.readdirSync(path.join(root, 'src')).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+  const files = srcScan.sources(m => m.rel.endsWith('.ts') && !m.rel.endsWith('.d.ts'));
 
   /* 每个状态在宿主上占三个字段，命名从 id 推出来（见 `status.ts` 的 `apply`） */
   const fields = [];
@@ -242,9 +244,9 @@ T.section('6. 静态判据：写进去的状态字段必须真的有人读');
   const OWNERS = ['status.ts', 'comp.ts'];
   const writes = [];
   const readExempt = [];
-  for (const f of files) {
+  for (const { base: f, code: rawText } of files) {
     if (OWNERS.indexOf(f) >= 0) continue;
-    const raw = fs.readFileSync(path.join(root, 'src', f), 'utf8').split('\n');
+    const raw = rawText.split('\n');
     for (let ln = 0; ln < raw.length; ln++) {
       const line = raw[ln];
       const ok = line.indexOf('status-field-ok') >= 0;
@@ -271,7 +273,7 @@ T.section('6. 静态判据：写进去的状态字段必须真的有人读');
     readers.join(','));
 
   /* 而**门面必须有人调** —— 不然"没有第二个读写者"是因为谁都没读 */
-  const srcAll = files.map(f => strip(fs.readFileSync(path.join(root, 'src', f), 'utf8'))).join('\n');
+  const srcAll = files.map(m => strip(m.code)).join('\n');
   T.ok(/\bStatus\.moveMul\s*\(/.test(srcAll), '`Status.moveMul` 真的有人调（模拟层读它）');
   T.ok(/\bStatus\.rateOf\s*\(/.test(srcAll), '`Status.rateOf` 真的有人调');
   T.ok(/\bStatus\.tick\s*\(/.test(srcAll), '`Status.tick` 真的有人调（计时归模拟层驱动）');

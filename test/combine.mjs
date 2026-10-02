@@ -15,6 +15,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES, RENDER_MODULES, UI_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -109,9 +111,9 @@ console.log('[1] 品级台阶：每一档都得值得爬');
     [/TIER_MAX\s*=\s*\d/, '写死的档位上限']
   ];
   const dup = [];
-  for (const f of fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.ts'))) {
+  for (const { base: f, code: raw } of srcScan.sources(m => m.rel.endsWith('.ts'))) {
     if (f === 'data_tiers.ts') continue;                 // 唯一允许写这些的地方
-    const code = strip(fs.readFileSync(path.join(ROOT, 'src', f), 'utf8'));
+    const code = strip(raw);
     for (const [re, what] of BANNED) if (re.test(code)) dup.push(f + ' 里还有' + what);
   }
   ok(dup.length === 0, '品级的三件事（名字 / 解锁阶梯 / 上限）只住在 data_tiers.ts', dup.join(' | '));

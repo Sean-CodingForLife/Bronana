@@ -10,6 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES, RENDER_MODULES, UI_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -163,8 +165,7 @@ console.log('\n[6] 订阅计数与幂等');
 
   // 每个被订阅的事件都必须有人发射（否则是死订阅）
   const emitters = new Set();
-  for (const f of fs.readdirSync(path.join(ROOT, 'src'))) {
-    const src = fs.readFileSync(path.join(ROOT, 'src', f), 'utf8');
+  for (const { base: f, code: src } of srcScan.sources()) {
     for (const m of src.matchAll(/emit\('([A-Za-z]+)'/g)) emitters.add(m[1]);
   }
   const dead = [...counts['render.ts'], ...counts['ui.ts']].filter(e => !emitters.has(e));

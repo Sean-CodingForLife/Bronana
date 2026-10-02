@@ -13,6 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES, RENDER_MODULES, UI_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -232,10 +234,10 @@ console.log('\n[4] 静态契约');
     note: '信号总线上的事件名（emit 的字面量必须在这里）', owner: 'utils.ts',
     values: function () { return EVENT_NAMES.slice(); }
   });
-  const srcFiles = fs.readdirSync(path.join(ROOT, 'src')).filter(f => f.endsWith('.ts') && f !== 'types.d.ts');
+  const srcEntries = srcScan.sources(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts');
   const emitted = new Set();
-  for (const f of srcFiles) {
-    const src = fs.readFileSync(path.join(ROOT, 'src', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const { base: f, code: raw } of srcEntries) {
+    const src = raw.replace(/\/\*[\s\S]*?\*\//g, '');
     /* 三种写法都要认：
          `Game.events.emit('x')`   —— 模拟层与入口
          `C.events().emit('x')`    —— 被注入的总线（market.ts 的 ctx 走这条）

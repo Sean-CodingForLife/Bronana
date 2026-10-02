@@ -27,6 +27,8 @@
    ========================================================= */
 import fs from 'node:fs';
 import path from 'node:path';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 import { loadAll, SIM_MODULES } from './_load.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -218,8 +220,7 @@ console.log('\n[5] 折法实现只有一处');
      所以这里只钉真正不可替代的那条：定义只有一份。 */
   let defs = 0;
   const where = [];
-  for (const f of fs.readdirSync(src).filter((x) => x.endsWith('.ts'))) {
-    const t = fs.readFileSync(path.join(src, f), 'utf8');
+  for (const { base: f, code: t } of srcScan.sources(m => m.rel.endsWith('.ts'))) {
     const n = (t.match(/Fold\.apply\s*=\s*function/g) || []).length;
     if (n) { defs += n; where.push(f + '×' + n); }
   }

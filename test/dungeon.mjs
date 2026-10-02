@@ -18,6 +18,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadAll, SIM_MODULES } from './_load.mjs';
+/* ⚠ **跨根枚举**（E4 批次 1）：只扫 `src/` 的断言在搬家后会"看着全绿、其实没看那些模块" */
+import srcScan from '../tools/src-files.cjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 let failures = 0;
@@ -428,19 +430,25 @@ console.log('\n[6] 接入：模拟层用上了地图，地图层不反向依赖�
        · 上层（模拟层）必须真的用它 —— 否则地图只是"长出来了"
        · 它自己**不得反过来认识**模拟层/渲染层 —— 地图是纯数据，纯数据才能脱离对局单测，
          也才能让"同种子=同地图"在浏览器、Node、成绩码复算三处都成立 */
-  const srcDir = path.join(ROOT, 'src');
-  const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && f !== 'types.d.ts' && f !== 'dungeon.ts');
-  const importers = files.filter(f => /from '\.\/dungeon\.ts'/.test(fs.readFileSync(path.join(srcDir, f), 'utf8')));
+  /* ⚠ **LOUD，不是 silent**：下面这些是"按名字直接读某个模块"（不是枚举）——
+     搬家那天 `readFileSync` 会**当场抛**，指着这一行说要改。
+     所以它们可以留到批次 2 一起收（与"静默读漏"的枚举**不是一回事**）：
+     枚举漏了会全绿，读不到会当场红。 */
+  const srcDir = srcScan.rootsAll()[0].abs;
+  const entries = srcScan.entries().filter(m => m.rel.endsWith('.ts') && m.rel !== 'types.d.ts' && m.base !== 'dungeon.ts');
+  const importers = entries.filter(m => /from '\.\/dungeon\.ts'/.test(fs.readFileSync(m.abs, 'utf8'))).map(m => m.base);
   ok(importers.indexOf('game.ts') >= 0, '模拟层真的接上了地图（game.ts import 它）', importers.join(','));
 
-  const dungeonSrc = fs.readFileSync(path.join(srcDir, 'dungeon.ts'), 'utf8');
+  /* ⚠ 读某一个模块也走扫描器：`dungeon.ts` 是**内容侧**的（会搬走），
+     拿裸名拼回 `src/` 在搬家那天会读不到（"校验没坏，只是读漏了"）。 */
+  const dungeonSrc = fs.readFileSync(srcScan.entries().filter(m => m.base === 'dungeon.ts')[0].abs, 'utf8');
   const backDeps = ['game.ts', 'render.ts', 'ui.ts', 'main.ts', 'scene.ts', 'save.ts', 'profile.ts']
     .filter(f => dungeonSrc.indexOf("'./" + f + "'") >= 0);
   ok(backDeps.length === 0, '地图层不反向依赖模拟/渲染/存档（纯数据才能脱离对局单测）', backDeps.join(','));
 
   /* 修正键的**跨模块**对照：地牢给的那几个键必须能在 danger.ts 里找到同名同折法的，
      否则"地牢说它加了多少血"根本落不到怪身上（键名一致性是这一层的命根子）。 */
-  const dangerSrc = fs.readFileSync(path.join(srcDir, 'danger.ts'), 'utf8');
+  const dangerSrc = fs.readFileSync(srcScan.entries().filter(m => m.base === 'danger.ts')[0].abs, 'utf8');
   const badFold = [];
   for (const k of Object.keys(Dungeon.MOD_KEYS)) {
     if (!(k in Danger.BASE)) { badFold.push(k + ' 不在 danger 的基准里'); continue; }
