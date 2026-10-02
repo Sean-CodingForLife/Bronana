@@ -112,8 +112,15 @@ function readLF(file) {
   const crlf = raw.indexOf('\r\n') >= 0;
   return { p, text: raw.replace(/\r\n/g, '\n'), eol: crlf ? '\r\n' : '\n' };
 }
+/* ⚠ **两阶段提交 · 第一半**（2026-10-02 修的真问题）：这里**不写盘**，只记下来。
+   以前每个 op 成功就**立刻**写盘，而失败的 op 只 `failed++; continue;` ——
+   于是文件头那句「失败一律不写盘、退出码 1」**只对失败的那个 op 成立，对整份 patch 不成立**。
+   实测：一份 op1 合法 + op2 锚点不命中的 patch 跑完，**文件已被改坏**，
+   而工具打印的是「失败不写盘」—— 把「保证说了 A、实际做 B」演了一遍。
+   现在：全部 op 先在内存里跑，**任何一个失败 ⇒ 一个字节都不写**（见循环之后的第二半）。 */
+const PENDING = [];
 function writeBack(r) {
-  fs.writeFileSync(r.p, r.text.replace(/\n/g, r.eol === '\r\n' ? '\r\n' : '\n'), 'utf8');
+  PENDING.push(r);
 }
 /** 一行是不是注释（**失败模式 6 的根治**） */
 function isCommentLine(line) {
@@ -216,6 +223,13 @@ for (const op of ops) {
 }
 
 /* ---------------- 报告 ---------------- */
+/* ⚠ **两阶段提交 · 第二半**：只有**全部** op 都成功才写盘 ——
+   这才对得起文件头那句「失败一律不写盘」。失败时 `PENDING` 直接丢掉（内存里那点改动不影响磁盘）。 */
+if (!failed) {
+  for (const r of PENDING) fs.writeFileSync(r.p, r.text.replace(/\n/g, r.eol === '\r\n' ? '\r\n' : '\n'), 'utf8');
+}
+
+
 if (JSON_OUT) {
   console.log(JSON.stringify({ report, failed }));
   process.exit(failed ? 1 : 0);
