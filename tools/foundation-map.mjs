@@ -126,6 +126,10 @@ const COMMANDS_STATUS = new Map([
    ========================================================= */
 const SUBDIRS_STATUS = new Map([
   ['test/fixtures', '迁移测试用的**夹具**（生成物），不是测试套件 —— 门 `drift` 只读一层，所以它不进"每套测试都有名字"那张清单'],
+  ['tools/oneoff', '**历次大重构的一次性脚本**（14 个：`apply-comp` / `esm-ify` / `migrate-types` / `rename-doudou` / `rewrite-items.py` …）—— '
+    + '它们**不是工具**，不需要 npm 入口；留着是为了"当年这一步是怎么做的"可追溯。'
+    + '⚠ **每个的状态与理由仍然在 `TOOLS_STATUS` 里**（地图会逐个列出来，不另写一份 README —— '
+    + '两份说明就是两份真相）。搬家不改他们的身份，所以声明按**文件名**也认得住。'],
 ]);
 
 /** 盘上 `tools/` 与 `test/` **下一层**的子目录（与门 `drift` 的视野同一深度，只算有版本库文件的） */

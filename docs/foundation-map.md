@@ -169,21 +169,15 @@ links: ["README.md", "../AGENTS.md"]
 | --- | --- | --- | --- |
 | `_run.mjs` | 库（共用） | `tools/bug-probe.mjs` · `tools/curve-audit.mjs` · `tools/fun-audit.mjs` · `tools/matrix.mjs` · `tools/reconcile.mjs` · `tools/registry-drift.mjs` |  |
 | `_tables.mjs` | 库（共用） | `tools/foundation-map.mjs` · `tools/registration-audit.mjs` |  |
-| `apply-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `arch-audit.cjs` | 门 | 门 `audit` · 脚本 `audit` · `tools/readme-stats.cjs` · `tools/systems.cjs` · `tools/verify.mjs` |  |
 | `art-audit.mjs` | 门 | 门 `art` · 脚本 `art` · `tools/verify.mjs` |  |
 | `art-manifest.mjs` | 普查 / 其他 | 脚本 `art-manifest` |  |
 | `audio-census.mjs` | 门 | 门 `audio` · 脚本 `audio:census` · `tools/verify.mjs` |  |
 | `balance.mjs` | 普查 / 其他 | 脚本 `bal` · `tools/curve-audit.mjs` · `tools/registry-drift.mjs` |  |
-| `batch-close.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
-| `batch-num.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `bug-probe.mjs` | 普查 / 其他 | 脚本 `probe` · 脚本 `run` · `tools/_run.mjs` · `tools/coverage.mjs` · `tools/fun-audit.mjs` |  |
-| `canvas-numbers.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `color-audit.mjs` | 门 | 门 `color` · 脚本 `color:audit` · `tools/verify.mjs` |  |
 | `coverage.mjs` | 普查 / 其他 | 脚本 `coverage` |  |
 | `curve-audit.mjs` | 门 | 门 `curves` · 脚本 `curves` · `tools/registry-drift.mjs` · `tools/verify.mjs` |  |
-| `decal-decide.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
-| `decal-hoist.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `dev-edit.mjs` | 开发工具 | 脚本 `dev:edit` · `tools/foundation-map.mjs` · `tools/rename-inventory.mjs` |  |
 | `doc-front-matter.mjs` | 门 | 门 `doc-front` · 脚本 `doc:front` · `tools/verify.mjs` |  |
 | `doc-links.mjs` | 门 | 门 `doc-links` · 脚本 `doc:links` · `tools/verify.mjs` |  |
@@ -193,13 +187,8 @@ links: ["README.md", "../AGENTS.md"]
 | `env-declared.mjs` | 门 | 门 `env` · 脚本 `env:declared` · `tools/verify.mjs` | ✔ |
 | `env.mjs` | 普查 / 其他 | 脚本 `env` · `tools/where.mjs` |  |
 | `eol-audit.mjs` | 门 | 门 `eol` · 脚本 `eol:audit` · `tools/verify.mjs` |  |
-| `esm-ify.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
-| `esm-tests.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `extract-ui-text.mjs` | 门 | 门 `ui-text` · 脚本 `ui-text` · `tools/verify.mjs` |  |
-| `finalize-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `fingerprint.mjs` | 门 | 门 `fingerprint` · 脚本 `fingerprint` · `tools/fp-repro.mjs` · `tools/verify.mjs` |  |
-| `fix-comp.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
-| `fix-types.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `flow-audit.mjs` | 门 | 门 `flow` · 脚本 `flow` · `tools/verify.mjs` |  |
 | `foundation-map.mjs` | 普查 / 其他 | 脚本 `foundation:map` · `tools/doc-num-audit.mjs` · `tools/registration-audit.mjs` | ✔ |
 | `fp-repro.mjs` | 门 | 门 `repro` · 脚本 `fp:repro` · `tools/verify.mjs` |  |
@@ -213,18 +202,29 @@ links: ["README.md", "../AGENTS.md"]
 | `make-migration-fixture.mjs` | 普查 / 其他 · **keep** | `tools/foundation-map.mjs` |  |
 | `map-audit.mjs` | 普查 / 其他 | 脚本 `map` |  |
 | `matrix.mjs` | 普查 / 其他 | 脚本 `matrix` · `tools/_run.mjs` |  |
-| `migrate-types.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `name-audit.mjs` | 门 | 门 `name` · 脚本 `name:audit` · `tools/color-audit.mjs` · `tools/systems.cjs` · `tools/verify.mjs` |  |
 | `name-baseline.json` | 普查 / 其他 | `tools/name-audit.mjs` |  |
 | `naming.mjs` | 门 | 门 `naming` · 脚本 `naming:audit` · `tools/verify.mjs` |  |
+| `oneoff/apply-comp.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/batch-close.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/batch-num.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/canvas-numbers.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/decal-decide.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/decal-hoist.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/esm-ify.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/esm-tests.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/finalize-comp.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/fix-comp.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/fix-types.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/migrate-types.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/rename-doudou.cjs` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
+| `oneoff/rewrite-items.py` | 子目录（见 `SUBDIRS_STATUS`） · **oneoff** | （无引用，已声明） |  |
 | `readme-stats.cjs` | 门 | 门 `readme` · 脚本 `readme:stats` · 脚本 `readme:check` · `tools/verify.mjs` |  |
 | `reconcile.mjs` | 门 | 门 `reconcile` · 脚本 `reconcile` · `tools/verify.mjs` |  |
 | `registration-audit.mjs` | 门 | 门 `registration` · 脚本 `registration:audit` · `tools/verify.mjs` | ✔ |
 | `registry-drift.mjs` | 门 | 门 `drift` · 脚本 `drift` · `tools/eol-audit.mjs` · `tools/verify.mjs` |  |
-| `rename-bronana.cjs` | 声明表 | `tools/rename-doudou.cjs` |  |
-| `rename-doudou.cjs` | 声明表 · **oneoff** | `tools/foundation-map.mjs` |  |
+| `rename-bronana.cjs` | 声明表 | `tools/oneoff/rename-doudou.cjs` |  |
 | `rename-inventory.mjs` | 普查 / 其他 | 脚本 `rename:inventory` |  |
-| `rewrite-items.py` | 普查 / 其他 · **oneoff** | `tools/foundation-map.mjs` |  |
 | `run-suites.cjs` | 声明表 | 脚本 `suites` |  |
 | `score.mjs` | 普查 / 其他 | 脚本 `score` · `tools/registry-drift.mjs` |  |
 | `solid-audit.cjs` | 门 | 门 `solid` · 脚本 `solid` · `tools/verify.mjs` |  |
@@ -240,7 +240,7 @@ links: ["README.md", "../AGENTS.md"]
 | `workspace-audit.mjs` | 门 | 门 `workspace` · 脚本 `workspace:audit` · `tools/_tables.mjs` · `tools/registration-audit.mjs` · `tools/verify.mjs` | ✔ |
 | `yaml-check.mjs` | 门 | 门 `yaml` · 脚本 `yaml` · `tools/registry-drift.mjs` · `tools/verify.mjs` |  |
 
-> ⚠ **没有任何引用的工具**（0 个）：（无）
+> ⚠ **没有任何引用的工具**（14 个）：`oneoff/apply-comp.cjs` · `oneoff/batch-close.cjs` · `oneoff/batch-num.cjs` · `oneoff/canvas-numbers.cjs` · `oneoff/decal-decide.cjs` · `oneoff/decal-hoist.cjs` · `oneoff/esm-ify.cjs` · `oneoff/esm-tests.cjs` · `oneoff/finalize-comp.cjs` · `oneoff/fix-comp.cjs` · `oneoff/fix-types.cjs` · `oneoff/migrate-types.cjs` · `oneoff/rename-doudou.cjs` · `oneoff/rewrite-items.py`
 
 ## 三、验收门与测试（框架的判据层）
 
